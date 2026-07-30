@@ -1,0 +1,15 @@
+{
+  "name": "selkie",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Selkie: send money to any social handle. Multi-chain payments, Stellar first.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace apps/web run dev",
+    "build:web": "npm --workspace apps/web run build"
+  },
+  "license": "MIT"
+}

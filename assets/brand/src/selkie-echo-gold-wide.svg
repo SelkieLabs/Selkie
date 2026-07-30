@@ -1,0 +1,15 @@
+<svg width="1600" height="800" viewBox="0 0 1600 800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F6DFA4"/>
+      <stop offset="1" stop-color="#C9964B"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="800" fill="#0B0912"/>
+  <g stroke-linejoin="round" stroke-width="60">
+    <path d="M 190 260 L 190 540 L 430 400 Z" fill="#F2EBDC" stroke="#F2EBDC" opacity="0.18"/>
+    <path d="M 290 260 L 290 540 L 530 400 Z" fill="#F2EBDC" stroke="#F2EBDC" opacity="0.42"/>
+    <path d="M 390 260 L 390 540 L 630 400 Z" fill="url(#g)" stroke="url(#g)"/>
+  </g>
+  <text x="1110" y="470" text-anchor="middle" font-family="Avenir Next, Helvetica Neue, Arial, sans-serif" font-size="178" font-weight="900" letter-spacing="12" fill="#F2EBDC">SELKIE</text>
+</svg>
