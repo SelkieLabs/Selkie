@@ -1,4 +1,4 @@
-# apps/bot
+# backend/bot
 
 The X and Telegram surfaces. Thin: they parse a message ("send @amaka 5"), call the same `@selkie/core` flow the web app uses, and reply with a confirmation. No chain code, no business logic that the web app does not also share.
 

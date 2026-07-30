@@ -1,7 +1,7 @@
 /* Selkie design system: tokens + the base styles for shared components.
    Every surface imports this once, so a change here changes the whole product.
    The web app's fuller styles will migrate into this file as components move
-   into @selkie/ui (see packages/ui/README.md). */
+   into @selkie/ui (see frontend/ui/README.md). */
 
 :root {
   --slk-bg: #0b0f14;

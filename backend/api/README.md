@@ -1,4 +1,4 @@
-# apps/api
+# backend/api
 
 The backend the surfaces call. It owns sessions, social sign-in, deposit/sweep bookkeeping, and history, and it runs payments through `@selkie/core` against a registered `ChainAdapter`.
 

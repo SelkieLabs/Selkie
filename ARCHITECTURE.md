@@ -9,20 +9,21 @@ Selkie is one product that can run on many chains and grow many features without
 ## The layers
 
 ```
-apps/            what users touch. Kept thin.
+frontend/        the UI. What users see. Kept thin.
   web/           React app (browser)
+  ui/            reusable components + design system, shared by every surface
+backend/         the services that run for them.
+  api/           the backend the surfaces call
   bot/           X + Telegram surfaces
-  api/           backend the surfaces call
-packages/
+packages/        shared libraries. No UI, no server. Reused by frontend and backend.
   core/          the brain. Chain-agnostic. No Stellar or Canton code here.
     chains/      the ChainAdapter interface + a registry of adapters
     services/    provider interfaces: ramp (cash in/out), airtime/bills, swap
     domain/      handles, payments, history (pure product logic)
   chain-stellar/ the Stellar implementation of ChainAdapter (the only Stellar code)
-  ui/            reusable components + design system, shared by every surface
 ```
 
-Dependencies only point one way: `apps -> core`. Adapters implement core's interface. UI knows nothing about chains.
+Dependencies only point one way: `frontend` and `backend` both depend on `packages/core`. Adapters implement core's interface. UI knows nothing about chains.
 
 ## How to add a chain (say Base or Solana)
 
@@ -36,7 +37,7 @@ That is the whole change. No app, UI, or feature code moves. The app asks the re
 
 1. If it needs an outside provider (a biller, a yield protocol, a swap venue), add a small interface in `packages/core/src/services` and one implementation.
 2. Put the product logic in `packages/core/src/domain`.
-3. Add the UI in `packages/ui` and show it in `apps/web` (and the bot if it fits there).
+3. Add the UI in `frontend/ui` and show it in `frontend/web` (and the bot if it fits there).
 
 Features go through core, never straight into chain code, so one feature lands in one place.
 

@@ -8,14 +8,15 @@ Send money to any social handle. No app, no seed phrase, and no gas for the pers
 ## Layout
 
 ```
-apps/
+frontend/
   web/            the web app (React + Vite)
+  ui/             reusable components + design system, shared by every surface
+backend/
+  api/            the backend the surfaces call
   bot/            X + Telegram surfaces
-  api/            backend the surfaces call
 packages/
   core/           chain-agnostic product logic + the chain interface
   chain-stellar/  the Stellar adapter (the only Stellar-specific code)
-  ui/             reusable components + design system, shared by every surface
 assets/brand/     logos
 docs/             product scope + strategy
 ```
