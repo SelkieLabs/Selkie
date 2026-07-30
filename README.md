@@ -8,9 +8,7 @@ Send money to any social handle. No app, no seed phrase, and no gas for the pers
 ## Layout
 
 ```
-frontend/
-  web/            the web app (React + Vite)
-  ui/             reusable components + design system, shared by every surface
+frontend/         the web app (Next.js + Tailwind)
 backend/
   api/            the backend the surfaces call
   bot/            X + Telegram surfaces
@@ -25,8 +23,13 @@ docs/             product scope + strategy
 
 ```
 npm install        # links the workspaces together
-npm run dev:web    # run the web app
+npm run dev:web    # run the web app on http://localhost:3000
+npm run build:web
 ```
+
+The app rewrites `/api` and `/auth` to the Selkie server so the browser stays on one
+origin; point it somewhere other than `http://localhost:4000` with `SELKIE_API_ORIGIN`.
+See [frontend/README.md](frontend/README.md).
 
 ## Status
 

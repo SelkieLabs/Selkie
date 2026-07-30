@@ -9,9 +9,9 @@ Selkie is one product that can run on many chains and grow many features without
 ## The layers
 
 ```
-frontend/        the UI. What users see. Kept thin.
-  web/           React app (browser)
-  ui/            reusable components + design system, shared by every surface
+frontend/        the UI. What users see. Kept thin. Next.js + Tailwind.
+  src/app/       routes, one folder per URL, plus the design system in globals.css
+  src/components/  the pieces screens are built from
 backend/         the services that run for them.
   api/           the backend the surfaces call
   bot/           X + Telegram surfaces
@@ -25,6 +25,8 @@ packages/        shared libraries. No UI, no server. Reused by frontend and back
 
 Dependencies only point one way: `frontend` and `backend` both depend on `packages/core`. Adapters implement core's interface. UI knows nothing about chains.
 
+`frontend` is one package, not two. A separate component library earns its keep once a second surface renders HTML; until then the only thing it buys is an import hop. When the bot grows web views, extract the shared pieces then.
+
 ## How to add a chain (say Base or Solana)
 
 1. Create `packages/chain-<name>`.
@@ -37,7 +39,7 @@ That is the whole change. No app, UI, or feature code moves. The app asks the re
 
 1. If it needs an outside provider (a biller, a yield protocol, a swap venue), add a small interface in `packages/core/src/services` and one implementation.
 2. Put the product logic in `packages/core/src/domain`.
-3. Add the UI in `frontend/ui` and show it in `frontend/web` (and the bot if it fits there).
+3. Add the UI in `frontend` — a component in `src/components`, a route in `src/app` (and the bot if it fits there).
 
 Features go through core, never straight into chain code, so one feature lands in one place.
 

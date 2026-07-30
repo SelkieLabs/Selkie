@@ -5,12 +5,13 @@
   "description": "Selkie: send money to any social handle. Multi-chain payments, Stellar first.",
   "workspaces": [
     "packages/*",
-    "frontend/*",
+    "frontend",
     "backend/*"
   ],
   "scripts": {
-    "dev:web": "npm --workspace frontend/web run dev",
-    "build:web": "npm --workspace frontend/web run build"
+    "dev:web": "npm --workspace frontend run dev",
+    "build:web": "npm --workspace frontend run build",
+    "start:web": "npm --workspace frontend run start"
   },
   "license": "MIT"
 }
