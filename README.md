@@ -15,6 +15,8 @@ backend/
 packages/
   core/           chain-agnostic product logic + the chain interface
   chain-stellar/  the Stellar adapter (the only Stellar-specific code)
+contracts/
+  handle-escrow/  the Soroban contract that holds money for a handle
 assets/brand/     logos
 docs/             product scope + strategy
 ```

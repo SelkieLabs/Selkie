@@ -21,7 +21,14 @@ packages/        shared libraries. No UI, no server. Reused by frontend and back
     services/    provider interfaces: ramp (cash in/out), airtime/bills, swap
     domain/      handles, payments, history (pure product logic)
   chain-stellar/ the Stellar implementation of ChainAdapter (the only Stellar code)
+contracts/       on-chain code (Rust, Soroban). Deployed, not imported.
+  handle-escrow/ holds money addressed to a handle until its owner logs in
 ```
+
+`contracts/` is its own section because it is a different artifact: it compiles to
+WASM and lives on the ledger, so the app talks to it by contract id (read from
+`contracts/deployments/<network>.env`) rather than importing it. The Stellar
+adapter is the only thing that knows that id exists.
 
 Dependencies only point one way: `frontend` and `backend` both depend on `packages/core`. Adapters implement core's interface. UI knows nothing about chains.
 
@@ -39,7 +46,7 @@ That is the whole change. No app, UI, or feature code moves. The app asks the re
 
 1. If it needs an outside provider (a biller, a yield protocol, a swap venue), add a small interface in `packages/core/src/services` and one implementation.
 2. Put the product logic in `packages/core/src/domain`.
-3. Add the UI in `frontend` — a component in `src/components`, a route in `src/app` (and the bot if it fits there).
+3. Add the UI in `frontend`: a component in `src/components`, a route in `src/app` (and the bot if it fits there).
 
 Features go through core, never straight into chain code, so one feature lands in one place.
 

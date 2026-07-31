@@ -1,0 +1,17 @@
+[package]
+name = "selkie-handle-escrow"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+description = "Selkie's on-chain escrow: lock a Stellar token for a social handle; release on proven login; refund on expiry."
+
+[lib]
+crate-type = ["cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

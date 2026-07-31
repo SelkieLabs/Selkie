@@ -10,6 +10,9 @@ build/
 .vercel/
 coverage/
 *.tsbuildinfo
+target/
+.stellar/
+test_snapshots/
 /docs/selkie-stellar-product-scope.md
 /docs/stellar-scf-strategy.md
 /docs/submissions.md
