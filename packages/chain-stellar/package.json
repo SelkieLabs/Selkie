@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@selkie/core": "*"
+    "@selkie/core": "*",
+    "@stellar/stellar-sdk": "^15.1.0"
   }
 }

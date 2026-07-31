@@ -11,7 +11,14 @@
   "scripts": {
     "dev:web": "npm --workspace frontend run dev",
     "build:web": "npm --workspace frontend run build",
-    "start:web": "npm --workspace frontend run start"
+    "start:web": "npm --workspace frontend run start",
+    "test": "tsx --test packages/*/src/**/*.test.ts",
+    "typecheck": "tsc --noEmit -p packages/core/tsconfig.json && tsc --noEmit -p packages/chain-stellar/tsconfig.json",
+    "test:contracts": "cargo test --manifest-path contracts/Cargo.toml",
+    "test:live": "tsx packages/chain-stellar/scripts/live-testnet.ts"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "tsx": "^4.23.1"
+  }
 }
