@@ -226,6 +226,40 @@ export class StellarAdapter implements ChainAdapter {
   }
 
   /**
+   * Move funds directly between two addresses Selkie can sign for.
+   *
+   * This is deliberately not part of ChainAdapter: the product sends to handles,
+   * not addresses. It exists for account maintenance, above all merging two
+   * accounts that turn out to be the same person, where the money has to follow
+   * the identity.
+   */
+  async transfer(params: {
+    fromAddress: string;
+    toAddress: string;
+    amount: Money;
+  }): Promise<TxResult> {
+    assertPositive(params.amount.amount);
+    const asset = this.assets.get(params.amount.asset);
+
+    const signer = await this.deps.signers.forAddress(params.fromAddress);
+    if (!signer) throw new Error(`No signer available for ${params.fromAddress}`);
+
+    const response = await this.network.submit({
+      source: params.fromAddress,
+      operations: [
+        Operation.payment({
+          destination: params.toAddress,
+          asset: this.assets.toStellarAsset(asset.code),
+          amount: toStellarAmount(params.amount.amount),
+        }),
+      ],
+      signers: [signer],
+      sponsor: this.deps.sponsor,
+    });
+    return { status: "confirmed", ref: response.hash };
+  }
+
+  /**
    * The contract address of a classic asset. Every Stellar asset has a
    * contract counterpart, which is what lets the escrow hold USDC itself
    * rather than a wrapped stand-in.
