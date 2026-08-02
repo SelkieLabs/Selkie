@@ -65,13 +65,17 @@ replaced without touching the account model.
 ## Sessions
 
 Selkie issues no session tokens of its own. The client sends the provider's
-access token as a bearer token and the server verifies it, cached briefly.
-Rolling our own session format would be one more thing to get wrong, and auth
-bugs are how money apps actually get robbed.
+access token as a bearer token and the server verifies it. Rolling our own
+session format would be one more thing to get wrong, and auth bugs are how money
+apps actually get robbed.
 
-Production note: Privy access tokens are JWTs verifiable offline against their
-JWKS. That is a drop-in change behind `TokenVerifier` when call volume justifies
-it.
+Verifying means verifying. The token is an ES256 JWT, checked against the app's
+public key, with the algorithm read from what we require rather than from the
+token's own header, the issuer pinned to Privy, the audience pinned to this exact
+app, and no grace period on expiry. Only then is the user looked up by the
+subject it carries, using app credentials. There is no endpoint that trades a
+user token for a user, and a token that is merely shaped right proves nothing.
+`privy.test.ts` is the attack list.
 
 ## Routes
 

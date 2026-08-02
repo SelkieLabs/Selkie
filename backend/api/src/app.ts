@@ -297,6 +297,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof IdentityVerificationError) {
+      // The reason goes to the log, never to the client: it is how we tell a
+      // stale token from a misconfigured app, and it never contains the token.
+      console.warn("[auth]", error.message);
       return reply.code(401).send({ error: "That sign-in could not be verified." });
     }
     // Never leak internals to a client; the detail goes to the server log.
