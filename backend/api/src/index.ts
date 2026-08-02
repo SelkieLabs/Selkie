@@ -3,6 +3,7 @@ import {
   InMemorySignerProvider,
   KeypairSigner,
   StellarAdapter,
+  StellarSwapProvider,
   publicConfig,
   testnetConfig,
 } from "@selkie/chain-stellar";
@@ -41,10 +42,16 @@ async function main() {
     },
   });
 
+  const swap = new StellarSwapProvider(adapter.network, adapter.assets, signers, {
+    sponsor,
+    slippageBps: chainConfig.swapSlippageBps,
+  });
+
   const app = buildApp({
     users: new InMemoryUserStore(),
     provider: new PrivyIdentityProvider(config.privy),
     adapter,
+    swap,
   });
 
   await app.listen({ port: config.port, host: "0.0.0.0" });

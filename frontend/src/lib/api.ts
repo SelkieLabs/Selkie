@@ -1,144 +1,219 @@
-// Typed client for the Selkie server. The browser never holds a ledger token:
-// every Canton call happens server-side, keyed to the session cookie.
-
-export type Me = {
-  handle: string;
-  name?: string;
-  avatar?: string | null;
-  walletReady: boolean;
-  /** Your own Canton party — the real address behind your handle. */
-  address?: string | null;
-  assets: string[];
-};
-
-export type Balances = { handle: string; balances: Record<string, number> };
-
-export type Activity = {
-  id?: string;
-  ts: string;
-  type: "send" | "reward" | "deposit";
-  from: string;
-  to: string;
-  asset: string;
-  amount: number;
-  memo?: string;
-  onboarded?: boolean;
-  direction: "in" | "out";
-};
-
-export type SendResult = {
-  from: string;
-  to: string;
-  asset: string;
-  amount: number;
-  memo: string;
-  onboarded: boolean;
-  id?: string;
-};
-
-export type CampaignResult = {
-  paid: number;
-  onboarded: number;
-  failed: { handle: string; error: string }[];
-  results: { handle: string; ok: boolean; onboarded?: boolean }[];
-};
-
-/** An open ask. It holds no money: approving it is what moves anything. */
-export type PaymentRequest = {
-  cid: string;
-  from: string;
-  to: string;
-  asset: string;
-  amount: number;
-  memo: string;
-};
-
-export type Requests = { incoming: PaymentRequest[]; outgoing: PaymentRequest[] };
-
-export type PublicAccount = {
-  handle: string;
-  exists: boolean;
-  canReceive: true;
-};
-
 /**
- * Where outside money comes in. Every token now lands at your OWN Canton party,
- * so there is a single personal address that receives both CC and cBTC, and
- * `pending` is whatever is already waiting there, per asset.
+ * The only place this app talks to the Selkie API.
+ *
+ * Every request carries the identity provider's access token as a bearer token;
+ * Selkie issues no session of its own. The token arrives through a provider
+ * function so nothing here has to know that Privy exists, which is what keeps
+ * this file framework-free and swappable.
  */
-export type Deposit =
-  | { active: false }
-  | {
-      active: true;
-      address: string;
-      network: string;
-      assets: string[];
-      pending: { asset: string; amount: number; sender: string }[];
-    };
 
-export type DepositClaim = {
-  claimed: { asset: string; amount: number; sender: string; updateId: string; id: string }[];
-  total: number;
-};
+export interface Handle {
+  platform: "x" | "telegram";
+  username: string;
+}
 
-/** Your balance's real on-ledger backing: unlocked holdings at your own party. */
-export type Reserve =
-  | { active: false }
-  | {
-      active: true;
-      network: string;
-      address: string;
-      holdings: { asset: string; amount: number }[];
-      asOf: string;
-    };
+export interface Money {
+  /** Decimal string. Money is never a float, not even in the UI. */
+  amount: string;
+  asset: string;
+}
+
+export interface Identity {
+  provider: "google" | "x" | "telegram";
+  username?: string;
+  displayName?: string;
+  avatarUrl?: string;
+}
+
+export interface User {
+  id: string;
+  address: string;
+  /** Every handle this person can be paid at. Empty means "not payable yet". */
+  handles: Handle[];
+  identities: Identity[];
+}
+
+/** Money that was waiting for a handle and landed the moment they proved it. */
+export interface ClaimOutcome {
+  handle: Handle;
+  released: number;
+  amounts: Money[];
+  ref?: string;
+}
+
+export interface Session {
+  status: "created" | "signed-in";
+  user: User;
+  claimed: ClaimOutcome[];
+}
+
+/** The API's polite "we have never seen you, shall we make you a wallet?". */
+export interface NoAccount {
+  status: "no-account";
+  message: string;
+}
+
+export interface MergeRequired {
+  status: "merge-required";
+  message: string;
+  mergeCandidate: { userId: string; address: string };
+}
+
+export interface Linked {
+  status: "linked";
+  user: User;
+  claimed: ClaimOutcome[];
+}
+
+/** Who you are about to pay, resolved before you pay them. */
+export interface Recipient {
+  handle: Handle;
+  /** False just means they have not joined yet. It is still a valid destination. */
+  onSelkie: boolean;
+  isYou: boolean;
+  displayName?: string;
+  avatarUrl?: string;
+}
+
+export interface SendResult {
+  status: string;
+  ref?: string;
+  message: string;
+  waitingToBeClaimed: boolean;
+}
+
+export interface Quote {
+  from: Money;
+  to: Money;
+}
+
+export interface ConvertResult {
+  status: string;
+  ref: string;
+  received: Money;
+  message: string;
+}
+
+export type ActivityKind = "send" | "receive" | "claim" | "swap" | "airtime" | "bill" | "cashout";
+
+export interface ActivityEntry {
+  id: string;
+  kind: ActivityKind;
+  amount: Money;
+  counterparty?: string;
+  status: "pending" | "confirmed" | "failed";
+  at: string;
+  ref?: string;
+}
 
 export class ApiError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly body?: Record<string, unknown>,
+  ) {
     super(message);
     this.name = "ApiError";
-    this.status = status;
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    credentials: "same-origin",
-    headers: { "content-type": "application/json" },
-    ...init,
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(body.error ?? `Request failed (${res.status})`, res.status);
-  return body as T;
+type TokenProvider = () => Promise<string | null>;
+
+let tokenProvider: TokenProvider = async () => null;
+
+/** Called once by the auth provider. Everything else just calls the api. */
+export function setTokenProvider(provider: TokenProvider): void {
+  tokenProvider = provider;
 }
 
+async function request<T>(path: string, init: RequestInit & { expect?: number[] } = {}): Promise<T> {
+  const token = await tokenProvider();
+  const { expect = [], ...rest } = init;
+
+  const response = await fetch(`/api${path}`, {
+    ...rest,
+    headers: {
+      ...(rest.body ? { "content-type": "application/json" } : {}),
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...rest.headers,
+    },
+  });
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (response.ok || expect.includes(response.status)) return body as T;
+
+  // The server writes its messages for people. Show what it said, never a code.
+  const message =
+    typeof body.error === "string"
+      ? body.error
+      : typeof body.message === "string"
+        ? body.message
+        : "Something went wrong. Try that again.";
+  throw new ApiError(response.status, message, body);
+}
+
+const json = (value: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(value) });
+
 export const api = {
-  me: () => request<Me>("/api/me"),
-  balance: () => request<Balances>("/api/balance"),
-  history: () => request<{ entries: Activity[] }>("/api/history"),
+  /**
+   * Sign in. An identity we have never seen comes back as `no-account` rather
+   * than quietly becoming a second wallet for someone who already has one.
+   */
+  async session(options: { createAccount?: boolean } = {}): Promise<Session | NoAccount> {
+    const token = await tokenProvider();
+    return request<Session | NoAccount>("/auth/session", {
+      ...json({ token, createAccount: options.createAccount === true }),
+      expect: [404],
+    });
+  },
 
-  send: (payload: { to: string; asset: string; amount: number; memo?: string }) =>
-    request<SendResult>("/api/send", { method: "POST", body: JSON.stringify(payload) }),
+  /**
+   * Attach another identity. This is the moment money that was waiting for a
+   * handle becomes theirs, so the response carries whatever just landed.
+   */
+  async link(token: string): Promise<Linked | MergeRequired> {
+    return request<Linked | MergeRequired>("/auth/link", {
+      ...json({ token }),
+      expect: [409],
+    });
+  },
 
-  campaign: (payload: { winners: string[]; asset: string; amountEach: number; memo?: string }) =>
-    request<CampaignResult>("/api/campaign", { method: "POST", body: JSON.stringify(payload) }),
+  /** Confirmed merge. A separate call because it moves money. */
+  async merge(fromUserId: string): Promise<{ status: "merged"; user: User }> {
+    return request("/auth/merge", json({ fromUserId }));
+  },
 
-  deposit: () => request<Deposit>("/api/deposit"),
+  async me(): Promise<{ user: User; balances: Money[] }> {
+    return request("/me");
+  },
 
-  claimDeposits: () => request<DepositClaim>("/api/deposit/claim", { method: "POST" }),
+  /** Resolve a handle for the confirm screen. */
+  async recipient(username: string, platform: "x" | "telegram" = "x"): Promise<Recipient> {
+    const handle = username.trim().replace(/^@+/, "");
+    return request(`/handles/${encodeURIComponent(handle)}?platform=${platform}`);
+  },
 
-  requests: () => request<Requests>("/api/requests"),
+  async send(input: {
+    to: string;
+    amount: string;
+    asset?: string;
+    platform?: "x" | "telegram";
+    note?: string;
+  }): Promise<SendResult> {
+    return request("/payments/send", json(input));
+  },
 
-  askFor: (payload: { from: string; asset: string; amount: number; memo?: string }) =>
-    request<PaymentRequest>("/api/request", { method: "POST", body: JSON.stringify(payload) }),
+  async quote(from: string, to: string, amount: string): Promise<Quote> {
+    const query = new URLSearchParams({ from, to, amount });
+    return request(`/payments/convert/quote?${query}`);
+  },
 
-  answerRequest: (payload: { cid: string; action: "approve" | "decline" | "cancel" }) =>
-    request<{ ok: true }>("/api/requests/answer", { method: "POST", body: JSON.stringify(payload) }),
+  async convert(from: string, to: string, amount: string): Promise<ConvertResult> {
+    return request("/payments/convert", json({ from, to, amount }));
+  },
 
-  account: (handle: string) =>
-    request<PublicAccount>(`/api/account/${encodeURIComponent(handle.replace(/^@/, ""))}`),
-
-  transaction: (id: string) => request<Activity>(`/api/tx/${encodeURIComponent(id)}`),
-
-  reserve: () => request<Reserve>("/api/reserve"),
+  async activity(limit = 50): Promise<ActivityEntry[]> {
+    const { entries } = await request<{ entries: ActivityEntry[] }>(`/activity?limit=${limit}`);
+    return entries;
+  },
 };

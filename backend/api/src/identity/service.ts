@@ -1,4 +1,4 @@
-import type { HandleRef } from "@selkie/core";
+import type { HandleRef, Money } from "@selkie/core";
 import type { StellarAdapter } from "@selkie/chain-stellar";
 import type { IdentityProvider } from "./provider";
 import type { UserStore } from "./store";
@@ -25,7 +25,10 @@ export interface SignInResult {
 
 export interface ClaimOutcome {
   handle: HandleRef;
+  /** How many separate payments were waiting. */
   released: number;
+  /** What they came to, totalled per asset. This is the number the user sees. */
+  amounts: Money[];
   ref?: string;
 }
 
@@ -139,8 +142,11 @@ export class IdentityService {
       const pending = await this.deps.adapter.pendingClaims(handle);
       if (pending.length === 0) continue;
 
+      // Read the amounts before claiming. Claiming deletes the records that
+      // hold them, and "$25 was waiting for you" is the whole moment.
+      const amounts = await this.deps.adapter.waitingFor(handle);
       const result = await this.deps.adapter.claim(handle);
-      outcomes.push({ handle, released: pending.length, ref: result.ref });
+      outcomes.push({ handle, released: pending.length, amounts, ref: result.ref });
     }
     return outcomes;
   }

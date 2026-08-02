@@ -1,13 +1,21 @@
-export const ASSETS = ["CC", "USDCX", "CBTC", "CETH"] as const;
+export const ASSETS = ["USDC", "XLM"] as const;
 export type Asset = (typeof ASSETS)[number];
 
-/** Tokens keep their real casing: USDCx, cBTC, cETH. */
+/** What each asset is called in the interface. USDC is money, so it reads as money. */
 export const ASSET_LABEL: Record<string, string> = {
-  CC: "CC",
-  USDCX: "USDCx",
-  CBTC: "cBTC",
-  CETH: "cETH",
+  USDC: "Dollars",
+  XLM: "XLM",
 };
+
+/** The dollar asset. Balances, sends and totals default to it. */
+export const DOLLAR = "USDC";
+
+/** "$12.50". Only ever used for the asset that actually is dollars. */
+export function usd(value: number | string): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "$0.00";
+  return `$${money(n)}`;
+}
 
 /**
  * Money reads cleanly and never jitters: always two decimals so columns line
@@ -28,14 +36,11 @@ export const normalizeHandle = (handle: string): string =>
   `@${handle.trim().replace(/^@+/, "").toLowerCase()}`;
 
 /**
- * Handles print as they are; a raw Canton party (hint::1220<64 hex>) prints as
- * its hint plus a short fingerprint, because the full string is 70 characters
- * of noise in a feed row.
+ * An address, shortened. It appears in exactly one place, the wallet detail, and
+ * only because someone occasionally needs to prove where their money lives.
  */
-export function counterparty(value: string): string {
-  if (!value.includes("::")) return value;
-  const [hint, fingerprint] = value.split("::");
-  return `${hint}::${fingerprint.slice(0, 8)}…`;
+export function shortAddress(value: string): string {
+  return value.length > 14 ? `${value.slice(0, 6)}…${value.slice(-6)}` : value;
 }
 
 export function parseHandles(text: string): string[] {

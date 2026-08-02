@@ -226,6 +226,38 @@ export class StellarAdapter implements ChainAdapter {
   }
 
   /**
+   * What is waiting for a handle, as money rather than a count of payments.
+   *
+   * "You have 3 payments waiting" is a worse sentence than "$25 was waiting for
+   * you", and the second one is the reason anybody links their X account. Read
+   * before claiming, because claiming deletes the records that hold the amounts.
+   */
+  async waitingFor(handle: HandleRef): Promise<Money[]> {
+    const ids = await this.escrow.pending(handle, this.deps.oracle.address);
+    const totals = new Map<string, bigint>();
+
+    for (const id of ids) {
+      const payment = await this.escrow.getPayment(id, this.deps.oracle.address);
+      if (!payment) continue;
+      const code = this.codeForContract(payment.token);
+      // An asset we do not list is one we will not name. It is still claimable,
+      // it just does not get a line in the UI.
+      if (!code) continue;
+      totals.set(code, (totals.get(code) ?? 0n) + payment.amount);
+    }
+
+    return [...totals].map(([asset, stroops]) => ({ amount: fromStroops(stroops), asset }));
+  }
+
+  /** Reverse of contractIdFor: which listed asset a contract address stands for. */
+  codeForContract(contractId: string): string | null {
+    for (const def of this.assets.list()) {
+      if (this.contractIdFor(def.code) === contractId) return def.code;
+    }
+    return null;
+  }
+
+  /**
    * Move funds directly between two addresses Selkie can sign for.
    *
    * This is deliberately not part of ChainAdapter: the product sends to handles,

@@ -34,6 +34,12 @@ class AdapterSpy {
     return this.pending.get(`${handle.platform}:${handle.username}`) ?? [];
   }
 
+  async waitingFor(handle: { platform: string; username: string }) {
+    const waiting = this.pending.get(`${handle.platform}:${handle.username}`) ?? [];
+    if (waiting.length === 0) return [];
+    return [{ amount: String(waiting.length * 10), asset: "USDC" }];
+  }
+
   async claim(handle: { platform: string; username: string }) {
     const key = `${handle.platform}:${handle.username}`;
     this.claims.push(key);
@@ -133,6 +139,16 @@ describe("identity", () => {
     assert.deepEqual(linked.claimed[0]?.handle, { platform: "x", username: "amaka" });
     assert.equal(linked.claimed[0]?.released, 2);
     assert.deepEqual(adapter.claims, ["x:amaka"]);
+  });
+
+  test("the released amount survives the claim that erases it", async () => {
+    // Claiming deletes the escrow records, so the amounts have to be read first.
+    // Without that ordering the UI can only say "some money arrived".
+    adapter.pending.set("x:amaka", [1n, 2n]);
+
+    const result = await service.signIn(xToken("x-42", "amaka"), { createIfMissing: true });
+
+    assert.deepEqual(result?.claimed[0]?.amounts, [{ amount: "20", asset: "USDC" }]);
   });
 
   test("signing up straight through X claims waiting money immediately", async () => {

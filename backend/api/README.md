@@ -81,7 +81,24 @@ it.
 | `POST /auth/link` | Link another identity. Releases waiting money, or returns `merge-required`. |
 | `POST /auth/merge` | Confirmed merge. Separate because it moves money. |
 | `GET /me` | The signed-in user and their balances. |
+| `GET /handles/:username` | Who a handle belongs to, for the confirm screen. |
 | `POST /payments/send` | Pay a handle. The adapter decides direct vs escrow. |
+| `GET /payments/convert/quote` | What one asset is worth in another, quoted by the network. |
+| `POST /payments/convert` | Convert one asset into another. |
+| `GET /activity` | The activity feed, newest first. |
+
+### Two of those need a word
+
+**`GET /handles/:username`** exists because a mistyped handle is the most common
+way people lose money in an app like this, and the only defence that works is
+showing a face and a name before the money moves. A handle nobody has claimed is
+still a valid destination, so it answers "we do not know them yet", never "no".
+
+**`GET /activity`** reads a table Selkie writes, not the ledger. Money released
+by the escrow contract moves inside a contract call and never appears in a
+classic payment feed, so reading history back off the chain would show fewer
+events than actually happened, described worse. The store writes the entry at the
+moment it does the thing, for both sides of a payment.
 
 Responses never include provider subjects or anything else internal, and there
 is a test that asserts it.

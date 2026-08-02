@@ -1,19 +1,18 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { AuthProvider } from "@/contexts/AuthContext";
-import { ToastProvider } from "@/contexts/ToastContext";
 import { Scene } from "@/components/Scene";
+import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Selkie — a private wallet for any X handle",
+  title: "Selkie: send money to anyone with a handle",
   description:
-    "Turn any X handle into a private wallet on Canton. Send CC, USDCx, cBTC or cETH to @anyone. No app, no seed phrase, no gas, no public balance.",
+    "Send money to any X handle. The person receiving it needs no app, no wallet and no seed phrase. If they have not joined yet, it waits for them.",
   icons: { icon: "/mark.svg" },
   openGraph: {
     type: "website",
     title: "Selkie",
-    description: "Turn any X handle into a private wallet on Canton.",
+    description: "Send money to any X handle. No app, no wallet, no seed phrase.",
   },
 };
 
@@ -27,7 +26,7 @@ export const viewport: Viewport = {
 /**
  * The shell every route renders inside. The scene and the providers live here
  * rather than in each page, so the sea never remounts and the session is
- * fetched once for the whole app.
+ * resolved once for the whole app.
  */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
@@ -41,12 +40,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
       </head>
       <body>
-        <AuthProvider>
-          <ToastProvider>
-            <Scene />
-            {children}
-          </ToastProvider>
-        </AuthProvider>
+        <Providers>
+          <Scene />
+          {children}
+        </Providers>
       </body>
     </html>
   );

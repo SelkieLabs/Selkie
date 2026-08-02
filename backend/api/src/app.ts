@@ -1,18 +1,24 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { StellarAdapter } from "@selkie/chain-stellar";
+import type { HandleRef, Money, SwapProvider } from "@selkie/core";
 import { parseHandle } from "@selkie/core";
+import type { ActivityStore } from "./activity/store";
+import { InMemoryActivityStore } from "./activity/store";
 import { bearerToken } from "./auth";
 import type { IdentityProvider } from "./identity/provider";
 import { IdentityVerificationError } from "./identity/provider";
+import type { ClaimOutcome } from "./identity/service";
 import { IdentityService } from "./identity/service";
 import type { UserStore } from "./identity/store";
-import type { User } from "./identity/types";
-import { userHandles } from "./identity/types";
+import type { IdentityProviderId, User } from "./identity/types";
+import { isPayable, userHandles } from "./identity/types";
 
 export interface AppDeps {
   users: UserStore;
   provider: IdentityProvider;
   adapter: StellarAdapter;
+  swap: SwapProvider;
+  activity?: ActivityStore;
 }
 
 /**
@@ -23,6 +29,7 @@ export interface AppDeps {
 export function buildApp(deps: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
   const identity = new IdentityService(deps);
+  const activity = deps.activity ?? new InMemoryActivityStore();
 
   /** Resolve the caller, or reply 401. Returns null when it has already replied. */
   async function requireUser(request: FastifyRequest, reply: {
@@ -39,6 +46,21 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       return null;
     }
     return result.user;
+  }
+
+  /** Money that was waiting and just landed deserves a line in the feed. */
+  async function recordClaims(userId: string, claimed: ClaimOutcome[]): Promise<void> {
+    for (const outcome of claimed) {
+      for (const amount of outcome.amounts) {
+        await activity.record(userId, {
+          kind: "claim",
+          chain: "stellar",
+          amount,
+          status: "confirmed",
+          ref: outcome.ref,
+        });
+      }
+    }
   }
 
   app.get("/health", async () => ({ ok: true }));
@@ -62,6 +84,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         message: "Welcome to Selkie. Create your wallet to continue.",
       });
     }
+
+    await recordClaims(result.user.id, result.claimed);
 
     return {
       status: result.isNew ? "created" : "signed-in",
@@ -89,6 +113,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         mergeCandidate: result.mergeCandidate,
       });
     }
+
+    await recordClaims(result.user.id, result.claimed);
     return { status: "linked", user: publicUser(result.user), claimed: result.claimed };
   });
 
@@ -107,13 +133,43 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.get("/me", async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
-    const balance = await deps.adapter.getBalance({
-      chain: "stellar",
-      handle: userHandles(user)[0] ?? { platform: "x", username: user.id },
-      address: user.address,
-      status: "active",
-    });
+    const balance = await deps.adapter.getBalance(accountOf(user));
     return { user: publicUser(user), balances: balance.balances };
+  });
+
+  /**
+   * Who you are about to pay, before you pay them.
+   *
+   * A mistyped handle is the most common way people lose money in an app like
+   * this, and the only real defence is showing a face and a name on the confirm
+   * screen. A handle nobody has claimed yet is still a valid destination, so this
+   * answers "we do not know them yet", never "no".
+   */
+  app.get("/handles/:username", async (request, reply) => {
+    const caller = await requireUser(request, reply);
+    if (!caller) return;
+
+    const { username } = request.params as { username: string };
+    const { platform = "x" } = (request.query ?? {}) as { platform?: string };
+    if (!isPayable(platform as IdentityProviderId)) {
+      return reply.code(400).send({ error: "You can pay an X or a Telegram handle." });
+    }
+
+    const handle = toHandle(username, platform as "x" | "telegram");
+    if (!handle) return reply.code(400).send({ error: "Who are you paying?" });
+
+    const found = await identity.findByHandle(platform as IdentityProviderId, handle.username);
+    const profile = found?.identities.find(
+      (linked) => linked.provider === platform && linked.username?.toLowerCase() === handle.username,
+    );
+
+    return {
+      handle,
+      onSelkie: Boolean(found),
+      isYou: Boolean(found) && found?.id === caller.id,
+      displayName: profile?.displayName,
+      avatarUrl: profile?.avatarUrl,
+    };
   });
 
   /**
@@ -142,13 +198,34 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       });
     }
 
-    const to = parseHandle(body.to, (body.platform ?? "x") as "x" | "telegram");
-    const result = await deps.adapter.send(
-      from,
-      to,
-      { amount: body.amount, asset: (body.asset ?? "USDC").toUpperCase() },
-      body.note,
-    );
+    const to = toHandle(body.to, (body.platform ?? "x") as "x" | "telegram");
+    if (!to) return reply.code(400).send({ error: "Who are you paying, and how much?" });
+
+    const money: Money = { amount: body.amount, asset: (body.asset ?? "USDC").toUpperCase() };
+    const result = await deps.adapter.send(from, to, money, body.note);
+
+    await activity.record(user.id, {
+      kind: "send",
+      chain: "stellar",
+      amount: money,
+      counterparty: `@${to.username}`,
+      status: result.heldForClaim ? "pending" : "confirmed",
+      ref: result.ref,
+    });
+
+    // The other side gets their own entry, so someone who already uses Selkie
+    // sees the money arrive rather than a balance that changed for no reason.
+    const recipient = await identity.findByHandle(to.platform as IdentityProviderId, to.username);
+    if (recipient && recipient.id !== user.id) {
+      await activity.record(recipient.id, {
+        kind: "receive",
+        chain: "stellar",
+        amount: money,
+        counterparty: `@${from.username}`,
+        status: result.heldForClaim ? "pending" : "confirmed",
+        ref: result.ref,
+      });
+    }
 
     return {
       status: result.status,
@@ -161,6 +238,63 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     };
   });
 
+  /** What one asset is worth in another right now, quoted by the network itself. */
+  app.get("/payments/convert/quote", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const query = (request.query ?? {}) as { from?: string; to?: string; amount?: string };
+    if (!query.from || !query.to || !query.amount) {
+      return reply.code(400).send({ error: "What are you converting, and how much?" });
+    }
+
+    const quote = await deps.swap.quote(
+      { amount: query.amount, asset: query.from.toUpperCase() },
+      query.to.toUpperCase(),
+    );
+    return { from: quote.from, to: quote.to };
+  });
+
+  /** Convert one asset into another. Fees are sponsored, same as everything else. */
+  app.post("/payments/convert", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const body = (request.body ?? {}) as { from?: string; to?: string; amount?: string };
+    if (!body.from || !body.to || !body.amount) {
+      return reply.code(400).send({ error: "What are you converting, and how much?" });
+    }
+
+    const source: Money = { amount: body.amount, asset: body.from.toUpperCase() };
+    const target = body.to.toUpperCase();
+    const quote = await deps.swap.quote(source, target);
+    const { ref } = await deps.swap.swap(accountOf(user), source, target);
+
+    await activity.record(user.id, {
+      kind: "swap",
+      chain: "stellar",
+      amount: source,
+      counterparty: quote.to.asset,
+      status: "confirmed",
+      ref,
+    });
+
+    return { status: "confirmed", ref, received: quote.to, message: `Converted to ${target}.` };
+  });
+
+  /** The activity feed. Newest first, already in the order it is shown. */
+  app.get("/activity", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const { limit } = (request.query ?? {}) as { limit?: string };
+    const parsed = Number(limit);
+    const entries = await activity.list(user.id, {
+      limit: Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 200) : undefined,
+    });
+    return { entries };
+  });
+
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof IdentityVerificationError) {
       return reply.code(401).send({ error: "That sign-in could not be verified." });
@@ -171,6 +305,25 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   });
 
   return app;
+}
+
+/**
+ * Read a handle out of user input. Returns null rather than throwing, because
+ * someone typing "@" is a question to answer, not a server error.
+ */
+function toHandle(input: string, platform: "x" | "telegram"): HandleRef | null {
+  const cleaned = input.trim().replace(/^@+/, "");
+  return cleaned ? parseHandle(cleaned, platform) : null;
+}
+
+/** The chain-level account behind a user, for the calls that need one. */
+function accountOf(user: User) {
+  return {
+    chain: "stellar" as const,
+    handle: userHandles(user)[0] ?? { platform: "x" as const, username: user.id },
+    address: user.address,
+    status: "active" as const,
+  };
 }
 
 /** What the client is allowed to see. No provider subjects, no internals. */

@@ -16,6 +16,9 @@ const adapterStub = {
   async pendingClaims() {
     return [] as bigint[];
   },
+  async waitingFor() {
+    return [] as { amount: string; asset: string }[];
+  },
   async claim() {
     return { status: "confirmed", ref: "TX" };
   },
@@ -31,6 +34,27 @@ const adapterStub = {
   },
 };
 
+/** Quotes at a flat 2:1 so the numbers in these tests are obvious. */
+const swapStub = {
+  id: "test-swap",
+  swapped: [] as { amount: string; asset: string; to: string }[],
+  async quote(from: { amount: string; asset: string }, toAsset: string) {
+    return {
+      provider: "test-swap",
+      from,
+      to: { amount: String(Number(from.amount) * 2), asset: toAsset },
+    };
+  },
+  async swap(
+    _account: unknown,
+    from: { amount: string; asset: string },
+    toAsset: string,
+  ) {
+    swapStub.swapped.push({ ...from, to: toAsset });
+    return { ref: "TX_SWAP" };
+  },
+};
+
 const xToken = (subject: string, username: string) => `test:x:${subject}:${username}`;
 const googleToken = (subject: string) => `test:google:${subject}:`;
 
@@ -40,10 +64,12 @@ describe("api", () => {
   beforeEach(async () => {
     adapterStub.sent = [];
     adapterStub.heldForClaim = true;
+    swapStub.swapped = [];
     app = buildApp({
       users: new InMemoryUserStore(),
       provider: new FakeIdentityProvider(true),
       adapter: adapterStub as unknown as StellarAdapter,
+      swap: swapStub,
     });
   });
 
@@ -161,6 +187,160 @@ describe("api", () => {
     assert.equal(response.statusCode, 409);
     assert.equal(response.json().status, "merge-required");
     assert.ok(response.json().mergeCandidate.userId);
+  });
+
+  test("a handle nobody has claimed is still a valid destination", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/handles/@amaka",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json().handle, { platform: "x", username: "amaka" });
+    assert.equal(response.json().onSelkie, false);
+  });
+
+  test("looking up a handle shows the face the sender is about to pay", async () => {
+    await post("/auth/session", { token: xToken("x2", "Amaka"), createAccount: true });
+
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const response = await app.inject({
+      // Typed with different casing than it was registered with, on purpose.
+      method: "GET",
+      url: "/handles/AMAKA",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.json().onSelkie, true);
+    assert.equal(response.json().isYou, false);
+  });
+
+  test("paying yourself is flagged before it happens, not after", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/handles/chidi",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.json().isYou, true);
+  });
+
+  test("an empty handle is a question, not a server error", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/handles/@",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 400);
+  });
+
+  test("a Gmail is not a payable destination", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/handles/amaka?platform=google",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 400);
+  });
+
+  test("sending writes a line in the sender's activity", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+    await post("/payments/send", { to: "@amaka", amount: "5" }, token);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/activity",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const [entry] = response.json().entries;
+    assert.equal(entry.kind, "send");
+    assert.equal(entry.counterparty, "@amaka");
+    assert.deepEqual(entry.amount, { amount: "5", asset: "USDC" });
+    // Waiting to be claimed is not the same as arrived.
+    assert.equal(entry.status, "pending");
+  });
+
+  test("both sides of a settled payment see it in their own feed", async () => {
+    adapterStub.heldForClaim = false;
+    const recipient = xToken("x2", "amaka");
+    await post("/auth/session", { token: recipient, createAccount: true });
+
+    const sender = xToken("x1", "chidi");
+    await post("/auth/session", { token: sender, createAccount: true });
+    await post("/payments/send", { to: "@amaka", amount: "5" }, sender);
+
+    const feed = await app.inject({
+      method: "GET",
+      url: "/activity",
+      headers: { authorization: `Bearer ${recipient}` },
+    });
+    const [entry] = feed.json().entries;
+    assert.equal(entry.kind, "receive");
+    assert.equal(entry.counterparty, "@chidi");
+    assert.equal(entry.status, "confirmed");
+  });
+
+  test("one person's activity is never another person's", async () => {
+    const sender = xToken("x1", "chidi");
+    await post("/auth/session", { token: sender, createAccount: true });
+    await post("/payments/send", { to: "@amaka", amount: "5" }, sender);
+
+    const stranger = xToken("x9", "stranger");
+    await post("/auth/session", { token: stranger, createAccount: true });
+
+    const feed = await app.inject({
+      method: "GET",
+      url: "/activity",
+      headers: { authorization: `Bearer ${stranger}` },
+    });
+    assert.deepEqual(feed.json().entries, []);
+  });
+
+  test("converting quotes first and records what it did", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const quote = await app.inject({
+      method: "GET",
+      url: "/payments/convert/quote?from=USDC&to=XLM&amount=5",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.deepEqual(quote.json().to, { amount: "10", asset: "XLM" });
+
+    const done = await post("/payments/convert", { from: "usdc", to: "xlm", amount: "5" }, token);
+    assert.equal(done.statusCode, 200);
+    assert.deepEqual(swapStub.swapped, [{ amount: "5", asset: "USDC", to: "XLM" }]);
+
+    const feed = await app.inject({
+      method: "GET",
+      url: "/activity",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(feed.json().entries[0].kind, "swap");
+  });
+
+  test("an incomplete conversion is refused", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+    assert.equal((await post("/payments/convert", { from: "USDC" }, token)).statusCode, 400);
+  });
+
+  test("activity and lookups need a bearer token too", async () => {
+    assert.equal((await app.inject({ method: "GET", url: "/activity" })).statusCode, 401);
+    assert.equal((await app.inject({ method: "GET", url: "/handles/amaka" })).statusCode, 401);
   });
 
   test("linking a free identity attaches it to the same wallet", async () => {

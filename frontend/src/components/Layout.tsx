@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Home, LogOut, Wallet } from "lucide-react";
 import Link from "next/link";
-import { LoaderMark, Mark, Wordmark, XLogo } from "./Mark";
+import { LoaderMark, Mark, Wordmark } from "./Mark";
 import { useAuth } from "@/contexts/useAuth";
-import type { Me } from "@/lib/api";
+import type { User } from "@/lib/api";
+import { avatarOf, handleOf } from "@/lib/user";
 
 export function Shell({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
   return (
@@ -14,11 +15,20 @@ export function Shell({ children, wide = false }: { children: ReactNode; wide?: 
   );
 }
 
-export function Avatar({ me, size = 32 }: { me: Me; size?: number }) {
-  const initial = me.handle.replace(/^@/, "").slice(0, 1).toUpperCase();
-  return me.avatar ? (
+/** A face, or the next best thing. Never a blank circle. */
+export function Avatar({
+  name,
+  src,
+  size = 32,
+}: {
+  name: string;
+  src?: string | null;
+  size?: number;
+}) {
+  const initial = name.replace(/^@/, "").slice(0, 1).toUpperCase() || "?";
+  return src ? (
     <img
-      src={me.avatar}
+      src={src}
       alt=""
       referrerPolicy="no-referrer"
       className="rounded-full border-2 border-pen object-cover"
@@ -36,7 +46,9 @@ export function Avatar({ me, size = 32 }: { me: Me; size?: number }) {
 }
 
 /** Signing out is reversible but surprising when accidental, so it asks. */
-function SignOutModal({ handle, onClose }: { handle: string; onClose: () => void }) {
+function SignOutModal({ name, onClose }: { name: string; onClose: () => void }) {
+  const { signOut } = useAuth();
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -56,17 +68,17 @@ function SignOutModal({ handle, onClose }: { handle: string; onClose: () => void
         <span className="modal-icon">
           <LogOut size={20} strokeWidth={2.2} />
         </span>
-        <p className="mt-5 font-display text-2xl font-bold tracking-tight">Sign out of {handle}?</p>
+        <p className="mt-5 font-display text-2xl font-bold tracking-tight">Sign out of {name}?</p>
         <p className="mt-2 text-[15px] leading-relaxed text-pen/65">
-          Your wallet stays safe on Canton. Signing back in with X brings it right back.
+          Your money stays exactly where it is. Signing back in the same way brings it right back.
         </p>
         <div className="mt-7 flex gap-3">
           <button onClick={onClose} autoFocus className="btn btn-dim flex-1">
             Cancel
           </button>
-          <a href="/auth/logout" className="btn btn-danger flex-1">
+          <button onClick={() => void signOut()} className="btn btn-danger flex-1">
             Sign out
-          </a>
+          </button>
         </div>
       </div>
     </div>,
@@ -74,11 +86,12 @@ function SignOutModal({ handle, onClose }: { handle: string; onClose: () => void
   );
 }
 
-/** The handle pill: who you are, and the way out. */
-function AccountPill({ me }: { me: Me }) {
+/** The account pill: who you are, and the way out. */
+function AccountPill({ user }: { user: User }) {
   const [open, setOpen] = useState(false);
   const [confirmOut, setConfirmOut] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+  const handle = handleOf(user);
 
   useEffect(() => {
     if (!open) return;
@@ -102,17 +115,17 @@ function AccountPill({ me }: { me: Me }) {
         aria-haspopup="menu"
         className="chunk chunk-pop flex items-center gap-2.5 py-1.5 pl-2 pr-3.5"
       >
-        <Avatar me={me} size={30} />
-        <span className="font-display text-sm font-bold">{me.handle}</span>
+        <Avatar name={handle} src={avatarOf(user)} size={30} />
+        <span className="font-display text-sm font-bold">{handle}</span>
         <ChevronDown size={15} className={`transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
         <div className="menu" role="menu">
           <p className="px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-pen/45">
-            Signed in as {me.handle}
+            Signed in as {handle}
           </p>
-          <Link href="/dashboard/activity" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
+          <Link href="/wallet" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
             <Wallet size={16} /> Your wallet
           </Link>
           <Link href="/" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
@@ -132,13 +145,13 @@ function AccountPill({ me }: { me: Me }) {
         </div>
       )}
 
-      {confirmOut && <SignOutModal handle={me.handle} onClose={() => setConfirmOut(false)} />}
+      {confirmOut && <SignOutModal name={handle} onClose={() => setConfirmOut(false)} />}
     </div>
   );
 }
 
 export function Header() {
-  const { me } = useAuth();
+  const { user, status, signIn } = useAuth();
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -148,10 +161,9 @@ export function Header() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Floating pills at the top of the page; once content slides underneath,
-  // the bar grows a blurred dark strip so the pills never fight the page.
-  // (The sign-out modal is portaled to <body>, so the backdrop-filter here
-  // can't clip it.)
+  // Floating pills at the top of the page; once content slides underneath, the
+  // bar grows a blurred dark strip so the pills never fight the page. (The
+  // sign-out modal is portaled to <body>, so backdrop-filter here cannot clip it.)
   return (
     <header
       className={`sticky top-0 z-40 transition-all duration-300 ${
@@ -164,12 +176,14 @@ export function Header() {
         <div className="flex items-center justify-between gap-4">
           {/* No pill: the mark sits straight on the water. */}
           <Wordmark />
-          {me ? (
-            <AccountPill me={me} />
+          {user ? (
+            <AccountPill user={user} />
+          ) : status === "loading" ? (
+            <span className="h-10 w-28 rounded-xl bg-ivory/[0.06]" aria-hidden="true" />
           ) : (
-            <a href="/auth/x/login" className="btn btn-dim btn-sm">
-              <XLogo size={13} /> Continue with X
-            </a>
+            <button onClick={signIn} className="btn btn-dim btn-sm">
+              Sign in
+            </button>
           )}
         </div>
       </Shell>
@@ -187,14 +201,8 @@ export function Footer() {
             <span className="font-display font-bold text-ivory/85">Selkie</span>
           </span>
           <nav className="flex items-center gap-6">
-            <Link href="/pitch" className="font-semibold transition-colors hover:text-ivory">
-              Pitch
-            </Link>
-            <Link href="/docs" className="font-semibold transition-colors hover:text-ivory">
-              Docs
-            </Link>
             <a
-              href="https://github.com/martinvibes/Selkie"
+              href="https://github.com/SelkieLabs/Selkie"
               target="_blank"
               rel="noreferrer"
               className="font-semibold transition-colors hover:text-ivory"
@@ -202,7 +210,7 @@ export function Footer() {
               GitHub
             </a>
           </nav>
-          <span>Private payments on Canton · HackCanton S2</span>
+          <span>Send money to anyone with a handle</span>
         </div>
       </Shell>
     </footer>

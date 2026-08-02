@@ -1,5 +1,11 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Anchored to this file, not to the working directory: the API is started from
+// the repo root in development and from its own folder by npm workspaces, and a
+// contract id that depends on where you were standing is a bug waiting to bite.
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /**
  * Configuration, read once at startup so a missing value fails loudly on boot
@@ -43,7 +49,7 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
 
 /** Read the contract id the deploy script recorded, so it lives in one place. */
 function escrowFromDeployments(network: string): string {
-  const path = resolve(process.cwd(), `contracts/deployments/${network}.env`);
+  const path = resolve(REPO_ROOT, `contracts/deployments/${network}.env`);
   try {
     const match = readFileSync(path, "utf8").match(/^SELKIE_HANDLE_ESCROW_ID=(\S+)$/m);
     if (match?.[1]) return match[1];
