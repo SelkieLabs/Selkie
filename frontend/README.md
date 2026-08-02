@@ -9,23 +9,27 @@ src/
     providers.tsx Privy, auth and toasts
     globals.css   design system + the moonlit-cove styles
   components/     the pieces screens are built from
-    wallet/       the flows: send, convert, activity, the prompts
+    wallet/       the rail, the balance card, and one panel per tab
   contexts/       auth + toasts
   lib/            the typed API client, formatting, display helpers
-public/           files served as-is (favicon, mark)
+public/
+  tokens/         each asset's own logo
 ```
 
 ## Routes
 
-| URL           | File                        |
-| ------------- | --------------------------- |
-| `/`           | `app/page.tsx`              |
-| `/wallet`     | `app/wallet/page.tsx`       |
-| anything else | `app/not-found.tsx` (→ `/`) |
+| URL              | File                          |
+| ---------------- | ----------------------------- |
+| `/`              | `app/page.tsx`                |
+| `/wallet`        | redirects to `/wallet/activity` |
+| `/wallet/[tab]`  | `app/wallet/[tab]/page.tsx`   |
+| anything else    | `app/not-found.tsx` (→ `/`)   |
 
-There are two screens and no more. Everything that interrupts the wallet is a
-sheet on top of it, because a payment app that makes people navigate to find
-their own money has already lost.
+The wallet is one shell and five tabs: `activity`, `send`, `receive`,
+`requests`, `many`. Each is its own URL, so back, forward and bookmarks all
+behave. The shell loads what every tab needs, because the rail has to show how
+many people are waiting on you no matter which tab you are looking at. Two
+things never move: your balance at the top, the rail within reach.
 
 ## The rules this UI is held to
 
@@ -34,7 +38,11 @@ their own money has already lost.
 - **Send is two steps.** Who and how much, then a confirm screen showing the
   face, the name and the handle. A mistyped handle is the top way people lose
   money in an app like this, and this is the only defence that works.
-- **Balance is in dollars.** Other assets get a quiet second line.
+- **Balance is in dollars.** Other assets get a quiet second line, with their
+  own real logo rather than a lettered circle.
+- **Add money is the one screen that has to say a network name.** An address
+  that receives the wrong thing loses the money for good, so that warning stays
+  even though it breaks the rule above.
 - **Nothing is silent.** A login we have never seen asks before it becomes a
   wallet; a second wallet asks before it is merged in.
 - Skeletons over spinners, teaching empty states, one dialog component.
@@ -61,7 +69,9 @@ npm run typecheck
 npm run lint
 ```
 
-`NEXT_PUBLIC_PRIVY_APP_ID` goes in `.env.local`, which is gitignored.
+Copy `.env.example` to `.env.local`, which is gitignored, and put the Privy app
+id in it. The API needs its own `.env` at the repo root; see the
+[root README](../README.md).
 
 Before this app can log anyone in, the Privy dashboard needs Google and X
 enabled as login methods, and the deployed domain added to the allowed list.

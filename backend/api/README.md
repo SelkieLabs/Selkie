@@ -86,12 +86,19 @@ user token for a user, and a token that is merely shaped right proves nothing.
 | `POST /auth/merge` | Confirmed merge. Separate because it moves money. |
 | `GET /me` | The signed-in user and their balances. |
 | `GET /handles/:username` | Who a handle belongs to, for the confirm screen. |
+| `POST /me/receive` | The address to fund the wallet at. Provisions it first. |
 | `POST /payments/send` | Pay a handle. The adapter decides direct vs escrow. |
+| `POST /payments/batch` | Pay a list of handles the same amount each. |
+| `POST /requests` | Ask someone for money. |
+| `GET /requests` | Requests waiting on you, and ones you are waiting on. |
+| `POST /requests/:id/pay` | Turn a request into a payment. Addressee only. |
+| `POST /requests/:id/decline` | Turn a request down. Addressee only. |
+| `POST /requests/:id/cancel` | Withdraw a request you sent. Asker only. |
 | `GET /payments/convert/quote` | What one asset is worth in another, quoted by the network. |
 | `POST /payments/convert` | Convert one asset into another. |
 | `GET /activity` | The activity feed, newest first. |
 
-### Two of those need a word
+### Four of those need a word
 
 **`GET /handles/:username`** exists because a mistyped handle is the most common
 way people lose money in an app like this, and the only defence that works is
@@ -104,20 +111,45 @@ classic payment feed, so reading history back off the chain would show fewer
 events than actually happened, described worse. The store writes the entry at the
 moment it does the thing, for both sides of a payment.
 
+**`POST /me/receive`** is a write, not a read, and that is the whole point. On
+Stellar an address with no account behind it cannot be paid, and one with no
+trustline bounces the payment back. Both of those fail at the *sender's* end,
+after the money has left, which is the worst possible place to find out. So
+asking for the address provisions the account and opens the trustlines first,
+sponsored, and only then hands the address over.
+
+**Requests** move nothing by themselves. Only the person a request is addressed
+to can turn it into a payment, which is the entire security model, and it is why
+the pay route checks the handle rather than the id. A request that is not yours
+answers 404 rather than 403, because knowing an id should never tell you a
+request exists.
+
+**`POST /payments/batch`** dedupes the list, never pays you out of your own
+batch, and checks the total against your balance before a single payment goes
+out. Running dry at person twenty-three of forty is not a failure anyone can
+explain afterwards. Individual sends can still fail on their own, so the
+response says what happened to every handle.
+
 Responses never include provider subjects or anything else internal, and there
 is a test that asserts it.
 
 ## Running it
 
+```bash
+cp .env.example .env   # at the repo root, then fill it in
+npm run dev:api        # -> http://localhost:4000
 ```
-PRIVY_APP_ID=... PRIVY_APP_SECRET=... \
-SELKIE_SPONSOR_SECRET=... SELKIE_ORACLE_SECRET=... \
-npm run dev:api
-```
+
+The dev and start scripts read that `.env` themselves, so there is nothing to
+export. `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `SELKIE_SPONSOR_SECRET` and
+`SELKIE_ORACLE_SECRET` are the four it will not start without; the
+[root README](../../README.md) says what each one is for.
 
 Config is read once at boot, so a missing value fails loudly on start rather
 than quietly at the moment someone tries to send money. The escrow contract id
 comes from `contracts/deployments/<network>.env` unless overridden.
 
-The user store is in memory today. It is an interface (`UserStore`), and
-Postgres is the only implementation that needs to change.
+Everything is stored in memory today and disappears on restart: `UserStore`,
+`AccountDirectory`, `ActivityStore` and `RequestStore`. All four are interfaces
+with one in-memory implementation each, so Postgres is a new class per interface
+and one changed line in `index.ts`. Nothing in the payment path needs to move.
