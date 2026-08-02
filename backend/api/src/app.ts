@@ -1,9 +1,11 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { StellarAdapter } from "@selkie/chain-stellar";
-import type { HandleRef, Money, SwapProvider } from "@selkie/core";
-import { parseHandle } from "@selkie/core";
+import type { HandleRef, Money, PaymentResult, SwapProvider } from "@selkie/core";
+import { handleKey, parseHandle } from "@selkie/core";
 import type { ActivityStore } from "./activity/store";
 import { InMemoryActivityStore } from "./activity/store";
+import type { RequestStore } from "./requests/store";
+import { InMemoryRequestStore } from "./requests/store";
 import { bearerToken } from "./auth";
 import type { IdentityProvider } from "./identity/provider";
 import { IdentityVerificationError } from "./identity/provider";
@@ -19,7 +21,11 @@ export interface AppDeps {
   adapter: StellarAdapter;
   swap: SwapProvider;
   activity?: ActivityStore;
+  requests?: RequestStore;
 }
+
+/** Paying more people than this at once is a mistake, not a feature. */
+const MAX_BATCH = 100;
 
 /**
  * The HTTP surface. Thin on purpose: routes parse input, call a service, and
@@ -30,6 +36,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
   const identity = new IdentityService(deps);
   const activity = deps.activity ?? new InMemoryActivityStore();
+  const requests = deps.requests ?? new InMemoryRequestStore();
 
   /** Resolve the caller, or reply 401. Returns null when it has already replied. */
   async function requireUser(request: FastifyRequest, reply: {
@@ -46,6 +53,48 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       return null;
     }
     return result.user;
+  }
+
+  /**
+   * Move money to a handle and write both sides of the story.
+   *
+   * Every way to pay in this API ends up here: a single send, answering a
+   * request, and paying a list. One path means one set of rules about what gets
+   * recorded and what the recipient sees.
+   */
+  async function pay(
+    user: User,
+    from: HandleRef,
+    to: HandleRef,
+    money: Money,
+    note?: string,
+  ): Promise<PaymentResult> {
+    const result = await deps.adapter.send(from, to, money, note);
+
+    await activity.record(user.id, {
+      kind: "send",
+      chain: "stellar",
+      amount: money,
+      counterparty: `@${to.username}`,
+      status: result.heldForClaim ? "pending" : "confirmed",
+      ref: result.ref,
+    });
+
+    // The other side gets their own entry, so someone who already uses Selkie
+    // sees the money arrive rather than a balance that changed for no reason.
+    const recipient = await identity.findByHandle(to.platform as IdentityProviderId, to.username);
+    if (recipient && recipient.id !== user.id) {
+      await activity.record(recipient.id, {
+        kind: "receive",
+        chain: "stellar",
+        amount: money,
+        counterparty: `@${from.username}`,
+        status: result.heldForClaim ? "pending" : "confirmed",
+        ref: result.ref,
+      });
+    }
+
+    return result;
   }
 
   /** Money that was waiting and just landed deserves a line in the feed. */
@@ -202,30 +251,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (!to) return reply.code(400).send({ error: "Who are you paying, and how much?" });
 
     const money: Money = { amount: body.amount, asset: (body.asset ?? "USDC").toUpperCase() };
-    const result = await deps.adapter.send(from, to, money, body.note);
-
-    await activity.record(user.id, {
-      kind: "send",
-      chain: "stellar",
-      amount: money,
-      counterparty: `@${to.username}`,
-      status: result.heldForClaim ? "pending" : "confirmed",
-      ref: result.ref,
-    });
-
-    // The other side gets their own entry, so someone who already uses Selkie
-    // sees the money arrive rather than a balance that changed for no reason.
-    const recipient = await identity.findByHandle(to.platform as IdentityProviderId, to.username);
-    if (recipient && recipient.id !== user.id) {
-      await activity.record(recipient.id, {
-        kind: "receive",
-        chain: "stellar",
-        amount: money,
-        counterparty: `@${from.username}`,
-        status: result.heldForClaim ? "pending" : "confirmed",
-        ref: result.ref,
-      });
-    }
+    const result = await pay(user, from, to, money, body.note);
 
     return {
       status: result.status,
@@ -235,6 +261,226 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         ? `Sent. It is waiting for @${to.username} to claim.`
         : `Sent to @${to.username}.`,
       waitingToBeClaimed: result.heldForClaim,
+    };
+  });
+
+  /**
+   * The address to put money into, ready to actually receive it.
+   *
+   * Not a read: it makes the wallet real on the ledger and opens the trustlines
+   * first. An address with no account behind it cannot be paid, and one with no
+   * trustline bounces the payment back to the sender. Both of those fail at the
+   * sender's end, after the money has left, which is the worst place to find out.
+   */
+  app.post("/me/receive", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const ready = await deps.adapter.ensureReceivable(user.address);
+    return {
+      address: ready.address,
+      accepts: ready.accepts,
+      handles: userHandles(user),
+    };
+  });
+
+  /**
+   * Ask someone for money.
+   *
+   * A request moves nothing by itself; only the person it is addressed to can
+   * turn it into a payment. That is the whole security model, and it is why the
+   * pay route below checks the handle rather than the id.
+   */
+  app.post("/requests", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const body = (request.body ?? {}) as {
+      from?: string;
+      platform?: string;
+      amount?: string;
+      asset?: string;
+      note?: string;
+    };
+    if (!body.from || !body.amount) {
+      return reply.code(400).send({ error: "Who are you asking, and for how much?" });
+    }
+
+    const asker = userHandles(user)[0];
+    if (!asker) {
+      return reply.code(409).send({
+        error: "Link your X or Telegram account before asking for money.",
+      });
+    }
+
+    const target = toHandle(body.from, (body.platform ?? "x") as "x" | "telegram");
+    if (!target) return reply.code(400).send({ error: "Who are you asking?" });
+    if (handleKey(target) === handleKey(asker)) {
+      return reply.code(400).send({ error: "You cannot ask yourself for money." });
+    }
+
+    const created = await requests.create({
+      fromUserId: user.id,
+      fromHandle: asker,
+      toHandle: target,
+      amount: { amount: body.amount, asset: (body.asset ?? "USDC").toUpperCase() },
+      note: body.note,
+    });
+
+    return { status: "asked", request: created, message: `Asked @${target.username}.` };
+  });
+
+  /** Requests waiting on you, and requests you are waiting on. */
+  app.get("/requests", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const [incoming, outgoing] = await Promise.all([
+      requests.addressedTo(userHandles(user)),
+      requests.sentBy(user.id),
+    ]);
+    return { incoming, outgoing };
+  });
+
+  /** Pay a request. Only the person it was addressed to can. */
+  app.post("/requests/:id/pay", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const { id } = request.params as { id: string };
+    const found = await requests.get(id);
+    // Same answer for "does not exist" and "not yours": knowing a request id
+    // should never tell you a request exists.
+    if (!found || !ownsHandle(user, found.toHandle)) {
+      return reply.code(404).send({ error: "That request is not waiting for you." });
+    }
+    if (found.status !== "pending") {
+      return reply.code(409).send({ error: "That request was already settled." });
+    }
+
+    const from = userHandles(user)[0];
+    if (!from) return reply.code(409).send({ error: "Link an account before paying." });
+
+    const result = await pay(user, from, found.fromHandle, found.amount, found.note);
+    const settled = await requests.settle(id, "paid", result.ref);
+    return {
+      status: "paid",
+      request: settled,
+      message: `Paid @${found.fromHandle.username}.`,
+    };
+  });
+
+  /** Turn a request down. Also only the person it was addressed to. */
+  app.post("/requests/:id/decline", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const { id } = request.params as { id: string };
+    const found = await requests.get(id);
+    if (!found || !ownsHandle(user, found.toHandle)) {
+      return reply.code(404).send({ error: "That request is not waiting for you." });
+    }
+    if (found.status !== "pending") {
+      return reply.code(409).send({ error: "That request was already settled." });
+    }
+    return { status: "declined", request: await requests.settle(id, "declined") };
+  });
+
+  /** Withdraw a request you sent. Only the asker. */
+  app.post("/requests/:id/cancel", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const { id } = request.params as { id: string };
+    const found = await requests.get(id);
+    if (!found || found.fromUserId !== user.id) {
+      return reply.code(404).send({ error: "That is not your request." });
+    }
+    if (found.status !== "pending") {
+      return reply.code(409).send({ error: "That request was already settled." });
+    }
+    return { status: "cancelled", request: await requests.settle(id, "cancelled") };
+  });
+
+  /**
+   * Pay a list of handles the same amount each.
+   *
+   * The total is checked against the balance before anything moves, because
+   * running out of money halfway down a list of forty people is not a failure
+   * anyone can explain afterwards. Individual sends can still fail on their own,
+   * so the response says what happened to every single handle.
+   */
+  app.post("/payments/batch", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const body = (request.body ?? {}) as {
+      to?: string[];
+      platform?: string;
+      amount?: string;
+      asset?: string;
+      note?: string;
+    };
+    if (!Array.isArray(body.to) || body.to.length === 0 || !body.amount) {
+      return reply.code(400).send({ error: "Who are you paying, and how much each?" });
+    }
+    if (body.to.length > MAX_BATCH) {
+      return reply.code(400).send({ error: `That is more than ${MAX_BATCH} people at once.` });
+    }
+
+    const from = userHandles(user)[0];
+    if (!from) {
+      return reply.code(409).send({ error: "Link your X or Telegram account before sending." });
+    }
+
+    const platform = (body.platform ?? "x") as "x" | "telegram";
+    const asset = (body.asset ?? "USDC").toUpperCase();
+    const each: Money = { amount: body.amount, asset };
+
+    // Dedupe, and never pay yourself out of your own batch.
+    const seen = new Set<string>([handleKey(from)]);
+    const targets: HandleRef[] = [];
+    for (const raw of body.to) {
+      const handle = toHandle(raw, platform);
+      if (!handle || seen.has(handleKey(handle))) continue;
+      seen.add(handleKey(handle));
+      targets.push(handle);
+    }
+    if (targets.length === 0) return reply.code(400).send({ error: "Nobody left to pay." });
+
+    const balance = await deps.adapter.getBalance(accountOf(user));
+    const available = Number(balance.balances.find((money) => money.asset === asset)?.amount ?? 0);
+    const total = Number(body.amount) * targets.length;
+    if (!Number.isFinite(total) || total > available) {
+      return reply.code(409).send({
+        error: `That comes to more than you have. ${targets.length} people at ${body.amount} is ${total}.`,
+      });
+    }
+
+    const results = [];
+    for (const to of targets) {
+      try {
+        const result = await pay(user, from, to, each, body.note);
+        results.push({
+          handle: `@${to.username}`,
+          sent: true,
+          waitingToBeClaimed: result.heldForClaim,
+        });
+      } catch (error) {
+        // One bad handle must not take the rest of the list down with it.
+        console.error("[batch]", to.username, error);
+        results.push({ handle: `@${to.username}`, sent: false });
+      }
+    }
+
+    const sent = results.filter((result) => result.sent).length;
+    return {
+      status: "done",
+      results,
+      message:
+        sent === results.length
+          ? `Sent to ${sent} ${sent === 1 ? "person" : "people"}.`
+          : `Sent to ${sent} of ${results.length}. The rest did not go through.`,
     };
   });
 
@@ -317,6 +563,11 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 function toHandle(input: string, platform: "x" | "telegram"): HandleRef | null {
   const cleaned = input.trim().replace(/^@+/, "");
   return cleaned ? parseHandle(cleaned, platform) : null;
+}
+
+/** Does this user actually own the handle a request is addressed to? */
+function ownsHandle(user: User, handle: HandleRef): boolean {
+  return userHandles(user).some((owned) => handleKey(owned) === handleKey(handle));
 }
 
 /** The chain-level account behind a user, for the calls that need one. */

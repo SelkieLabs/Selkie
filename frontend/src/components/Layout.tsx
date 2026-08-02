@@ -125,7 +125,7 @@ function AccountPill({ user }: { user: User }) {
           <p className="px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-pen/45">
             Signed in as {handle}
           </p>
-          <Link href="/wallet" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
+          <Link href="/wallet/activity" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
             <Wallet size={16} /> Your wallet
           </Link>
           <Link href="/" onClick={() => setOpen(false)} className="menu-item" role="menuitem">

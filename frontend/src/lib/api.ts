@@ -94,6 +94,33 @@ export interface ConvertResult {
   message: string;
 }
 
+/** The address to put money into, once it can actually receive it. */
+export interface ReceiveDetails {
+  address: string;
+  /** Asset codes this wallet can accept right now. */
+  accepts: string[];
+  handles: Handle[];
+}
+
+export type RequestStatus = "pending" | "paid" | "declined" | "cancelled";
+
+export interface MoneyRequest {
+  id: string;
+  fromHandle: Handle;
+  toHandle: Handle;
+  amount: Money;
+  note?: string;
+  status: RequestStatus;
+  createdAt: string;
+  settledAt?: string;
+}
+
+export interface BatchResult {
+  status: string;
+  message: string;
+  results: { handle: string; sent: boolean; waitingToBeClaimed?: boolean }[];
+}
+
 export type ActivityKind = "send" | "receive" | "claim" | "swap" | "airtime" | "bill" | "cashout";
 
 export interface ActivityEntry {
@@ -193,6 +220,17 @@ export const api = {
     return request(`/handles/${encodeURIComponent(handle)}?platform=${platform}`);
   },
 
+  /**
+   * The address to fund the wallet at.
+   *
+   * A POST, not a GET, because it changes something: it makes the wallet real on
+   * the ledger and opens it to the assets we support. An address handed out
+   * before that is an address that bounces money back.
+   */
+  async receive(): Promise<ReceiveDetails> {
+    return request("/me/receive", { method: "POST" });
+  },
+
   async send(input: {
     to: string;
     amount: string;
@@ -201,6 +239,42 @@ export const api = {
     note?: string;
   }): Promise<SendResult> {
     return request("/payments/send", json(input));
+  },
+
+  /** Pay a list of people the same amount each. */
+  async payMany(input: {
+    to: string[];
+    amount: string;
+    asset?: string;
+    note?: string;
+  }): Promise<BatchResult> {
+    return request("/payments/batch", json(input));
+  },
+
+  async requests(): Promise<{ incoming: MoneyRequest[]; outgoing: MoneyRequest[] }> {
+    return request("/requests");
+  },
+
+  /** Ask someone for money. Moves nothing until they agree. */
+  async ask(input: {
+    from: string;
+    amount: string;
+    asset?: string;
+    note?: string;
+  }): Promise<{ status: string; request: MoneyRequest; message: string }> {
+    return request("/requests", json(input));
+  },
+
+  async payRequest(id: string): Promise<{ status: string; message: string }> {
+    return request(`/requests/${encodeURIComponent(id)}/pay`, { method: "POST" });
+  },
+
+  async declineRequest(id: string): Promise<{ status: string }> {
+    return request(`/requests/${encodeURIComponent(id)}/decline`, { method: "POST" });
+  },
+
+  async cancelRequest(id: string): Promise<{ status: string }> {
+    return request(`/requests/${encodeURIComponent(id)}/cancel`, { method: "POST" });
   },
 
   async quote(from: string, to: string, amount: string): Promise<Quote> {

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Clock, Repeat, Sparkles } from "lucide-react";
+import { TokenIcon } from "@/components/TokenIcon";
 import type { ActivityEntry } from "@/lib/api";
 import { DOLLAR, dayKey, dayLabel, money, timeAgo, usd } from "@/lib/format";
 
@@ -58,7 +59,7 @@ export function ActivityFeed({
 
   if (entries.length === 0) {
     return (
-      <div className="chunk mt-6 p-8 text-center">
+      <div className="chunk p-8 text-center">
         <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-gold/15 text-gold-ink">
           <Sparkles size={22} strokeWidth={2.2} />
         </span>
@@ -72,7 +73,7 @@ export function ActivityFeed({
   }
 
   return (
-    <section className="mt-8">
+    <section>
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-display text-lg font-bold tracking-tight text-ivory">Activity</h2>
         {entries.length > 4 && (
@@ -161,10 +162,12 @@ function Row({ entry }: { entry: ActivityEntry }) {
       </div>
 
       <span
-        className={`shrink-0 font-display text-[15px] font-bold tabular-nums ${
+        className={`flex shrink-0 items-center gap-1.5 font-display text-[15px] font-bold tabular-nums ${
           incoming ? "text-[#2f7d3f]" : "text-pen"
         }`}
       >
+        {/* Dollars need no logo; anything else is easier to recognise with one. */}
+        {!isDollars && <TokenIcon asset={entry.amount.asset} size={18} />}
         {incoming ? "+" : "−"}
         {amount}
       </span>
@@ -195,7 +198,7 @@ function title(entry: ActivityEntry): string {
 
 function FeedSkeleton() {
   return (
-    <section className="mt-8">
+    <section>
       <div className="h-6 w-24 rounded-lg bg-ivory/[0.07]" />
       <div className="chunk mt-3 overflow-hidden">
         {[0, 1, 2].map((row) => (

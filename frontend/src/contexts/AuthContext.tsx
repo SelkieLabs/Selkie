@@ -43,6 +43,8 @@ export interface AuthState {
   status: AuthStatus;
   user: User | null;
   balances: Money[];
+  /** False until the first balance read comes back, so nothing shows "$0.00" too early. */
+  balancesReady: boolean;
   /** Money that was waiting and just landed. Shown once, then dismissed. */
   claimed: ClaimOutcome[];
   merge: MergePrompt | null;
@@ -64,6 +66,7 @@ export const AuthContext = createContext<AuthState>({
   status: "loading",
   user: null,
   balances: [],
+  balancesReady: false,
   claimed: [],
   merge: null,
   busy: false,
@@ -84,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<User | null>(null);
   const [balances, setBalances] = useState<Money[]>([]);
+  const [balancesReady, setBalancesReady] = useState(false);
   const [claimed, setClaimed] = useState<ClaimOutcome[]>([]);
   const [merge, setMerge] = useState<MergePrompt | null>(null);
   const [busy, setBusy] = useState(false);
@@ -103,6 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // hiccup, and that is not worth signing someone out over.
       if (error instanceof ApiError && error.status === 401) setStatus("signed-out");
       else console.error(error);
+    } finally {
+      // Even a failed read ends the wait: a skeleton that never resolves is
+      // worse than a balance that admits it could not be fetched.
+      setBalancesReady(true);
     }
   }, []);
 
@@ -126,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus("signed-out");
       setUser(null);
       setBalances([]);
+      setBalancesReady(false);
       setClaimed([]);
       return;
     }
@@ -174,6 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       status,
       user,
       balances,
+      balancesReady,
       claimed,
       merge,
       busy,
@@ -182,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await privy.logout();
         setUser(null);
         setBalances([]);
+        setBalancesReady(false);
         setStatus("signed-out");
       },
       createAccount: async () => {
@@ -216,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       dismissClaimed: () => setClaimed([]),
       refresh: loadBalances,
     }),
-    [status, user, balances, claimed, merge, busy, privy, loadBalances],
+    [status, user, balances, balancesReady, claimed, merge, busy, privy, loadBalances],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

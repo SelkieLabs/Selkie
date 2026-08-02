@@ -19,6 +19,11 @@ const adapterStub = {
   async waitingFor() {
     return [] as { amount: string; asset: string }[];
   },
+  provisioned: [] as string[],
+  async ensureReceivable(address: string) {
+    adapterStub.provisioned.push(address);
+    return { address, accepts: ["USDC", "XLM"] };
+  },
   async claim() {
     return { status: "confirmed", ref: "TX" };
   },
@@ -64,6 +69,7 @@ describe("api", () => {
   beforeEach(async () => {
     adapterStub.sent = [];
     adapterStub.heldForClaim = true;
+    adapterStub.provisioned = [];
     swapStub.swapped = [];
     app = buildApp({
       users: new InMemoryUserStore(),
@@ -341,6 +347,161 @@ describe("api", () => {
   test("activity and lookups need a bearer token too", async () => {
     assert.equal((await app.inject({ method: "GET", url: "/activity" })).statusCode, 401);
     assert.equal((await app.inject({ method: "GET", url: "/handles/amaka" })).statusCode, 401);
+  });
+
+  test("asking for the receive address makes the wallet able to receive", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const response = await post("/me/receive", {}, token);
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().address, "G_TEST");
+    assert.deepEqual(response.json().accepts, ["USDC", "XLM"]);
+    // The point of the route: an address nobody provisioned cannot be paid.
+    assert.deepEqual(adapterStub.provisioned, ["G_TEST"]);
+  });
+
+  test("asking someone for money moves nothing", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const response = await post("/requests", { from: "@amaka", amount: "20" }, token);
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().request.status, "pending");
+    assert.deepEqual(adapterStub.sent, []);
+  });
+
+  test("a request shows up as outgoing for the asker and incoming for the asked", async () => {
+    const asker = xToken("x1", "chidi");
+    await post("/auth/session", { token: asker, createAccount: true });
+    await post("/requests", { from: "@amaka", amount: "20" }, asker);
+
+    const asked = xToken("x2", "amaka");
+    await post("/auth/session", { token: asked, createAccount: true });
+
+    const mine = await app.inject({
+      method: "GET",
+      url: "/requests",
+      headers: { authorization: `Bearer ${asker}` },
+    });
+    assert.equal(mine.json().outgoing.length, 1);
+    assert.equal(mine.json().incoming.length, 0);
+
+    const theirs = await app.inject({
+      method: "GET",
+      url: "/requests",
+      headers: { authorization: `Bearer ${asked}` },
+    });
+    assert.equal(theirs.json().incoming.length, 1);
+    assert.equal(theirs.json().outgoing.length, 0);
+  });
+
+  test("only the person a request is addressed to can pay it", async () => {
+    adapterStub.heldForClaim = false;
+    const asker = xToken("x1", "chidi");
+    await post("/auth/session", { token: asker, createAccount: true });
+    const { request: asked } = (
+      await post("/requests", { from: "@amaka", amount: "20" }, asker)
+    ).json();
+
+    // A stranger who somehow knows the id gets the same answer as for a request
+    // that does not exist. Knowing an id must never confirm one exists.
+    const stranger = xToken("x9", "stranger");
+    await post("/auth/session", { token: stranger, createAccount: true });
+    const refused = await post(`/requests/${asked.id}/pay`, {}, stranger);
+    assert.equal(refused.statusCode, 404);
+    assert.deepEqual(adapterStub.sent, []);
+
+    // The asker cannot pay their own request into their own pocket either.
+    assert.equal((await post(`/requests/${asked.id}/pay`, {}, asker)).statusCode, 404);
+
+    const amaka = xToken("x2", "amaka");
+    await post("/auth/session", { token: amaka, createAccount: true });
+    const paid = await post(`/requests/${asked.id}/pay`, {}, amaka);
+    assert.equal(paid.statusCode, 200);
+    assert.equal(paid.json().request.status, "paid");
+    assert.deepEqual(adapterStub.sent, [{ to: "chidi", amount: "20" }]);
+  });
+
+  test("a request cannot be paid twice", async () => {
+    adapterStub.heldForClaim = false;
+    const asker = xToken("x1", "chidi");
+    await post("/auth/session", { token: asker, createAccount: true });
+    const { request: asked } = (
+      await post("/requests", { from: "@amaka", amount: "20" }, asker)
+    ).json();
+
+    const amaka = xToken("x2", "amaka");
+    await post("/auth/session", { token: amaka, createAccount: true });
+    await post(`/requests/${asked.id}/pay`, {}, amaka);
+
+    const again = await post(`/requests/${asked.id}/pay`, {}, amaka);
+    assert.equal(again.statusCode, 409);
+    assert.equal(adapterStub.sent.length, 1, "the second attempt must not send again");
+  });
+
+  test("declining settles a request without paying it", async () => {
+    const asker = xToken("x1", "chidi");
+    await post("/auth/session", { token: asker, createAccount: true });
+    const { request: asked } = (
+      await post("/requests", { from: "@amaka", amount: "20" }, asker)
+    ).json();
+
+    const amaka = xToken("x2", "amaka");
+    await post("/auth/session", { token: amaka, createAccount: true });
+    const declined = await post(`/requests/${asked.id}/decline`, {}, amaka);
+    assert.equal(declined.json().request.status, "declined");
+    assert.deepEqual(adapterStub.sent, []);
+  });
+
+  test("only the asker can withdraw their own request", async () => {
+    const asker = xToken("x1", "chidi");
+    await post("/auth/session", { token: asker, createAccount: true });
+    const { request: asked } = (
+      await post("/requests", { from: "@amaka", amount: "20" }, asker)
+    ).json();
+
+    const amaka = xToken("x2", "amaka");
+    await post("/auth/session", { token: amaka, createAccount: true });
+    assert.equal((await post(`/requests/${asked.id}/cancel`, {}, amaka)).statusCode, 404);
+    assert.equal((await post(`/requests/${asked.id}/cancel`, {}, asker)).json().status, "cancelled");
+  });
+
+  test("asking yourself for money is refused", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+    assert.equal((await post("/requests", { from: "chidi", amount: "5" }, token)).statusCode, 400);
+  });
+
+  test("paying many sends once per person, with the sender skipped", async () => {
+    adapterStub.heldForClaim = false;
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    // Duplicates and the sender's own handle are both in the list on purpose.
+    const sent = await post(
+      "/payments/batch",
+      { to: ["@amaka", "amaka", "@ada", "chidi"], amount: "1" },
+      token,
+    );
+    assert.equal(sent.statusCode, 200);
+    assert.deepEqual(adapterStub.sent, [
+      { to: "amaka", amount: "1" },
+      { to: "ada", amount: "1" },
+    ]);
+    assert.equal(sent.json().message, "Sent to 2 people.");
+  });
+
+  test("paying many refuses before it starts when the total is too big", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    // The stub holds 12.5 USDC; twenty people at 1 each does not fit.
+    const names = Array.from({ length: 20 }, (_, index) => `person${index}`);
+    const refused = await post("/payments/batch", { to: names, amount: "1" }, token);
+    assert.equal(refused.statusCode, 409);
+    // Nothing moved. Running out halfway down a list is unexplainable afterwards.
+    assert.deepEqual(adapterStub.sent, []);
   });
 
   test("linking a free identity attaches it to the same wallet", async () => {

@@ -36,6 +36,17 @@ export const normalizeHandle = (handle: string): string =>
   `@${handle.trim().replace(/^@+/, "").toLowerCase()}`;
 
 /**
+ * What someone is allowed to type into an amount field: digits, one dot, and at
+ * most two decimals. Money is typed by a person, not computed, so the field
+ * refuses the impossible rather than correcting it afterwards.
+ */
+export function cleanAmount(raw: string): string {
+  const cleaned = raw.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+  const [whole, decimals] = cleaned.split(".");
+  return decimals === undefined ? whole : `${whole}.${decimals.slice(0, 2)}`;
+}
+
+/**
  * An address, shortened. It appears in exactly one place, the wallet detail, and
  * only because someone occasionally needs to prove where their money lives.
  */

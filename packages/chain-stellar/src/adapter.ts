@@ -15,7 +15,7 @@ import type { StellarConfig } from "./config";
 import type { AccountDirectory } from "./directory";
 import { EscrowClient } from "./escrow";
 import { StellarNetwork, isNotFound } from "./network";
-import { provisionAccount } from "./provisioning";
+import { addSponsoredTrustline, hasTrustline, provisionAccount } from "./provisioning";
 import type { Signer, SignerProvider } from "./signer";
 
 /**
@@ -111,6 +111,59 @@ export class StellarAdapter implements ChainAdapter {
 
     await this.deps.directory.save({ handle, address: account.address, provisioned: true });
     return { ...account, status: "active" };
+  }
+
+  /**
+   * Make an address able to receive money from outside Selkie.
+   *
+   * This is what "here is your address, send money to it" actually requires on
+   * Stellar. An address with no ledger entry cannot be paid at all, and an
+   * account with no trustline for USDC will bounce a USDC payment back to the
+   * sender. Both failures happen at the sender's end, silently, after the money
+   * has left, which is the worst possible place to discover them.
+   *
+   * So the Receive screen calls this before it shows anyone an address. It is
+   * the one moment where the lazy account creation has to stop being lazy.
+   */
+  async ensureReceivable(address: string): Promise<{ address: string; accepts: string[] }> {
+    const signer = await this.deps.signers.forAddress(address);
+    if (!signer) throw new Error(`No signer available for ${address}`);
+
+    const issued = this.assets
+      .list()
+      .filter((asset) => asset.issuer)
+      .map((asset) => asset.code);
+
+    if (!(await this.network.accountExists(address))) {
+      await provisionAccount({
+        network: this.network,
+        assets: this.assets,
+        sponsor: this.deps.sponsor,
+        account: signer,
+        trustlines: issued,
+      });
+    } else {
+      // The account is here but may predate an asset we added later.
+      for (const code of issued) {
+        const def = this.assets.get(code);
+        if (await hasTrustline(this.network, address, def.code, def.issuer)) continue;
+        await addSponsoredTrustline({
+          network: this.network,
+          assets: this.assets,
+          sponsor: this.deps.sponsor,
+          account: signer,
+          code,
+        });
+      }
+    }
+
+    // The directory tracks whether a wallet is real yet, and it is now.
+    const record = await this.deps.directory.lookupByAddress(address);
+    if (record && !record.provisioned) {
+      await this.deps.directory.save({ ...record, provisioned: true });
+    }
+
+    return { address, accepts: this.assets.list().map((asset) => asset.code) };
   }
 
   async getBalance(account: Account): Promise<Balance> {
