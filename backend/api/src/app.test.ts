@@ -229,6 +229,20 @@ describe("api", () => {
     assert.equal(response.json().waitingToBeClaimed, false);
   });
 
+  test("converting sets the wallet up to hold what it is converting into", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+    adapterStub.provisioned = [];
+
+    const response = await post("/payments/convert", { from: "XLM", to: "USDC", amount: "10" }, token);
+
+    assert.equal(response.statusCode, 200);
+    // Without this the network rejects the whole conversion with no_trust,
+    // because a conversion is a payment to yourself in a different asset.
+    assert.deepEqual(adapterStub.provisioned, [MINE]);
+    assert.deepEqual(swapStub.swapped, [{ amount: "10", asset: "XLM", to: "USDC" }]);
+  });
+
   test("sending to an address pays it directly, with no escrow", async () => {
     const token = xToken("x1", "chidi");
     await post("/auth/session", { token, createAccount: true });

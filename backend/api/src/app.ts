@@ -6,7 +6,12 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify";
 import type { StellarAdapter } from "@selkie/chain-stellar";
-import { isStellarAddress, looksLikeAddress, shortAddress } from "@selkie/chain-stellar";
+import {
+  TransactionRejectedError,
+  isStellarAddress,
+  looksLikeAddress,
+  shortAddress,
+} from "@selkie/chain-stellar";
 import type {
   HandleRef,
   HistoryEntry,
@@ -769,6 +774,20 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
     return once(request, user.id, reply, async () => {
       const quote = await deps.swap.quote(source, target);
+
+      /**
+       * Make sure the money has somewhere to land.
+       *
+       * A conversion is a payment to yourself with a different asset coming
+       * out, so the same rule that governs being paid governs this: an account
+       * that has never opted into an asset cannot receive it, and the network
+       * rejects the whole transaction. Deposit provisions the wallet, but
+       * nobody has to visit Deposit before converting, and finding out at the
+       * point of sale is finding out too late. Idempotent and sponsored, so
+       * this costs the user nothing and does nothing when already set up.
+       */
+      await deps.adapter.ensureReceivable(user.address);
+
       const { ref } = await deps.swap.swap(accountOf(user), source, target);
 
       await activity.record(user.id, {
@@ -830,12 +849,53 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       return reply.code(status).send({ error: error.message });
     }
 
+    /**
+     * A transaction the network refused is not our server falling over, and
+     * saying so wastes the one piece of information that would let someone fix
+     * it. The codes are logged in full either way.
+     */
+    if (error instanceof TransactionRejectedError) {
+      console.error("[chain]", error.transactionCode, error.operationCodes.join(","));
+      return reply.code(409).send({ error: explainRejection(error) });
+    }
+
     // Never leak internals to a client; the detail goes to the server log.
     console.error("[api]", error);
     return reply.code(500).send({ error: "Something went wrong on our side." });
   });
 
   return app;
+}
+
+/**
+ * What a rejected transaction means, in words the person reading it can act on.
+ *
+ * Only the codes a real user can actually cause are translated. Everything else
+ * stays generic on purpose: a wrong guess about what went wrong is worse than
+ * admitting we do not know, because it sends someone off fixing the wrong thing.
+ */
+export function explainRejection(error: TransactionRejectedError): string {
+  const codes = error.operationCodes;
+
+  if (codes.some((code) => code.endsWith("underfunded"))) {
+    return "That is more than you have.";
+  }
+  if (codes.some((code) => code.endsWith("no_trust") || code.endsWith("no_issuer"))) {
+    return "Your wallet is not set up for that yet. Open Deposit once, then try again.";
+  }
+  if (codes.some((code) => code.endsWith("under_dest_min"))) {
+    return "The rate moved while you were confirming. Try that again.";
+  }
+  if (codes.some((code) => code.endsWith("too_few_offers"))) {
+    return "There is not enough being traded right now to convert that much. Try a smaller amount.";
+  }
+  if (codes.some((code) => code.endsWith("line_full"))) {
+    return "That would put more in your wallet than it can hold.";
+  }
+  if (error.transactionCode === "tx_insufficient_fee") {
+    return "The network is busy. Try that again in a moment.";
+  }
+  return "The network would not accept that. Nothing has moved, so it is safe to try again.";
 }
 
 /**
