@@ -1,6 +1,7 @@
 import type { HandleRef, Money } from "@selkie/core";
 import type { StellarAdapter } from "@selkie/chain-stellar";
 import type { IdentityProvider } from "./provider";
+import type { HandleIndex } from "../claims/index-store";
 import type { UserStore } from "./store";
 import { IdentityAlreadyLinkedError } from "./store";
 import type { IdentityProviderId, LinkedIdentity, User, VerifiedIdentity } from "./types";
@@ -54,8 +55,35 @@ export class IdentityService {
       users: UserStore;
       provider: IdentityProvider;
       adapter: StellarAdapter;
+      /**
+       * Optional. Without it Selkie still collects money at sign-in; with it,
+       * money arriving while somebody is already looking at the screen is
+       * noticed too.
+       */
+      handles?: HandleIndex;
     },
   ) {}
+
+  /**
+   * Who is calling. Nothing more.
+   *
+   * The token's signature is checked locally and the answer comes out of our own
+   * database. No round trip to the identity provider, no writes, and above all
+   * no side effects: this runs on every authenticated request, and something
+   * that runs that often must never move money.
+   *
+   * It used to be `signIn`, which did all three. A plain `GET /activity` would
+   * release whatever the escrow was holding, and because the caller only wanted
+   * a user, the release went unrecorded — nothing in the recipient's feed, and
+   * the sender's side still reading "Waiting" long after the money had gone.
+   *
+   * Returns null for a token we have never traded for an account, which is the
+   * client's cue to call `signIn` once.
+   */
+  async authenticate(token: string): Promise<User | null> {
+    const subject = await this.deps.provider.subjectOf(token);
+    return this.deps.users.findByProviderAccount(subject);
+  }
 
   /**
    * Sign in, creating the account only when asked to.
@@ -67,13 +95,20 @@ export class IdentityService {
    * `isNew: false` and no user, and the UI asks once.
    */
   async signIn(token: string, options: { createIfMissing: boolean }): Promise<SignInResult | null> {
-    const identities = await this.deps.provider.verify(token);
+    const [subject, identities] = await Promise.all([
+      this.deps.provider.subjectOf(token),
+      this.deps.provider.verify(token),
+    ]);
 
-    const existing = await this.#findExistingUser(identities);
+    const existing =
+      (await this.deps.users.findByProviderAccount(subject)) ??
+      (await this.#findExistingUser(identities));
+
     if (existing) {
       // A returning user may have linked more accounts at the provider since
       // last time, so fold in anything new and see if money is waiting.
       const user = await this.#syncIdentities(existing, identities);
+      await this.deps.users.linkProviderAccount(user.id, subject);
       const claimed = await this.claimWaitingMoney(user);
       return { user, isNew: false, claimed };
     }
@@ -85,6 +120,10 @@ export class IdentityService {
       address,
       identities: identities.map(stamp),
     });
+    // Recorded before anything else can go wrong: an account whose login does
+    // not resolve is an account its owner would be offered a second time.
+    await this.deps.users.linkProviderAccount(created.id, subject);
+    await this.#rememberHandles(created);
     const claimed = await this.claimWaitingMoney(created);
     return { user: created, isNew: true, claimed };
   }
@@ -98,7 +137,10 @@ export class IdentityService {
    */
   async link(userId: string, token: string): Promise<LinkResult> {
     const user = await this.#requireUser(userId);
-    const identities = await this.deps.provider.verify(token);
+    const [subject, identities] = await Promise.all([
+      this.deps.provider.subjectOf(token),
+      this.deps.provider.verify(token),
+    ]);
 
     for (const identity of identities) {
       const owner = await this.deps.users.findByIdentity(identity.provider, identity.subject);
@@ -114,6 +156,9 @@ export class IdentityService {
     }
 
     const updated = await this.#syncIdentities(user, identities);
+    // Signing in with the account they just attached must land here, not on a
+    // brand new wallet.
+    await this.deps.users.linkProviderAccount(updated.id, subject);
     const claimed = await this.claimWaitingMoney(updated);
     return { status: "linked", user: updated, claimed };
   }
@@ -135,6 +180,9 @@ export class IdentityService {
       await this.deps.users.removeIdentity(from.id, identity.provider, identity.subject);
       await this.deps.users.addIdentity(into.id, identity);
     }
+    // The login they used to reach the old wallet has to keep working, or the
+    // next time they use it they are a stranger and get offered a third wallet.
+    await this.deps.users.repointProviderAccounts(from.id, into.id);
     await this.deps.users.delete(from.id);
 
     const merged = await this.#requireUser(into.id);
@@ -193,7 +241,20 @@ export class IdentityService {
         throw error;
       }
     }
+    await this.#rememberHandles(current);
     return current;
+  }
+
+  /**
+   * Write down what this person's handles hash to.
+   *
+   * The chain only ever sees the hash, and a hash does not run backwards, so
+   * recognising money that arrives for @amaka means having recorded in advance
+   * that a particular hash means @amaka.
+   */
+  async #rememberHandles(user: User): Promise<void> {
+    if (!this.deps.handles) return;
+    for (const handle of userHandles(user)) await this.deps.handles.remember(handle);
   }
 
   /** Move everything from one wallet to another during a merge. */

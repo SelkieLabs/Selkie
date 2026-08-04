@@ -14,10 +14,11 @@ import type { IdempotencyStore } from "./idempotency/store";
 import { InMemoryIdempotencyStore } from "./idempotency/store";
 import type { RequestStore } from "./requests/store";
 import { InMemoryRequestStore } from "./requests/store";
+import { recordClaims } from "./claims/collect";
+import type { HandleIndex } from "./claims/index-store";
 import { bearerToken } from "./auth";
 import type { IdentityProvider } from "./identity/provider";
 import { IdentityVerificationError } from "./identity/provider";
-import type { ClaimOutcome } from "./identity/service";
 import { IdentityService } from "./identity/service";
 import type { UserStore } from "./identity/store";
 import type { IdentityProviderId, User } from "./identity/types";
@@ -31,6 +32,8 @@ export interface AppDeps {
   activity?: ActivityStore;
   requests?: RequestStore;
   idempotency?: IdempotencyStore;
+  /** Lets money arriving later be recognised. See claims/index-store.ts. */
+  handles?: HandleIndex;
   /**
    * Per-minute caps, or `false` to turn them off.
    *
@@ -121,12 +124,15 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       reply.code(401).send({ error: "Sign in to continue." });
       return null;
     }
-    const result = await identity.signIn(token, { createIfMissing: false });
-    if (!result) {
+    // A local signature check and one lookup in our own database. Deliberately
+    // not the sign-in path: that costs a round trip to the identity provider and
+    // releases escrowed money, neither of which belongs on every request.
+    const user = await identity.authenticate(token);
+    if (!user) {
       reply.code(401).send({ error: "Sign in to continue." });
       return null;
     }
-    return result.user;
+    return user;
   }
 
   /**
@@ -222,28 +228,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return result;
   }
 
-  /**
-   * Money that was waiting and just landed deserves a line in the feed, and the
-   * person who sent it deserves to stop being told it is still waiting.
-   */
-  async function recordClaims(userId: string, claimed: ClaimOutcome[]): Promise<void> {
-    for (const outcome of claimed) {
-      for (const amount of outcome.amounts) {
-        await activity.record(userId, {
-          kind: "claim",
-          chain: "stellar",
-          amount,
-          status: "confirmed",
-          ref: outcome.ref,
-        });
-      }
-      // The other half of the story. Without this a sender's feed says
-      // "Waiting" forever, long after the money arrived.
-      for (const paymentId of outcome.paymentIds) {
-        await activity.settleByClaimRef(paymentId, "confirmed", outcome.ref);
-      }
-    }
-  }
+  /** Claiming and recording, shared with the background watcher. */
+  const claims = { identity, activity };
 
   app.get("/health", async () => ({ ok: true }));
 
@@ -267,7 +253,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       });
     }
 
-    await recordClaims(result.user.id, result.claimed);
+    await recordClaims(claims, result.user.id, result.claimed);
 
     return {
       status: result.isNew ? "created" : "signed-in",
@@ -296,7 +282,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       });
     }
 
-    await recordClaims(result.user.id, result.claimed);
+    await recordClaims(claims, result.user.id, result.claimed);
     return { status: "linked", user: publicUser(result.user), claimed: result.claimed };
   });
 

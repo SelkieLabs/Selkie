@@ -13,6 +13,9 @@ import type { Signer } from "./signer";
  * deposited for a handle can never be found again, so the hash is computed in
  * exactly one place and imported here.
  */
+/** How many deposit events to take in one poll. */
+const EVENT_PAGE = 200;
+
 export interface EscrowPayment {
   id: bigint;
   sender: string;
@@ -139,6 +142,55 @@ export class EscrowClient {
       operation,
     });
     return result ?? [];
+  }
+
+  /**
+   * Deposits since a cursor, straight off the contract's own events.
+   *
+   * The alternative is asking "is anything waiting?" once per handle per
+   * request, which is one contract read per user per page view. This is one call
+   * for the whole system, and it only reports what actually happened.
+   *
+   * With no cursor it starts from the current ledger rather than the beginning
+   * of time: older deposits are collected when their handle's owner signs in,
+   * which is the path that already exists.
+   */
+  async depositsSince(
+    cursor: string | null,
+  ): Promise<{ handleHashes: string[]; cursor: string }> {
+    const filter = {
+      type: "contract" as const,
+      contractIds: [this.contractId],
+      // topic[0] is the event name, topic[1] is the handle hash we want. The
+      // RPC matches topics as base64 XDR.
+      topics: [[nativeToScVal("deposit", { type: "symbol" }).toXDR("base64"), "*"]],
+    };
+
+    const response = cursor
+      ? await this.network.rpc.getEvents({ cursor, filters: [filter], limit: EVENT_PAGE })
+      : await this.network.rpc.getEvents({
+          startLedger: await this.#currentLedger(),
+          filters: [filter],
+          limit: EVENT_PAGE,
+        });
+
+    const handleHashes: string[] = [];
+    for (const event of response.events) {
+      const topic = event.topic[1];
+      if (!topic) continue;
+      const bytes = topic.bytes?.();
+      if (bytes) handleHashes.push(Buffer.from(bytes).toString("hex"));
+    }
+
+    // Resuming from the last event beats resuming from a page cursor the RPC
+    // may not keep: either way we never go backwards.
+    const last = response.events.at(-1);
+    return { handleHashes, cursor: last?.id ?? response.cursor ?? cursor ?? "" };
+  }
+
+  async #currentLedger(): Promise<number> {
+    const { sequence } = await this.network.rpc.getLatestLedger();
+    return sequence;
   }
 
   async getPayment(paymentId: bigint, readerAddress: string): Promise<EscrowPayment | null> {

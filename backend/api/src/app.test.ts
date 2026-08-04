@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, test } from "node:test";
 import type { StellarAdapter } from "@selkie/chain-stellar";
 import type { FastifyInstance } from "fastify";
+import { SqliteActivityStore } from "./activity/sqlite-store";
+import type { AppDeps } from "./app";
 import { buildApp } from "./app";
+import { openDb } from "./db/open";
 import { FakeIdentityProvider } from "./identity/provider";
+import { SqliteUserStore } from "./identity/sqlite-store";
 import { InMemoryUserStore } from "./identity/store";
+import { SqliteIdempotencyStore } from "./idempotency/sqlite-store";
+import { SqliteRequestStore } from "./requests/sqlite-store";
 
 /** Minimal chain stand-in: the routes are what is under test here. */
 const adapterStub = {
@@ -16,7 +22,10 @@ const adapterStub = {
   /** What the escrow is holding for the next handle that signs in. */
   waiting: [] as bigint[],
   waitingAmounts: [] as { amount: string; asset: string }[],
+  escrowReads: 0,
+  claimed: 0,
   async pendingClaims() {
+    adapterStub.escrowReads++;
     return adapterStub.waiting;
   },
   async waitingFor() {
@@ -28,6 +37,8 @@ const adapterStub = {
     return { address, accepts: ["USDC", "XLM"] };
   },
   async claim() {
+    adapterStub.claimed++;
+    adapterStub.waiting = [];
     return { status: "confirmed", ref: "TX" };
   },
   async getBalance(account: unknown) {
@@ -81,13 +92,61 @@ const swapStub = {
   },
 };
 
+/** Counts what authentication actually costs, which is the point of the split. */
+class CountingProvider extends FakeIdentityProvider {
+  verifies = 0;
+  subjects = 0;
+
+  override async verify(token: string) {
+    this.verifies++;
+    return super.verify(token);
+  }
+
+  override async subjectOf(token: string) {
+    this.subjects++;
+    return super.subjectOf(token);
+  }
+}
+
 const xToken = (subject: string, username: string) => `test:x:${subject}:${username}`;
 const googleToken = (subject: string) => `test:google:${subject}:`;
 const telegramToken = (subject: string, username: string) =>
   `test:telegram:${subject}:${username}`;
 
-describe("api", () => {
+/**
+ * Every test below runs twice: once against the in-memory stores and once
+ * against SQLite.
+ *
+ * Two implementations of an interface are two chances to behave differently,
+ * and the differences that matter here are the quiet ones — a lookup that is
+ * case-sensitive on one side, a list that comes back in the other order. Running
+ * the same suite against both is the only way to know they are actually
+ * interchangeable.
+ */
+type Stores = Pick<AppDeps, "users" | "activity" | "requests" | "idempotency">;
+
+const BACKENDS: { name: string; stores: () => Stores }[] = [
+  { name: "in memory", stores: () => ({ users: new InMemoryUserStore() }) },
+  {
+    name: "sqlite",
+    stores: () => {
+      // A fresh database per test, in memory, so the real SQL runs in
+      // milliseconds and no test can see another's rows.
+      const db = openDb(":memory:");
+      return {
+        users: new SqliteUserStore(db),
+        activity: new SqliteActivityStore(db),
+        requests: new SqliteRequestStore(db),
+        idempotency: new SqliteIdempotencyStore(db),
+      };
+    },
+  },
+];
+
+for (const backend of BACKENDS) {
+describe(`api (${backend.name})`, () => {
   let app: FastifyInstance;
+  let provider: CountingProvider;
 
   beforeEach(async () => {
     adapterStub.sent = [];
@@ -98,10 +157,13 @@ describe("api", () => {
     adapterStub.claimLifetimeSeconds = 0;
     adapterStub.waiting = [];
     adapterStub.waitingAmounts = [];
+    adapterStub.escrowReads = 0;
+    adapterStub.claimed = 0;
     swapStub.swapped = [];
+    provider = new CountingProvider(true);
     app = await buildApp({
-      users: new InMemoryUserStore(),
-      provider: new FakeIdentityProvider(true),
+      ...backend.stores(),
+      provider,
       adapter: adapterStub as unknown as StellarAdapter,
       swap: swapStub,
       // Hundreds of calls from one address in a few seconds. The limiter gets
@@ -129,6 +191,61 @@ describe("api", () => {
   test("health responds", async () => {
     const response = await app.inject({ method: "GET", url: "/health" });
     assert.equal(response.statusCode, 200);
+  });
+
+  /**
+   * Reading your own activity must not move money.
+   *
+   * Checking who is calling used to run the whole sign-in path, which claims
+   * anything the escrow is holding. So a plain GET could release money, and
+   * because the caller of that check only wanted a user, whatever it released
+   * went unrecorded: nothing in the recipient's feed, and the sender's side
+   * still saying "Waiting" forever.
+   */
+  test("reading the feed does not release money behind your back", async () => {
+    const token = xToken("x1", "amaka");
+    await post("/auth/session", { token, createAccount: true });
+
+    // Signing in is allowed to look. Everything after this is not.
+    const readsAtSignIn = adapterStub.escrowReads;
+
+    // $25 turns up in the escrow while they are just looking at the screen.
+    adapterStub.waiting = [1n];
+    adapterStub.waitingAmounts = [{ amount: "25", asset: "USDC" }];
+
+    await app.inject({
+      method: "GET",
+      url: "/activity",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    assert.equal(adapterStub.claimed, 0, "a GET must not claim");
+    assert.equal(
+      adapterStub.escrowReads - readsAtSignIn,
+      0,
+      "and must not read the contract either",
+    );
+  });
+
+  test("authenticating a request costs no round trip to the identity provider", async () => {
+    const token = xToken("x1", "amaka");
+    await post("/auth/session", { token, createAccount: true });
+
+    const before = provider.verifies;
+    await app.inject({
+      method: "GET",
+      url: "/activity",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    await app.inject({
+      method: "GET",
+      url: "/me",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    // The token is verified locally on every request. Asking the provider who
+    // somebody is would put their uptime in front of every balance read.
+    assert.equal(provider.verifies - before, 0);
   });
 
   test("an unknown identity gets asked before an account is created", async () => {
@@ -712,8 +829,8 @@ describe("api", () => {
    */
   test("hammering a route gets you turned away, politely", async () => {
     const limited = await buildApp({
-      users: new InMemoryUserStore(),
-      provider: new FakeIdentityProvider(true),
+      ...backend.stores(),
+      provider: new CountingProvider(true),
       adapter: adapterStub as unknown as StellarAdapter,
       swap: swapStub,
       limits: { handles: 2 },
@@ -914,6 +1031,49 @@ describe("api", () => {
     ]);
   });
 
+  /**
+   * After a merge, the login they used to reach the OLD wallet has to keep
+   * working. Otherwise the next time they use it they look like a stranger and
+   * get offered a third wallet, which is the exact failure the whole account
+   * model exists to prevent.
+   */
+  test("a merged-away login still reaches the surviving wallet", async () => {
+    const google = googleToken("g1");
+    const created = await post("/auth/session", { token: google, createAccount: true });
+    const survivor = created.json().user.address;
+
+    const x = xToken("x1", "amaka");
+    await post("/auth/session", { token: x, createAccount: true });
+
+    const merge = await post("/auth/link", { token: x }, google);
+    assert.equal(merge.statusCode, 409);
+    await post("/auth/merge", { fromUserId: merge.json().mergeCandidate.userId }, google);
+
+    // Signing back in with the X login: same wallet, not a new one.
+    const back = await post("/auth/session", { token: x });
+    assert.equal(back.statusCode, 200);
+    assert.equal(back.json().user.address, survivor);
+
+    // And it authenticates on the fast path too, without being offered a wallet.
+    const me = await app.inject({
+      method: "GET",
+      url: "/me",
+      headers: { authorization: `Bearer ${x}` },
+    });
+    assert.equal(me.statusCode, 200);
+    assert.equal(me.json().user.address, survivor);
+  });
+
+  test("a login we have never traded for an account is not authenticated", async () => {
+    // Never called /auth/session, so there is nothing to authenticate as.
+    const response = await app.inject({
+      method: "GET",
+      url: "/me",
+      headers: { authorization: `Bearer ${xToken("x9", "nobody")}` },
+    });
+    assert.equal(response.statusCode, 401);
+  });
+
   test("linking a free identity attaches it to the same wallet", async () => {
     const googleTokenValue = googleToken("g1");
     const created = await post("/auth/session", {
@@ -928,3 +1088,4 @@ describe("api", () => {
     assert.deepEqual(response.json().user.handles, [{ platform: "x", username: "amaka" }]);
   });
 });
+}
