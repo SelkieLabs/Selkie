@@ -53,6 +53,7 @@ export interface AuthState {
   signOut: () => Promise<void>;
   createAccount: () => Promise<void>;
   linkX: () => Promise<void>;
+  linkTelegram: () => Promise<void>;
   confirmMerge: () => Promise<void>;
   dismissMerge: () => void;
   dismissClaimed: () => void;
@@ -74,6 +75,7 @@ export const AuthContext = createContext<AuthState>({
   signOut: noop,
   createAccount: noop,
   linkX: noop,
+  linkTelegram: noop,
   confirmMerge: noop,
   dismissMerge: () => {},
   dismissClaimed: () => {},
@@ -145,6 +147,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [ready, authenticated, loadSession]);
 
   /**
+   * Money can arrive while you are just looking at the screen: someone pays your
+   * handle, or a payment you were waiting on lands. Without this the balance
+   * stays whatever it was when the page loaded, and the app feels dead.
+   *
+   * Paused while the tab is hidden, and caught up the moment it comes back, so a
+   * wallet left open in a background tab is not quietly polling all day.
+   */
+  useEffect(() => {
+    if (status !== "ready") return;
+
+    const tick = () => {
+      if (document.visibilityState === "visible") void loadBalances();
+    };
+    const timer = window.setInterval(tick, 15_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [status, loadBalances]);
+
+  /**
    * Attach an identity Privy has that the Selkie account does not.
    *
    * The user asked for this by tapping Link, so finishing it without a second
@@ -209,8 +233,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       },
       // Privy opens its own flow and returns immediately; the effect above sees
-      // the new identity land and finishes the link against Selkie.
+      // the new identity land and finishes the link against Selkie. Both handles
+      // work the same way, and either one releases money waiting for it.
       linkX: async () => privy.linkTwitter(),
+      linkTelegram: async () => privy.linkTelegram(),
       confirmMerge: async () => {
         if (!merge) return;
         setBusy(true);

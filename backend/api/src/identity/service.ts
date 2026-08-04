@@ -29,6 +29,14 @@ export interface ClaimOutcome {
   released: number;
   /** What they came to, totalled per asset. This is the number the user sees. */
   amounts: Money[];
+  /**
+   * The escrow ids that were released.
+   *
+   * Read before claiming, because the contract deletes them on the way out.
+   * The senders of these payments still have them marked "waiting", and this is
+   * the only thing that connects their side of the story to this one.
+   */
+  paymentIds: string[];
   ref?: string;
 }
 
@@ -146,7 +154,13 @@ export class IdentityService {
       // hold them, and "$25 was waiting for you" is the whole moment.
       const amounts = await this.deps.adapter.waitingFor(handle);
       const result = await this.deps.adapter.claim(handle);
-      outcomes.push({ handle, released: pending.length, amounts, ref: result.ref });
+      outcomes.push({
+        handle,
+        released: pending.length,
+        amounts,
+        paymentIds: pending.map(String),
+        ref: result.ref,
+      });
     }
     return outcomes;
   }

@@ -4,9 +4,11 @@ import { useState } from "react";
 import { Check, HandCoins, Loader2, X } from "lucide-react";
 import { Avatar } from "@/components/Layout";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
+import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
 import { ApiError, api, type MoneyRequest } from "@/lib/api";
 import { DOLLAR, cleanAmount, money, timeAgo, usd } from "@/lib/format";
+import { PLATFORM_FIELD, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
 
 /** How a settled request reads once nobody has to do anything about it. */
 const SETTLED: Record<string, string> = {
@@ -70,6 +72,7 @@ export function RequestsPanel({
   onChanged: () => void;
 }) {
   const toast = useToast();
+  const [platform, setPlatform] = useState<Platform>("x");
   const [from, setFrom] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
@@ -87,7 +90,13 @@ export function RequestsPanel({
     setAsking(true);
     setError(null);
     try {
-      await api.ask({ from: cleanFrom, amount, asset: DOLLAR, note: note.trim() || undefined });
+      await api.ask({
+        from: cleanFrom,
+        amount,
+        asset: DOLLAR,
+        platform,
+        note: note.trim() || undefined,
+      });
       toast("success", `Asked @${cleanFrom} for ${usd(amount)}.`);
       setFrom("");
       setAmount("");
@@ -132,14 +141,17 @@ export function RequestsPanel({
 
         {!canAsk && (
           <p className="mt-5 rounded-xl bg-pen/[0.05] p-3.5 text-[14px] leading-relaxed text-pen/70">
-            Add your X handle first, so whoever you ask knows who is asking.
+            Add an X or Telegram handle first, so whoever you ask knows who is asking.
           </p>
         )}
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-[1fr_10rem]">
+        <p className="label mt-6">Where</p>
+        <PlatformToggle value={platform} onChange={setPlatform} idPrefix="ask-platform" />
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_10rem]">
           <div>
             <label className="label block" htmlFor="ask-handle">
-              Their X handle
+              {PLATFORM_FIELD[platform]}
             </label>
             <div className="relative mt-2">
               <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-pen/40">
@@ -148,7 +160,7 @@ export function RequestsPanel({
               <input
                 id="ask-handle"
                 className="field pl-9"
-                placeholder="amaka"
+                placeholder={PLATFORM_PLACEHOLDER[platform]}
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}

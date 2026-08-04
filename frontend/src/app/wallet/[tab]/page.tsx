@@ -112,7 +112,9 @@ export default function WalletTabPage() {
 
               {!handle && <LinkHandleBanner />}
 
-              {tab === "activity" && <ActivityFeed entries={entries} loading={loadingFeed} />}
+              {tab === "activity" && (
+                <ActivityFeed entries={entries} loading={loadingFeed} onChanged={afterMoneyMoved} />
+              )}
 
               {tab === "send" && (
                 <SendPanel balance={dollars} entries={entries} onSent={afterMoneyMoved} />
