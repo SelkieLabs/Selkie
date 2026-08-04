@@ -2,6 +2,7 @@
 // adapter and the config helpers; everything else is here for the backend that
 // wires them together.
 export * from "./adapter";
+export * from "./address";
 export * from "./amounts";
 export * from "./assets";
 export * from "./bootstrap";

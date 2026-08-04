@@ -73,7 +73,7 @@ than quietly at the moment someone tries to send money.
   `https://friendbot.stellar.org?addr=<sponsor public address>`.
 - To actually move dollars on testnet, get test USDC from
   [faucet.circle.com](https://faucet.circle.com) and send it to the address the
-  app shows under **Add money**. That screen provisions the wallet before it
+  app shows under **Deposit**. That screen provisions the wallet before it
   hands the address over, so it can receive the moment you copy it.
 
 ### Everything else

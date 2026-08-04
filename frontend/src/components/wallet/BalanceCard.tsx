@@ -2,11 +2,22 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowDownToLine, Check, Copy, Loader2, Repeat, RefreshCw, Send } from "lucide-react";
+import {
+  ArrowDownToLine,
+  Check,
+  Copy,
+  Eye,
+  EyeOff,
+  Loader2,
+  Repeat,
+  RefreshCw,
+  Send,
+} from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
 import { useToast } from "@/contexts/ToastContext";
 import type { Money, User } from "@/lib/api";
 import { DOLLAR, money, shortAddress } from "@/lib/format";
+import { MASK, toggleAmountsHidden, useAmountsHidden } from "@/lib/privacy";
 
 /**
  * The top of the wallet: who you are, what you have, and what you can do next.
@@ -32,6 +43,7 @@ export function BalanceCard({
   onRefresh: () => void;
   onConvert: () => void;
 }) {
+  const hidden = useAmountsHidden();
   const dollars = balances.find((balance) => balance.asset === DOLLAR)?.amount ?? "0";
   const hasSomethingToConvert = balances.some((balance) => Number(balance.amount) > 0);
 
@@ -53,6 +65,16 @@ export function BalanceCard({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          <IconButton
+            label={hidden ? "Show balance" : "Hide balance"}
+            onClick={toggleAmountsHidden}
+          >
+            {hidden ? (
+              <EyeOff size={15} strokeWidth={2.5} />
+            ) : (
+              <Eye size={15} strokeWidth={2.5} />
+            )}
+          </IconButton>
           <IconButton label="Refresh balance" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw
               size={15}
@@ -70,7 +92,7 @@ export function BalanceCard({
         ) : (
           <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="font-display text-[2.75rem] font-bold leading-none tracking-tight tabular-nums sm:text-[3.35rem]">
-              {money(dollars)}
+              {hidden ? MASK : money(dollars)}
             </span>
             <span className="flex items-center gap-1.5 rounded-full border-2 border-pen/20 bg-card-bright/60 py-1 pl-1 pr-2.5">
               <TokenIcon asset={DOLLAR} size={20} />
@@ -85,7 +107,7 @@ export function BalanceCard({
           <Send size={15} strokeWidth={2.4} /> Send
         </Link>
         <Link href="/wallet/receive" className="btn flex-1 sm:flex-none">
-          <ArrowDownToLine size={15} strokeWidth={2.4} /> Add money
+          <ArrowDownToLine size={15} strokeWidth={2.4} /> Deposit
         </Link>
         <button onClick={onConvert} disabled={!hasSomethingToConvert} className="btn">
           <Repeat size={15} strokeWidth={2.4} /> Convert
@@ -103,6 +125,8 @@ export function BalanceCard({
  * asked while they were reading it.
  */
 export function AssetList({ balances, loading }: { balances: Money[]; loading: boolean }) {
+  const hidden = useAmountsHidden();
+
   if (loading) {
     return (
       <section className="chunk p-5 sm:p-6">
@@ -136,7 +160,7 @@ export function AssetList({ balances, loading }: { balances: Money[]; loading: b
               {balance.asset}
             </span>
             <span className="ml-auto font-display text-[15px] font-bold tabular-nums">
-              {money(balance.amount)}
+              {hidden ? MASK : money(balance.amount)}
             </span>
           </div>
         ))}
@@ -205,6 +229,7 @@ function CopyAddress({ address }: { address: string }) {
     try {
       await navigator.clipboard.writeText(address);
       setCopied(true);
+      toast("success", "Address copied.");
       setTimeout(() => setCopied(false), 1800);
     } catch {
       toast("error", "Could not copy. Long press the address to copy it by hand.");

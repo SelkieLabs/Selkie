@@ -6,6 +6,7 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify";
 import type { StellarAdapter } from "@selkie/chain-stellar";
+import { isStellarAddress, looksLikeAddress, shortAddress } from "@selkie/chain-stellar";
 import type {
   HandleRef,
   HistoryEntry,
@@ -389,6 +390,62 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       return reply.code(400).send({ error: "Who are you paying, and how much?" });
     }
 
+    const money: Money = { amount: body.amount, asset: (body.asset ?? "USDC").toUpperCase() };
+
+    /**
+     * Paying an address instead of a handle.
+     *
+     * Handled before the handle path and separately from it, because almost
+     * nothing is shared: there is no escrow, nothing to claim, nobody to
+     * notify, and no way to provision the far end out of trouble. It exists
+     * because "send it to my other wallet" and "pay this exchange" are real
+     * and Selkie is not the only place money lives.
+     */
+    // Shaped like an address but failing its checksum is a typo, never a
+    // handle. Falling through to the handle path here would send real money to
+    // whoever happens to have registered that name.
+    if (looksLikeAddress(body.to) && !isStellarAddress(body.to)) {
+      return reply.code(400).send({
+        error: "That address is not right. Check it for a missing or changed character.",
+      });
+    }
+
+    if (isStellarAddress(body.to)) {
+      const to = body.to.trim().toUpperCase();
+      if (to === user.address) {
+        return reply.code(400).send({ error: "That is your own address." });
+      }
+
+      const receivable = await deps.adapter.canReceive(to, money.asset);
+      if (!receivable.ok) {
+        return reply.code(409).send({
+          error:
+            receivable.reason === "no-account"
+              ? "That address is not set up yet, so money sent to it would be lost. Ask them to add some XLM to it first."
+              : `That address cannot accept ${money.asset} yet. Ask them to turn it on, then try again.`,
+        });
+      }
+
+      return once(request, user.id, reply, async () => {
+        const result = await deps.adapter.transfer({
+          fromAddress: user.address,
+          toAddress: to,
+          amount: money,
+        });
+
+        await activity.record(user.id, {
+          kind: "send",
+          chain: "stellar",
+          amount: money,
+          counterparty: shortAddress(to),
+          status: "confirmed",
+          ref: result.ref,
+        });
+
+        return { status: result.status, ref: result.ref, message: "Sent.", waitingToBeClaimed: false };
+      });
+    }
+
     const from = userHandles(user)[0];
     if (!from) {
       return reply.code(409).send({
@@ -398,8 +455,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
     const to = toHandle(body.to, (body.platform ?? "x") as "x" | "telegram");
     if (!to) return reply.code(400).send({ error: "Who are you paying, and how much?" });
-
-    const money: Money = { amount: body.amount, asset: (body.asset ?? "USDC").toUpperCase() };
 
     return once(request, user.id, reply, async () => {
       const result = await pay(user, from, to, money, body.note);

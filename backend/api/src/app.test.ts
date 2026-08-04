@@ -7,11 +7,20 @@ import { FakeIdentityProvider } from "./identity/provider";
 import { InMemoryUserStore } from "./identity/store";
 
 /** Minimal chain stand-in: the routes are what is under test here. */
+/**
+ * A real, checksum-valid Stellar address for the test user, because the send
+ * route decides "handle or address" with the same validity rule the network
+ * uses. A placeholder like "G_TEST" would never be recognised as an address and
+ * the self-send guard could never be exercised.
+ */
+const MINE = "GDO6DYLR7JRONICHOIXMJZJ4EZLRL3IZDVRFDCF7H2IXMNDKHUZNV2VB";
+const THEIRS = "GD2KZSZZRT3TNERHRO7CE7VIOC6VQYKP2XNQENP6DECXSCOUFQ7EO2XS";
+
 const adapterStub = {
   sent: [] as { to: string; amount: string; platform?: string }[],
   heldForClaim: true,
   async ensureAccount(handle: { platform: string; username: string }) {
-    return { chain: "stellar", handle, address: "G_TEST", status: "provisioning" };
+    return { chain: "stellar", handle, address: MINE, status: "provisioning" };
   },
   /** What the escrow is holding for the next handle that signs in. */
   waiting: [] as bigint[],
@@ -47,8 +56,21 @@ const adapterStub = {
       claimRef: adapterStub.heldForClaim ? String(++adapterStub.escrowId) : undefined,
     };
   },
-  async transfer() {
+  transfers: [] as { to: string; amount: string; asset: string }[],
+  async transfer(params: { toAddress: string; amount: { amount: string; asset: string } }) {
+    adapterStub.transfers.push({
+      to: params.toAddress,
+      amount: params.amount.amount,
+      asset: params.amount.asset,
+    });
     return { status: "confirmed", ref: "TX_SWEEP" };
+  },
+  /** Flipped by the tests that care what happens when an address cannot be paid. */
+  receivable: { ok: true } as
+    | { ok: true }
+    | { ok: false; reason: "no-account" | "no-trustline" },
+  async canReceive() {
+    return adapterStub.receivable;
   },
   escrowId: 0,
   /** Zero so a test can take money back immediately; production waits 30 days. */
@@ -98,6 +120,8 @@ describe("api", () => {
     adapterStub.claimLifetimeSeconds = 0;
     adapterStub.waiting = [];
     adapterStub.waitingAmounts = [];
+    adapterStub.transfers = [];
+    adapterStub.receivable = { ok: true };
     swapStub.swapped = [];
     app = await buildApp({
       users: new InMemoryUserStore(),
@@ -203,6 +227,86 @@ describe("api", () => {
     const response = await post("/payments/send", { to: "amaka", amount: "5" }, token);
     assert.equal(response.json().message, "Sent to @amaka.");
     assert.equal(response.json().waitingToBeClaimed, false);
+  });
+
+  test("sending to an address pays it directly, with no escrow", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const response = await post("/payments/send", { to: THEIRS, amount: "5" }, token);
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().waitingToBeClaimed, false);
+    assert.deepEqual(adapterStub.transfers, [{ to: THEIRS, amount: "5", asset: "USDC" }]);
+    // Nothing went through the handle path, so nothing is held for a claim.
+    assert.deepEqual(adapterStub.sent, []);
+  });
+
+  test("an address is recognised however it is typed", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const response = await post("/payments/send", { to: `  ${THEIRS.toLowerCase()}  ` }, token);
+    // Missing amount, not "who is that": it was still read as an address.
+    assert.equal(response.statusCode, 400);
+
+    const sent = await post("/payments/send", { to: ` ${THEIRS.toLowerCase()} `, amount: "2" }, token);
+    assert.equal(sent.statusCode, 200);
+    assert.equal(adapterStub.transfers[0]!.to, THEIRS);
+  });
+
+  test("refuses to send to your own address", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const response = await post("/payments/send", { to: MINE, amount: "5" }, token);
+    assert.equal(response.statusCode, 400);
+    assert.match(response.json().error, /your own address/);
+    assert.deepEqual(adapterStub.transfers, []);
+  });
+
+  test("refuses an address that cannot receive, before the money moves", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    adapterStub.receivable = { ok: false, reason: "no-account" };
+    const dead = await post("/payments/send", { to: THEIRS, amount: "5" }, token);
+    assert.equal(dead.statusCode, 409);
+    assert.match(dead.json().error, /not set up yet/);
+
+    adapterStub.receivable = { ok: false, reason: "no-trustline" };
+    const unsupported = await post("/payments/send", { to: THEIRS, amount: "5" }, token);
+    assert.equal(unsupported.statusCode, 409);
+    assert.match(unsupported.json().error, /cannot accept USDC/);
+
+    // The whole point of checking first: nothing left the account either time.
+    assert.deepEqual(adapterStub.transfers, []);
+  });
+
+  test("a mistyped address is refused rather than paid to a handle", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    // One character changed, so the checksum fails. Falling through to the
+    // handle path would pay whoever registered that name; there is no reading
+    // of a 56-character string starting with G where that is what was meant.
+    const typo = `${THEIRS.slice(0, -1)}A`;
+    const response = await post("/payments/send", { to: typo, amount: "5" }, token);
+
+    assert.equal(response.statusCode, 400);
+    assert.match(response.json().error, /not right/);
+    assert.deepEqual(adapterStub.transfers, []);
+    assert.deepEqual(adapterStub.sent, []);
+  });
+
+  test("paying an address twice with one key only pays once", async () => {
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const key = "intent-address-1";
+    await post("/payments/send", { to: THEIRS, amount: "5" }, token, key);
+    await post("/payments/send", { to: THEIRS, amount: "5" }, token, key);
+
+    assert.deepEqual(adapterStub.transfers, [{ to: THEIRS, amount: "5", asset: "USDC" }]);
   });
 
   test("a Google-only user is told to link before sending", async () => {
@@ -394,10 +498,10 @@ describe("api", () => {
 
     const response = await post("/me/receive", {}, token);
     assert.equal(response.statusCode, 200);
-    assert.equal(response.json().address, "G_TEST");
+    assert.equal(response.json().address, MINE);
     assert.deepEqual(response.json().accepts, ["USDC", "XLM"]);
     // The point of the route: an address nobody provisioned cannot be paid.
-    assert.deepEqual(adapterStub.provisioned, ["G_TEST"]);
+    assert.deepEqual(adapterStub.provisioned, [MINE]);
   });
 
   test("asking someone for money moves nothing", async () => {

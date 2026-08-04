@@ -60,6 +60,17 @@ export function shortAddress(value: string): string {
   return value.length > 14 ? `${value.slice(0, 6)}…${value.slice(-6)}` : value;
 }
 
+/**
+ * Does this look like a wallet address rather than a handle?
+ *
+ * Shape only. The real check is a checksum the server runs, because money sent
+ * to a mistyped address is gone and the browser is the wrong place to be the
+ * last word on that. This exists so the form can stop someone at "that is not
+ * an address" before it costs them a round trip.
+ */
+export const looksLikeAddress = (value: string): boolean =>
+  /^G[A-Z2-7]{55}$/.test(value.trim().toUpperCase());
+
 export function parseHandles(text: string): string[] {
   return [
     ...new Set(

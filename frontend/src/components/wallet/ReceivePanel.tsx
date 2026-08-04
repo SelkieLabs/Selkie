@@ -25,6 +25,7 @@ function CopyButton({
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
+      toast("success", `${label[0]!.toUpperCase()}${label.slice(1)} copied.`);
       setTimeout(() => setCopied(false), 1800);
     } catch {
       toast("error", "Your browser would not let us copy that. Select it and copy by hand.");

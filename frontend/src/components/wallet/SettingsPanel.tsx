@@ -1,16 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Check,
-  Copy,
-  ExternalLink,
-  Loader2,
-  LogOut,
-  MessageCircle,
-  Plus,
-  ShieldCheck,
-} from "lucide-react";
+import { Check, Copy, ExternalLink, LogOut, MessageCircle, Plus, ShieldCheck } from "lucide-react";
+import { SignOutModal } from "@/components/SignOutModal";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { useToast } from "@/contexts/ToastContext";
 import { useAuth } from "@/contexts/useAuth";
@@ -32,7 +24,7 @@ const PROVIDERS: Record<string, { label: string; payable: boolean }> = {
  * its own sake.
  */
 export function SettingsPanel({ user }: { user: User }) {
-  const { linkX, linkTelegram, signOut } = useAuth();
+  const { linkX, linkTelegram } = useAuth();
   const [leaving, setLeaving] = useState(false);
 
   const linked = new Set(user.identities.map((identity) => identity.provider));
@@ -100,18 +92,17 @@ export function SettingsPanel({ user }: { user: User }) {
           Signing out does not touch your money. Sign back in with any login above and everything is
           where you left it.
         </p>
-        <button
-          onClick={() => {
-            setLeaving(true);
-            void signOut();
-          }}
-          disabled={leaving}
-          className="btn btn-danger btn-sm mt-5"
-        >
-          {leaving ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
-          {leaving ? "Signing out" : "Sign out"}
+        <button onClick={() => setLeaving(true)} className="btn btn-danger btn-sm mt-5">
+          <LogOut size={14} /> Sign out
         </button>
       </Panel>
+
+      {leaving && (
+        <SignOutModal
+          name={user.handles[0] ? `@${user.handles[0].username}` : undefined}
+          onClose={() => setLeaving(false)}
+        />
+      )}
     </div>
   );
 }
@@ -172,6 +163,7 @@ function AddressRow({ address }: { address: string }) {
     try {
       await navigator.clipboard.writeText(address);
       setCopied(true);
+      toast("success", "Address copied.");
       setTimeout(() => setCopied(false), 1800);
     } catch {
       toast("error", "Could not copy. Select the address and copy it by hand.");

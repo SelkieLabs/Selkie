@@ -32,7 +32,7 @@ export interface TabDef {
 export const TABS: TabDef[] = [
   { id: "home", label: "Home", short: "Home", icon: Home, onPhone: true },
   { id: "send", label: "Send", short: "Send", icon: Send, onPhone: true },
-  { id: "receive", label: "Add money", short: "Add", icon: ArrowDownToLine, onPhone: true },
+  { id: "receive", label: "Deposit", short: "Deposit", icon: ArrowDownToLine, onPhone: true },
   { id: "requests", label: "Requests", short: "Requests", icon: HandCoins, onPhone: true },
   { id: "many", label: "Pay many", short: "Many", icon: Sparkles, onPhone: true },
   { id: "settings", label: "Settings", short: "Settings", icon: Settings, onPhone: false },

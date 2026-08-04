@@ -78,6 +78,7 @@ export function ConvertSheet({
     try {
       const result = await api.convert(from, to, amount, intent);
       setDone(result.received);
+      toast("success", `Converted to ${money(result.received.amount)} ${result.received.asset}.`);
       onConverted();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "That conversion did not go through.";

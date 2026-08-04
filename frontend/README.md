@@ -40,7 +40,7 @@ things never move: your balance at the top, the rail within reach.
   money in an app like this, and this is the only defence that works.
 - **Balance is in dollars.** Other assets get a quiet second line, with their
   own real logo rather than a lettered circle.
-- **Add money is the one screen that has to say a network name.** An address
+- **Deposit is the one screen that has to say a network name.** An address
   that receives the wrong thing loses the money for good, so that warning stays
   even though it breaks the rule above.
 - **Nothing is silent.** A login we have never seen asks before it becomes a
