@@ -149,7 +149,33 @@ Config is read once at boot, so a missing value fails loudly on start rather
 than quietly at the moment someone tries to send money. The escrow contract id
 comes from `contracts/deployments/<network>.env` unless overridden.
 
-Everything is stored in memory today and disappears on restart: `UserStore`,
-`AccountDirectory`, `ActivityStore` and `RequestStore`. All four are interfaces
-with one in-memory implementation each, so Postgres is a new class per interface
-and one changed line in `index.ts`. Nothing in the payment path needs to move.
+## Storage
+
+SQLite, in a file at `SELKIE_DB_PATH` (default `.data/selkie.db`). The schema is
+applied on every boot and is all `IF NOT EXISTS`, so there is no migration step
+and no setup beyond pointing it at a disk that survives a restart.
+
+SQLite rather than a server, deliberately: Selkie runs as one API process, and a
+file has no connection pool to exhaust, no second service to keep alive, and no
+network hop in the middle of a payment. Every store is an interface —
+`UserStore`, `AccountDirectory`, `ActivityStore`, `RequestStore`,
+`IdempotencyStore` — with a SQLite and an in-memory implementation each, so the
+day a second instance is needed Postgres is one new class per interface and one
+changed line in `index.ts`. Nothing in the payment path moves.
+
+**The whole API test suite runs twice, once against each backend.** Two
+implementations of an interface are two chances to behave differently, and the
+differences that matter are quiet ones: a lookup that is case-sensitive on one
+side, a list that comes back in the other order. That is not theoretical — it is
+how the handle-ordering bug in `addIdentity` was found.
+
+What is *not* in this database is the money. Balances live on the ledger. This
+holds who someone is, what they did, and which handle owns which address —
+and that last one matters more than it sounds, because a handle that came back
+mapped to a different address is a person whose balance vanished.
+
+> **User wallet keys are still not persisted.** `createSigner` in `index.ts`
+> generates a keypair, throws the secret away, and keeps it in a Map. A restart
+> makes every wallet Selkie provisioned unspendable. Until that moves to Privy's
+> server-side wallets, the claim above that Selkie never holds a private key is
+> aspirational, not true. See `IMPLEMENTATION.md` (B1).

@@ -78,9 +78,22 @@ and nothing else's:
 | `SELKIE_ORACLE_SECRET` | Must match the oracle the contract was deployed with. |
 | `SELKIE_NETWORK` | `testnet` or `public`. |
 | `SELKIE_HANDLE_ESCROW_ID` | Only to override `contracts/deployments/<network>.env`. |
+| `SELKIE_DB_PATH` | Must point at a volume. See below. |
 
 Config is read once at boot, so a missing value fails on start rather than in
 the middle of somebody's payment.
+
+### Give it a volume
+
+The API keeps its data in a SQLite file. **A container filesystem is wiped on
+every deploy**, so without a volume the database is destroyed each time you ship
+— every account gone, every handle unmapped from its address.
+
+In Railway: **Settings → Volumes → New Volume**, mount it at `/data`, then set
+`SELKIE_DB_PATH=/data/selkie.db`.
+
+The schema applies itself on boot and is all `IF NOT EXISTS`, so there is no
+migration step and starting against an existing database is a no-op.
 
 ### Keep the sponsor funded
 
@@ -126,6 +139,8 @@ tap.
       only in the host's secret store. Never in the repo, never in `frontend/`.
 - [ ] `frontend/.env.local` contains **only** `NEXT_PUBLIC_PRIVY_APP_ID`. Anything
       else in there is a secret sitting in the deployable directory.
+- [ ] `SELKIE_DB_PATH` points at a mounted volume, not the container filesystem.
+      Back it up: losing it loses every account.
 - [ ] The mainnet oracle and sponsor keys are freshly generated, never the
       testnet ones.
 - [ ] Privy's allowed origins list the deployed domain and nothing stale.

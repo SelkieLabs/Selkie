@@ -73,6 +73,31 @@ export default function WalletTabPage() {
   }, [status, loadActivity, loadRequests]);
 
   /**
+   * Keep what is on screen true.
+   *
+   * The balance already refreshes on its own, and a balance that changes with no
+   * matching line in the feed reads as a glitch. So the feed and the requests
+   * count move with it: money that lands while you are watching appears, and the
+   * rail's badge is right without a reload.
+   *
+   * Paused while the tab is hidden. Neither reload touches a loading flag, so
+   * nothing flickers back to a skeleton underneath you.
+   */
+  useEffect(() => {
+    if (status !== "ready") return;
+
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      void loadActivity();
+      void loadRequests();
+    };
+    const timer = window.setInterval(tick, 15_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [status, loadActivity, loadRequests]);
    * Everything, on demand.
    *
    * The spinner runs for a beat longer than the request usually takes, because

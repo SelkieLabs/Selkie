@@ -15,11 +15,22 @@ export interface ApiConfig {
   port: number;
   network: "testnet" | "public";
   escrowContractId: string;
+  /**
+   * Where the database file lives. Must be on a disk that survives a restart:
+   * this holds who everybody is and which handle owns which address, and losing
+   * it means losing people's money in the only way that cannot be undone.
+   */
+  dbPath: string;
   privy: { appId: string; appSecret: string };
   /** Pays fees and reserves so users never need XLM. */
   sponsorSecret: string;
   /** Attests logins to the escrow contract. Its only power is releasing a claim. */
   oracleSecret: string;
+  /**
+   * How often to look for money arriving for somebody who is already signed in.
+   * One RPC call for the whole system, so this can be brisk.
+   */
+  claimPollSeconds: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -28,10 +39,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     port: Number(env.PORT ?? 4000),
     network,
     escrowContractId: env.SELKIE_HANDLE_ESCROW_ID ?? escrowFromDeployments(network),
+    dbPath: env.SELKIE_DB_PATH ?? resolve(REPO_ROOT, ".data/selkie.db"),
     privy: {
       appId: required(env, "PRIVY_APP_ID"),
       appSecret: required(env, "PRIVY_APP_SECRET"),
     },
+    claimPollSeconds: Number(env.SELKIE_CLAIM_POLL_SECONDS ?? 20),
     sponsorSecret: required(env, "SELKIE_SPONSOR_SECRET"),
     oracleSecret: required(env, "SELKIE_ORACLE_SECRET"),
   };

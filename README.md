@@ -53,6 +53,7 @@ must never be committed.
 | `SELKIE_NETWORK` | no | `testnet` (default) or `public`. |
 | `SELKIE_HANDLE_ESCROW_ID` | no | Overrides the contract id recorded in `contracts/deployments/<network>.env`. |
 | `PORT` | no | Defaults to `4000`, which is what the web app expects. |
+| `SELKIE_DB_PATH` | no | The SQLite file. Defaults to `.data/selkie.db`. In production it must be on a disk that survives a restart. |
 
 `frontend/.env.local` (read by the web app):
 
