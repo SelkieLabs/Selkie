@@ -79,3 +79,17 @@ export function XLogo({ size = 15 }: { size?: number }) {
     </svg>
   );
 }
+
+/** The Telegram logo, for the other handle someone can be paid at. */
+export function TelegramLogo({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M21.94 4.3 18.9 19.1c-.23 1.02-.85 1.27-1.72.79l-4.75-3.5-2.29 2.2c-.25.26-.47.48-.96.48l.34-4.85 8.84-7.98c.38-.34-.09-.53-.6-.19l-10.93 6.88-4.7-1.47c-1.03-.32-1.05-1.02.21-1.51l18.4-7.1c.85-.31 1.6.2 1.2 1.45Z" />
+    </svg>
+  );
+}
+
+/** The logo for a platform, so callers never branch on a string themselves. */
+export function PlatformLogo({ platform, size = 15 }: { platform: string; size?: number }) {
+  return platform === "telegram" ? <TelegramLogo size={size} /> : <XLogo size={size} />;
+}

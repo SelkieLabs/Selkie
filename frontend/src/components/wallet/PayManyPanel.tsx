@@ -4,9 +4,11 @@ import { useState, type KeyboardEvent } from "react";
 import { ArrowLeft, Check, Clock, Loader2, X } from "lucide-react";
 import { Avatar } from "@/components/Layout";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
+import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
-import { ApiError, api, type BatchResult } from "@/lib/api";
+import { ApiError, api, newIdempotencyKey, type BatchResult } from "@/lib/api";
 import { DOLLAR, cleanAmount, parseHandles, usd } from "@/lib/format";
+import { PLATFORM_LABEL, type Platform } from "@/lib/platform";
 
 /** The server refuses more than this in one go; saying so early beats a rejection. */
 const MAX = 100;
@@ -30,6 +32,7 @@ export function PayManyPanel({
 }) {
   const toast = useToast();
   const [step, setStep] = useState<Step>("compose");
+  const [platform, setPlatform] = useState<Platform>("x");
   const [handles, setHandles] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [amount, setAmount] = useState("");
@@ -37,6 +40,8 @@ export function PayManyPanel({
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<BatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Minted when the review screen opens, so a double-tap cannot pay the list twice. */
+  const [intent, setIntent] = useState<string | null>(null);
 
   const each = Number(amount);
   const total = each * handles.length;
@@ -71,12 +76,16 @@ export function PayManyPanel({
     setSending(true);
     setError(null);
     try {
-      const sent = await api.payMany({
-        to: handles,
-        amount,
-        asset: DOLLAR,
-        note: note.trim() || undefined,
-      });
+      const sent = await api.payMany(
+        {
+          to: handles,
+          amount,
+          asset: DOLLAR,
+          platform,
+          note: note.trim() || undefined,
+        },
+        intent ?? undefined,
+      );
       setResult(sent);
       setStep("done");
       onSent();
@@ -142,6 +151,7 @@ export function PayManyPanel({
             setAmount("");
             setNote("");
             setResult(null);
+            setIntent(null);
           }}
           className="btn btn-dark mt-6 w-full"
         >
@@ -190,7 +200,8 @@ export function PayManyPanel({
         </div>
 
         <p className="mt-4 text-center text-[14px] leading-relaxed text-pen/60">
-          Anyone here who has not joined yet gets theirs the moment they sign in with X.
+          Anyone here who has not joined yet gets theirs the moment they sign in with{" "}
+          {PLATFORM_LABEL[platform]}.
         </p>
 
         {error && <p className="mt-4 text-sm font-semibold text-[#a11d34]">{error}</p>}
@@ -215,8 +226,11 @@ export function PayManyPanel({
         blurb="Paste or type handles, pick one amount, and everyone gets the same."
       />
 
-      <label className="label mt-6 block" htmlFor="many-handles">
-        Their X handles
+      <p className="label mt-6">Where</p>
+      <PlatformToggle value={platform} onChange={setPlatform} idPrefix="many-platform" />
+
+      <label className="label mt-5 block" htmlFor="many-handles">
+        Their {PLATFORM_LABEL[platform]} handles
       </label>
       <div
         className="mt-2 flex min-h-[3rem] flex-wrap items-center gap-2 rounded-xl border-2 border-pen bg-card-bright p-2 focus-within:border-[#b8871f] focus-within:shadow-[0_0_0_4px_rgba(217,168,92,0.3)]"
@@ -320,6 +334,7 @@ export function PayManyPanel({
       <button
         onClick={() => {
           setError(null);
+          setIntent(newIdempotencyKey());
           setStep("confirm");
         }}
         disabled={!ready}

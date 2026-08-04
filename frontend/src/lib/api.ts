@@ -128,9 +128,20 @@ export interface ActivityEntry {
   kind: ActivityKind;
   amount: Money;
   counterparty?: string;
-  status: "pending" | "confirmed" | "failed";
+  /**
+   * The other side as a handle, when it was one. `counterparty` reads "@amaka"
+   * with no platform, and that is not enough to pay them again: @amaka on X is
+   * a different person from @amaka on Telegram.
+   */
+  counterpartyHandle?: Handle;
+  /** `returned` is money that waited for someone who never came, taken back. */
+  status: "pending" | "confirmed" | "failed" | "returned";
   at: string;
   ref?: string;
+  /** The escrow's id for money still waiting. Only these can be taken back. */
+  claimRef?: string;
+  /** When it can be taken back, as an ISO timestamp. */
+  refundableAt?: string;
 }
 
 export class ApiError extends Error {
@@ -153,15 +164,19 @@ export function setTokenProvider(provider: TokenProvider): void {
   tokenProvider = provider;
 }
 
-async function request<T>(path: string, init: RequestInit & { expect?: number[] } = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  init: RequestInit & { expect?: number[]; idempotencyKey?: string } = {},
+): Promise<T> {
   const token = await tokenProvider();
-  const { expect = [], ...rest } = init;
+  const { expect = [], idempotencyKey, ...rest } = init;
 
   const response = await fetch(`/api${path}`, {
     ...rest,
     headers: {
       ...(rest.body ? { "content-type": "application/json" } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
       ...rest.headers,
     },
   });
@@ -180,6 +195,21 @@ async function request<T>(path: string, init: RequestInit & { expect?: number[] 
 }
 
 const json = (value: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(value) });
+
+/**
+ * One key per intent to move money.
+ *
+ * A phone that loses signal mid-request, a double-tap, a retry: without this the
+ * money goes twice and the second payment is indistinguishable from a deliberate
+ * one.
+ *
+ * The key belongs to the *intent*, not the request, so it is minted where the
+ * intent is formed — the moment a confirm screen opens — and reused by every
+ * attempt at that same payment. Minting one inside `send()` would give a
+ * double-tap two different keys and defeat the entire point. Where a stable id
+ * already exists (a request, an escrowed payment) that id is the key.
+ */
+export const newIdempotencyKey = (): string => crypto.randomUUID();
 
 export const api = {
   /**
@@ -231,24 +261,31 @@ export const api = {
     return request("/me/receive", { method: "POST" });
   },
 
-  async send(input: {
-    to: string;
-    amount: string;
-    asset?: string;
-    platform?: "x" | "telegram";
-    note?: string;
-  }): Promise<SendResult> {
-    return request("/payments/send", json(input));
+  async send(
+    input: {
+      to: string;
+      amount: string;
+      asset?: string;
+      platform?: "x" | "telegram";
+      note?: string;
+    },
+    idempotencyKey?: string,
+  ): Promise<SendResult> {
+    return request("/payments/send", { ...json(input), idempotencyKey });
   },
 
   /** Pay a list of people the same amount each. */
-  async payMany(input: {
-    to: string[];
-    amount: string;
-    asset?: string;
-    note?: string;
-  }): Promise<BatchResult> {
-    return request("/payments/batch", json(input));
+  async payMany(
+    input: {
+      to: string[];
+      amount: string;
+      asset?: string;
+      platform?: "x" | "telegram";
+      note?: string;
+    },
+    idempotencyKey?: string,
+  ): Promise<BatchResult> {
+    return request("/payments/batch", { ...json(input), idempotencyKey });
   },
 
   async requests(): Promise<{ incoming: MoneyRequest[]; outgoing: MoneyRequest[] }> {
@@ -260,13 +297,18 @@ export const api = {
     from: string;
     amount: string;
     asset?: string;
+    platform?: "x" | "telegram";
     note?: string;
   }): Promise<{ status: string; request: MoneyRequest; message: string }> {
     return request("/requests", json(input));
   },
 
   async payRequest(id: string): Promise<{ status: string; message: string }> {
-    return request(`/requests/${encodeURIComponent(id)}/pay`, { method: "POST" });
+    // The request's own id is the intent, so it is also the key.
+    return request(`/requests/${encodeURIComponent(id)}/pay`, {
+      method: "POST",
+      idempotencyKey: `request-pay-${id}`,
+    });
   },
 
   async declineRequest(id: string): Promise<{ status: string }> {
@@ -277,13 +319,29 @@ export const api = {
     return request(`/requests/${encodeURIComponent(id)}/cancel`, { method: "POST" });
   },
 
+  /**
+   * Take back money that waited for someone who never came. Only the sender
+   * can, and only once the wait is over.
+   */
+  async refund(claimRef: string): Promise<{ status: string; message: string }> {
+    return request(`/payments/${encodeURIComponent(claimRef)}/refund`, {
+      method: "POST",
+      idempotencyKey: `refund-${claimRef}`,
+    });
+  },
+
   async quote(from: string, to: string, amount: string): Promise<Quote> {
     const query = new URLSearchParams({ from, to, amount });
     return request(`/payments/convert/quote?${query}`);
   },
 
-  async convert(from: string, to: string, amount: string): Promise<ConvertResult> {
-    return request("/payments/convert", json({ from, to, amount }));
+  async convert(
+    from: string,
+    to: string,
+    amount: string,
+    idempotencyKey?: string,
+  ): Promise<ConvertResult> {
+    return request("/payments/convert", { ...json({ from, to, amount }), idempotencyKey });
   },
 
   async activity(limit = 50): Promise<ActivityEntry[]> {

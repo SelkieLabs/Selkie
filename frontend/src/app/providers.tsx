@@ -23,7 +23,9 @@ export function Providers({ children }: { children: ReactNode }) {
     <PrivyProvider
       appId={PRIVY_APP_ID}
       config={{
-        loginMethods: ["google", "twitter"],
+        // Google is a door only; X and Telegram are also addresses people can
+        // be paid at, which is why linking one is what releases escrowed money.
+        loginMethods: ["google", "twitter", "telegram"],
         embeddedWallets: {
           ethereum: { createOnLogin: "off" },
           solana: { createOnLogin: "off" },

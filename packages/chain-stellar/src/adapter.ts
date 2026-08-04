@@ -13,7 +13,7 @@ import { assertPositive, fromStroops, toStellarAmount } from "./amounts";
 import { AssetRegistry } from "./assets";
 import type { StellarConfig } from "./config";
 import type { AccountDirectory } from "./directory";
-import { EscrowClient } from "./escrow";
+import { EscrowClient, type EscrowPayment } from "./escrow";
 import { StellarNetwork, isNotFound } from "./network";
 import { addSponsoredTrustline, hasTrustline, provisionAccount } from "./provisioning";
 import type { Signer, SignerProvider } from "./signer";
@@ -276,6 +276,38 @@ export class StellarAdapter implements ChainAdapter {
   /** How much is waiting for a handle that has not signed in yet. */
   async pendingClaims(handle: HandleRef): Promise<bigint[]> {
     return this.escrow.pending(handle, this.deps.oracle.address);
+  }
+
+  /** How long money waits for a handle before its sender can take it back. */
+  get claimLifetimeSeconds(): number {
+    return this.deps.config.claimLifetimeSeconds;
+  }
+
+  /**
+   * Take back money that waited for someone who never came.
+   *
+   * The contract enforces both rules that matter: only the original sender can
+   * do this, and only once the wait is over. Selkie checks them too so the
+   * answer is a sentence rather than a contract error code, but the contract is
+   * what makes them true.
+   */
+  async refund(paymentId: bigint, senderAddress: string): Promise<TxResult> {
+    const signer = await this.deps.signers.forAddress(senderAddress);
+    if (!signer) throw new Error(`No signer available for ${senderAddress}`);
+
+    const { hash } = await this.escrow.refund({ sender: signer, paymentId });
+    return { status: "confirmed", ref: hash };
+  }
+
+  /**
+   * One waiting payment, or null once it is gone.
+   *
+   * Gone means claimed or already returned; the contract deletes the record
+   * either way, so "not found" is the normal end of a payment's life and not an
+   * error worth surfacing.
+   */
+  async waitingPayment(paymentId: bigint): Promise<EscrowPayment | null> {
+    return this.escrow.getPayment(paymentId, this.deps.oracle.address);
   }
 
   /**

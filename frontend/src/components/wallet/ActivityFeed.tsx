@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, Clock, Repeat, Sparkles } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Clock, Loader2, Repeat, Sparkles, Undo2 } from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
-import type { ActivityEntry } from "@/lib/api";
+import { useToast } from "@/contexts/ToastContext";
+import { ApiError, api, type ActivityEntry } from "@/lib/api";
 import { DOLLAR, dayKey, dayLabel, money, timeAgo, usd } from "@/lib/format";
 
 type Filter = "all" | "in" | "out";
@@ -24,9 +25,12 @@ const PAGE = 8;
 export function ActivityFeed({
   entries,
   loading,
+  onChanged,
 }: {
   entries: ActivityEntry[];
   loading: boolean;
+  /** Taking money back changes the balance, so the shell reloads after it. */
+  onChanged: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [shown, setShown] = useState(PAGE);
@@ -65,8 +69,8 @@ export function ActivityFeed({
         </span>
         <p className="mt-4 font-display text-lg font-bold tracking-tight">Nothing here yet</p>
         <p className="mx-auto mt-1.5 max-w-xs text-[15px] leading-relaxed text-pen/60">
-          Send a few dollars to any X handle. They do not need an account, and it waits for them
-          until they sign in.
+          Send a few dollars to any X or Telegram handle. They do not need an account, and it waits
+          for them until they sign in.
         </p>
       </div>
     );
@@ -112,7 +116,7 @@ export function ActivityFeed({
                 {group.label}
               </p>
               {group.rows.map((entry) => (
-                <Row key={entry.id} entry={entry} />
+                <Row key={entry.id} entry={entry} onChanged={onChanged} />
               ))}
             </div>
           ))}
@@ -131,13 +135,39 @@ export function ActivityFeed({
   );
 }
 
-function Row({ entry }: { entry: ActivityEntry }) {
+function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void }) {
+  const toast = useToast();
+  const [returning, setReturning] = useState(false);
+
   const incoming = INCOMING[entry.kind] ?? false;
   const waiting = entry.status === "pending";
+  const returned = entry.status === "returned";
   const isDollars = entry.amount.asset === DOLLAR;
   const amount = isDollars
     ? usd(entry.amount.amount)
     : `${money(entry.amount.amount)} ${entry.amount.asset}`;
+
+  // Money can only come back once it has finished waiting, so the button only
+  // appears when pressing it would actually work.
+  const canTakeBack =
+    waiting &&
+    !incoming &&
+    Boolean(entry.claimRef) &&
+    (!entry.refundableAt || Date.parse(entry.refundableAt) <= Date.now());
+
+  const takeBack = async () => {
+    if (!entry.claimRef) return;
+    setReturning(true);
+    try {
+      const { message } = await api.refund(entry.claimRef);
+      toast("success", message);
+      onChanged();
+    } catch (error) {
+      toast("error", error instanceof ApiError ? error.message : "We could not take that back.");
+    } finally {
+      setReturning(false);
+    }
+  };
 
   return (
     <div className="flex items-center gap-3.5 border-t-2 border-pen/[0.07] px-5 py-3.5 first:border-t-0">
@@ -146,24 +176,46 @@ function Row({ entry }: { entry: ActivityEntry }) {
           incoming ? "bg-[#2f7d3f]/12 text-[#2f7d3f]" : "bg-pen/[0.07] text-pen/70"
         }`}
       >
-        <Icon kind={entry.kind} waiting={waiting} />
+        <Icon kind={entry.kind} waiting={waiting} returned={returned} />
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-bold tracking-tight">{title(entry)}</p>
-        <p className="mt-0.5 flex items-center gap-1.5 text-[13px] font-medium text-pen/50">
+        <p
+          className={`truncate text-[15px] font-bold tracking-tight ${
+            returned ? "text-pen/45 line-through" : ""
+          }`}
+        >
+          {title(entry)}
+        </p>
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] font-medium text-pen/50">
           {waiting && !incoming && (
             <span className="inline-flex items-center gap-1 rounded-full bg-gold/20 px-2 py-0.5 text-[11px] font-bold text-gold-ink">
               <Clock size={10} strokeWidth={2.6} /> Waiting
+            </span>
+          )}
+          {returned && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-pen/[0.09] px-2 py-0.5 text-[11px] font-bold text-pen/60">
+              <Undo2 size={10} strokeWidth={2.6} /> Back with you
             </span>
           )}
           {timeAgo(entry.at)}
         </p>
       </div>
 
+      {canTakeBack && (
+        <button
+          onClick={() => void takeBack()}
+          disabled={returning}
+          className="btn btn-dim btn-sm shrink-0"
+        >
+          {returning ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />}
+          {returning ? "Returning" : "Take it back"}
+        </button>
+      )}
+
       <span
         className={`flex shrink-0 items-center gap-1.5 font-display text-[15px] font-bold tabular-nums ${
-          incoming ? "text-[#2f7d3f]" : "text-pen"
+          returned ? "text-pen/35 line-through" : incoming ? "text-[#2f7d3f]" : "text-pen"
         }`}
       >
         {/* Dollars need no logo; anything else is easier to recognise with one. */}
@@ -175,7 +227,16 @@ function Row({ entry }: { entry: ActivityEntry }) {
   );
 }
 
-function Icon({ kind, waiting }: { kind: ActivityEntry["kind"]; waiting: boolean }) {
+function Icon({
+  kind,
+  waiting,
+  returned,
+}: {
+  kind: ActivityEntry["kind"];
+  waiting: boolean;
+  returned: boolean;
+}) {
+  if (returned) return <Undo2 size={16} strokeWidth={2.3} />;
   if (kind === "swap") return <Repeat size={16} strokeWidth={2.3} />;
   if (kind === "claim") return <Sparkles size={16} strokeWidth={2.3} />;
   if (kind === "receive") return <ArrowDownLeft size={17} strokeWidth={2.4} />;

@@ -5,7 +5,7 @@ import { ArrowDown, Check, Loader2 } from "lucide-react";
 import { Sheet } from "@/components/Sheet";
 import { TokenIcon } from "@/components/TokenIcon";
 import { useToast } from "@/contexts/ToastContext";
-import { ApiError, api, type Money } from "@/lib/api";
+import { ApiError, api, newIdempotencyKey, type Money } from "@/lib/api";
 import { money } from "@/lib/format";
 
 /**
@@ -34,6 +34,11 @@ export function ConvertSheet({
   const [working, setWorking] = useState(false);
   const [done, setDone] = useState<Money | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * One key for this sheet, so a double-tap on Convert cannot convert twice.
+   * The sheet closes on success, so the next conversion gets a fresh one.
+   */
+  const [intent] = useState(newIdempotencyKey);
 
   const to = assets.find((asset) => asset !== from) ?? "XLM";
   const available = balances.find((balance) => balance.asset === from)?.amount ?? "0";
@@ -71,7 +76,7 @@ export function ConvertSheet({
     setWorking(true);
     setError(null);
     try {
-      const result = await api.convert(from, to, amount);
+      const result = await api.convert(from, to, amount, intent);
       setDone(result.received);
       onConverted();
     } catch (err) {

@@ -47,7 +47,7 @@ async function main() {
     slippageBps: chainConfig.swapSlippageBps,
   });
 
-  const app = buildApp({
+  const app = await buildApp({
     users: new InMemoryUserStore(),
     provider: new PrivyIdentityProvider(config.privy),
     adapter,
