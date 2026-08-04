@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import { ChevronDown, Home, LogOut, Wallet } from "lucide-react";
+import { ChevronDown, Home, LogOut, Settings, Wallet } from "lucide-react";
 import Link from "next/link";
 import { LoaderMark, Mark, Wordmark } from "./Mark";
+import { SignOutModal } from "./SignOutModal";
 import { useAuth } from "@/contexts/useAuth";
 import type { User } from "@/lib/api";
 import { avatarOf, handleOf } from "@/lib/user";
@@ -42,47 +42,6 @@ export function Avatar({
     >
       {initial}
     </span>
-  );
-}
-
-/** Signing out is reversible but surprising when accidental, so it asks. */
-function SignOutModal({ name, onClose }: { name: string; onClose: () => void }) {
-  const { signOut } = useAuth();
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  // Portaled to <body>: the header's stacking context would clip the overlay.
-  return createPortal(
-    <div className="overlay" onClick={onClose}>
-      <div
-        className="modal p-7"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Sign out"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <span className="modal-icon">
-          <LogOut size={20} strokeWidth={2.2} />
-        </span>
-        <p className="mt-5 font-display text-2xl font-bold tracking-tight">Sign out of {name}?</p>
-        <p className="mt-2 text-[15px] leading-relaxed text-pen/65">
-          Your money stays exactly where it is. Signing back in the same way brings it right back.
-        </p>
-        <div className="mt-7 flex gap-3">
-          <button onClick={onClose} autoFocus className="btn btn-dim flex-1">
-            Cancel
-          </button>
-          <button onClick={() => void signOut()} className="btn btn-danger flex-1">
-            Sign out
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
   );
 }
 
@@ -125,8 +84,16 @@ function AccountPill({ user }: { user: User }) {
           <p className="px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-pen/45">
             Signed in as {handle}
           </p>
-          <Link href="/wallet/activity" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
+          <Link href="/wallet/home" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
             <Wallet size={16} /> Your wallet
+          </Link>
+          <Link
+            href="/wallet/settings"
+            onClick={() => setOpen(false)}
+            className="menu-item"
+            role="menuitem"
+          >
+            <Settings size={16} /> Settings
           </Link>
           <Link href="/" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
             <Home size={16} /> Home

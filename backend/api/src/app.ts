@@ -6,7 +6,19 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify";
 import type { StellarAdapter } from "@selkie/chain-stellar";
-import type { HandleRef, Money, PaymentResult, SwapProvider } from "@selkie/core";
+import {
+  TransactionRejectedError,
+  isStellarAddress,
+  looksLikeAddress,
+  shortAddress,
+} from "@selkie/chain-stellar";
+import type {
+  HandleRef,
+  HistoryEntry,
+  Money,
+  PaymentResult,
+  SwapProvider,
+} from "@selkie/core";
 import { handleKey, parseHandle } from "@selkie/core";
 import type { ActivityStore } from "./activity/store";
 import { InMemoryActivityStore } from "./activity/store";
@@ -24,11 +36,21 @@ import type { UserStore } from "./identity/store";
 import type { IdentityProviderId, User } from "./identity/types";
 import { isPayable, userHandles } from "./identity/types";
 
+/** Just enough of the chain reader to merge deposits into a feed. */
+export interface DepositReader {
+  incoming(address: string, options?: { limit?: number }): Promise<HistoryEntry[]>;
+}
+
 export interface AppDeps {
   users: UserStore;
   provider: IdentityProvider;
   adapter: StellarAdapter;
   swap: SwapProvider;
+  /**
+   * Reads money that arrived without Selkie's help. Optional: without it the
+   * feed still works, it just cannot see deposits made from outside the app.
+   */
+  deposits?: DepositReader;
   activity?: ActivityStore;
   requests?: RequestStore;
   idempotency?: IdempotencyStore;
@@ -359,6 +381,62 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       return reply.code(400).send({ error: "Who are you paying, and how much?" });
     }
 
+    const money: Money = { amount: body.amount, asset: (body.asset ?? "USDC").toUpperCase() };
+
+    /**
+     * Paying an address instead of a handle.
+     *
+     * Handled before the handle path and separately from it, because almost
+     * nothing is shared: there is no escrow, nothing to claim, nobody to
+     * notify, and no way to provision the far end out of trouble. It exists
+     * because "send it to my other wallet" and "pay this exchange" are real
+     * and Selkie is not the only place money lives.
+     */
+    // Shaped like an address but failing its checksum is a typo, never a
+    // handle. Falling through to the handle path here would send real money to
+    // whoever happens to have registered that name.
+    if (looksLikeAddress(body.to) && !isStellarAddress(body.to)) {
+      return reply.code(400).send({
+        error: "That address is not right. Check it for a missing or changed character.",
+      });
+    }
+
+    if (isStellarAddress(body.to)) {
+      const to = body.to.trim().toUpperCase();
+      if (to === user.address) {
+        return reply.code(400).send({ error: "That is your own address." });
+      }
+
+      const receivable = await deps.adapter.canReceive(to, money.asset);
+      if (!receivable.ok) {
+        return reply.code(409).send({
+          error:
+            receivable.reason === "no-account"
+              ? "That address is not set up yet, so money sent to it would be lost. Ask them to add some XLM to it first."
+              : `That address cannot accept ${money.asset} yet. Ask them to turn it on, then try again.`,
+        });
+      }
+
+      return once(request, user.id, reply, async () => {
+        const result = await deps.adapter.transfer({
+          fromAddress: user.address,
+          toAddress: to,
+          amount: money,
+        });
+
+        await activity.record(user.id, {
+          kind: "send",
+          chain: "stellar",
+          amount: money,
+          counterparty: shortAddress(to),
+          status: "confirmed",
+          ref: result.ref,
+        });
+
+        return { status: result.status, ref: result.ref, message: "Sent.", waitingToBeClaimed: false };
+      });
+    }
+
     const from = userHandles(user)[0];
     if (!from) {
       return reply.code(409).send({
@@ -368,8 +446,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
     const to = toHandle(body.to, (body.platform ?? "x") as "x" | "telegram");
     if (!to) return reply.code(400).send({ error: "Who are you paying, and how much?" });
-
-    const money: Money = { amount: body.amount, asset: (body.asset ?? "USDC").toUpperCase() };
 
     return once(request, user.id, reply, async () => {
       const result = await pay(user, from, to, money, body.note);
@@ -684,6 +760,20 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
     return once(request, user.id, reply, async () => {
       const quote = await deps.swap.quote(source, target);
+
+      /**
+       * Make sure the money has somewhere to land.
+       *
+       * A conversion is a payment to yourself with a different asset coming
+       * out, so the same rule that governs being paid governs this: an account
+       * that has never opted into an asset cannot receive it, and the network
+       * rejects the whole transaction. Deposit provisions the wallet, but
+       * nobody has to visit Deposit before converting, and finding out at the
+       * point of sale is finding out too late. Idempotent and sponsored, so
+       * this costs the user nothing and does nothing when already set up.
+       */
+      await deps.adapter.ensureReceivable(user.address);
+
       const { ref } = await deps.swap.swap(accountOf(user), source, target);
 
       await activity.record(user.id, {
@@ -706,10 +796,26 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
     const { limit } = (request.query ?? {}) as { limit?: string };
     const parsed = Number(limit);
-    const entries = await activity.list(user.id, {
-      limit: Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 200) : undefined,
-    });
-    return { entries };
+    const cap = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 200) : 50;
+
+    const mine = await activity.list(user.id, { limit: cap });
+
+    // Money can arrive without Selkie ever being asked: someone pastes their
+    // address into an exchange or another wallet. Nothing writes an entry for
+    // that, so the feed has to go and look, or it says "nothing here yet" while
+    // the balance plainly disagrees.
+    let deposits: HistoryEntry[] = [];
+    if (deps.deposits) {
+      try {
+        deposits = await deps.deposits.incoming(user.address, { limit: cap });
+      } catch (error) {
+        // A feed missing its deposits is worse than the alternative, but far
+        // better than a feed that will not load at all because Horizon blinked.
+        request.log.warn({ error }, "could not read deposits");
+      }
+    }
+
+    return { entries: mergeActivity(mine, deposits, cap) };
   });
 
   app.setErrorHandler((error: FastifyError, _request, reply) => {
@@ -729,12 +835,75 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       return reply.code(status).send({ error: error.message });
     }
 
+    /**
+     * A transaction the network refused is not our server falling over, and
+     * saying so wastes the one piece of information that would let someone fix
+     * it. The codes are logged in full either way.
+     */
+    if (error instanceof TransactionRejectedError) {
+      console.error("[chain]", error.transactionCode, error.operationCodes.join(","));
+      return reply.code(409).send({ error: explainRejection(error) });
+    }
+
     // Never leak internals to a client; the detail goes to the server log.
     console.error("[api]", error);
     return reply.code(500).send({ error: "Something went wrong on our side." });
   });
 
   return app;
+}
+
+/**
+ * What a rejected transaction means, in words the person reading it can act on.
+ *
+ * Only the codes a real user can actually cause are translated. Everything else
+ * stays generic on purpose: a wrong guess about what went wrong is worse than
+ * admitting we do not know, because it sends someone off fixing the wrong thing.
+ */
+export function explainRejection(error: TransactionRejectedError): string {
+  const codes = error.operationCodes;
+
+  if (codes.some((code) => code.endsWith("underfunded"))) {
+    return "That is more than you have.";
+  }
+  if (codes.some((code) => code.endsWith("no_trust") || code.endsWith("no_issuer"))) {
+    return "Your wallet is not set up for that yet. Open Deposit once, then try again.";
+  }
+  if (codes.some((code) => code.endsWith("under_dest_min"))) {
+    return "The rate moved while you were confirming. Try that again.";
+  }
+  if (codes.some((code) => code.endsWith("too_few_offers"))) {
+    return "There is not enough being traded right now to convert that much. Try a smaller amount.";
+  }
+  if (codes.some((code) => code.endsWith("line_full"))) {
+    return "That would put more in your wallet than it can hold.";
+  }
+  if (error.transactionCode === "tx_insufficient_fee") {
+    return "The network is busy. Try that again in a moment.";
+  }
+  return "The network would not accept that. Nothing has moved, so it is safe to try again.";
+}
+
+/**
+ * One feed out of two sources: what Selkie did, and what the ledger saw.
+ *
+ * Selkie's own entry always wins a tie. Both describe the same transaction, but
+ * only one of them knows it was "from @amaka" rather than from a public key, and
+ * only one of them knows a payment is still waiting to be claimed. The ledger is
+ * here to fill the gap where Selkie has nothing written down at all.
+ */
+export function mergeActivity(
+  mine: HistoryEntry[],
+  deposits: HistoryEntry[],
+  limit: number,
+): HistoryEntry[] {
+  const known = new Set(mine.map((entry) => entry.ref).filter(Boolean));
+  const merged = [...mine, ...deposits.filter((entry) => !known.has(entry.ref))];
+
+  // Newest first. Horizon and the store each sort their own results, but
+  // interleaving two sorted lists does not keep either one's order.
+  merged.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  return merged.slice(0, limit);
 }
 
 /**

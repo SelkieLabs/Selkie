@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, Check, Clock, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, AtSign, Check, Clock, Loader2, Wallet } from "lucide-react";
 import { Avatar } from "@/components/Layout";
 import { PlatformLogo } from "@/components/Mark";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
@@ -15,10 +15,19 @@ import {
   type Recipient,
   type SendResult,
 } from "@/lib/api";
-import { DOLLAR, cleanAmount, usd } from "@/lib/format";
+import { DOLLAR, cleanAmount, looksLikeAddress, shortAddress, usd } from "@/lib/format";
 import { PLATFORM_FIELD, PLATFORM_LABEL, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
 
 type Step = "compose" | "confirm" | "done";
+
+/**
+ * Who the money is going to.
+ *
+ * Handles are the product and stay the default. Addresses exist because "send
+ * it to my other wallet" and "pay this exchange" are real things people need,
+ * and refusing them does not make Selkie simpler, it makes it a dead end.
+ */
+type Mode = "handle" | "address";
 
 const QUICK = ["5", "10", "25", "50"];
 
@@ -68,8 +77,10 @@ export function SendPanel({
 }) {
   const toast = useToast();
   const [step, setStep] = useState<Step>("compose");
+  const [mode, setMode] = useState<Mode>("handle");
   const [platform, setPlatform] = useState<Platform>("x");
   const [handle, setHandle] = useState("");
+  const [address, setAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [recipient, setRecipient] = useState<Recipient | null>(null);
@@ -86,13 +97,17 @@ export function SendPanel({
 
   const recent = useMemo(() => recentPeople(entries), [entries]);
   const cleanHandle = handle.trim().replace(/^@+/, "").toLowerCase();
+  const cleanAddress = address.trim().toUpperCase();
+  const addressValid = looksLikeAddress(cleanAddress);
   const value = Number(amount);
   const tooMuch = value > Number(balance);
-  const canContinue = cleanHandle.length > 0 && value > 0 && !tooMuch;
+  const destinationReady = mode === "handle" ? cleanHandle.length > 0 : addressValid;
+  const canContinue = destinationReady && value > 0 && !tooMuch;
 
   const reset = () => {
     setStep("compose");
     setHandle("");
+    setAddress("");
     setAmount("");
     setNote("");
     setRecipient(null);
@@ -102,8 +117,16 @@ export function SendPanel({
   };
 
   const toConfirm = async () => {
-    setChecking(true);
     setError(null);
+    // An address has nobody to look up. Nothing to show but the address itself,
+    // which is exactly why the confirm step matters more here, not less.
+    if (mode === "address") {
+      setIntent(newIdempotencyKey());
+      setStep("confirm");
+      return;
+    }
+
+    setChecking(true);
     try {
       setRecipient(await api.recipient(cleanHandle, platform));
       setIntent(newIdempotencyKey());
@@ -121,16 +144,17 @@ export function SendPanel({
     try {
       const sent = await api.send(
         {
-          to: cleanHandle,
+          to: mode === "address" ? cleanAddress : cleanHandle,
           amount,
           asset: DOLLAR,
-          platform,
+          ...(mode === "handle" ? { platform } : {}),
           note: note.trim() || undefined,
         },
         intent ?? undefined,
       );
       setResult(sent);
       setStep("done");
+      toast("success", sent.message ?? "Sent.");
       onSent();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "That did not go through.";
@@ -155,9 +179,15 @@ export function SendPanel({
           <p className="mt-5 font-display text-[2rem] font-bold leading-none tracking-tight">
             {usd(amount)}
           </p>
-          <p className="mt-2 flex items-center gap-2 font-display text-lg font-bold tracking-tight text-pen/75">
-            to @{cleanHandle} <PlatformLogo platform={platform} size={14} />
-          </p>
+          {mode === "address" ? (
+            <p className="mt-2 font-mono text-[15px] font-bold text-pen/75">
+              to {shortAddress(cleanAddress)}
+            </p>
+          ) : (
+            <p className="mt-2 flex items-center gap-2 font-display text-lg font-bold tracking-tight text-pen/75">
+              to @{cleanHandle} <PlatformLogo platform={platform} size={14} />
+            </p>
+          )}
           <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-pen/65">
             {result.message}
           </p>
@@ -165,6 +195,55 @@ export function SendPanel({
             Send someone else
           </button>
         </div>
+      </Panel>
+    );
+  }
+
+  if (step === "confirm" && mode === "address") {
+    return (
+      <Panel>
+        <button
+          onClick={() => setStep("compose")}
+          className="flex items-center gap-1.5 text-[13px] font-bold text-pen/55 transition-colors hover:text-pen"
+        >
+          <ArrowLeft size={15} /> Back
+        </button>
+
+        <div className="mt-5 flex flex-col items-center text-center">
+          <span className="grid h-16 w-16 place-items-center rounded-2xl border-2 border-pen/20 bg-pen/[0.06] text-pen/70">
+            <Wallet size={26} strokeWidth={2.2} />
+          </span>
+
+          <p className="mt-5 label">Sending to this wallet</p>
+          {/* Whole, never shortened. This is the last chance to catch a wrong
+              address, and you cannot check what you cannot see. */}
+          <p className="mt-2 max-w-md break-all rounded-xl bg-pen/[0.05] p-3.5 font-mono text-[13px] leading-relaxed text-pen/80">
+            {cleanAddress}
+          </p>
+
+          <p className="mt-6 font-display text-[3rem] font-bold leading-none tracking-tight">
+            {usd(amount)}
+          </p>
+
+          <p className="mt-5 flex max-w-md items-start gap-2.5 rounded-xl bg-[#a11d34]/[0.07] p-3.5 text-left text-[14px] leading-relaxed text-pen/75">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[#a11d34]" />
+            <span>
+              Check every character. Money sent to a wrong address cannot be undone by anyone, and
+              unlike a handle there is nobody here to send it back.
+            </span>
+          </p>
+        </div>
+
+        {error && <p className="mt-4 text-center text-sm font-semibold text-[#a11d34]">{error}</p>}
+
+        <button
+          onClick={() => void send()}
+          disabled={sending}
+          className="btn btn-gold mt-7 w-full"
+        >
+          {sending ? <Loader2 size={16} className="animate-spin" /> : null}
+          {sending ? "Sending" : `Send ${usd(amount)}`}
+        </button>
       </Panel>
     );
   }
@@ -243,10 +322,54 @@ export function SendPanel({
       <PanelHead
         eyebrow="Send"
         title="Who are you paying?"
-        blurb="Their handle is enough. They do not need an account, a wallet or an app."
+        blurb={
+          mode === "handle"
+            ? "Their handle is enough. They do not need an account, a wallet or an app."
+            : "Straight to a wallet address. Nothing waits and nothing can be taken back, so check it twice."
+        }
       />
 
-      {recent.length > 0 && (
+      <div className="seg mt-5">
+        <button
+          type="button"
+          onClick={() => setMode("handle")}
+          className={`seg-btn ${mode === "handle" ? "seg-on" : ""}`}
+        >
+          <AtSign size={14} strokeWidth={2.5} /> A handle
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("address")}
+          className={`seg-btn ${mode === "address" ? "seg-on" : ""}`}
+        >
+          <Wallet size={14} strokeWidth={2.5} /> An address
+        </button>
+      </div>
+
+      {mode === "address" && (
+        <>
+          <label className="label mt-5 block" htmlFor="send-address">
+            Wallet address
+          </label>
+          <textarea
+            id="send-address"
+            className="field mt-2 min-h-[5.25rem] resize-none break-all font-mono text-[13px] leading-relaxed"
+            placeholder="G…"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+          />
+          {cleanAddress.length > 0 && !addressValid && (
+            <p className="mt-2 text-sm font-semibold text-[#a11d34]">
+              That is not a complete address. It starts with G and is 56 characters long.
+            </p>
+          )}
+        </>
+      )}
+
+      {mode === "handle" && recent.length > 0 && (
         <div className="mt-6">
           <p className="label">Recently paid</p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -271,28 +394,32 @@ export function SendPanel({
         </div>
       )}
 
-      <p className="label mt-6">Where</p>
-      <PlatformToggle value={platform} onChange={setPlatform} idPrefix="send-platform" />
+      {mode === "handle" && (
+        <>
+          <p className="label mt-6">Where</p>
+          <PlatformToggle value={platform} onChange={setPlatform} idPrefix="send-platform" />
 
-      <label className="label mt-5 block" htmlFor="send-handle">
-        {PLATFORM_FIELD[platform]}
-      </label>
-      <div className="relative mt-2">
-        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-pen/40">
-          @
-        </span>
-        <input
-          id="send-handle"
-          className="field pl-9"
-          placeholder={PLATFORM_PLACEHOLDER[platform]}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          value={handle.replace(/^@+/, "")}
-          onChange={(e) => setHandle(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && canContinue && void toConfirm()}
-        />
-      </div>
+          <label className="label mt-5 block" htmlFor="send-handle">
+            {PLATFORM_FIELD[platform]}
+          </label>
+          <div className="relative mt-2">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-pen/40">
+              @
+            </span>
+            <input
+              id="send-handle"
+              className="field pl-9"
+              placeholder={PLATFORM_PLACEHOLDER[platform]}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={handle.replace(/^@+/, "")}
+              onChange={(e) => setHandle(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && canContinue && void toConfirm()}
+            />
+          </div>
+        </>
+      )}
 
       <label className="label mt-5 block" htmlFor="send-amount">
         How much

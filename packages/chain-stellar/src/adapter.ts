@@ -166,6 +166,33 @@ export class StellarAdapter implements ChainAdapter {
     return { address, accepts: this.assets.list().map((asset) => asset.code) };
   }
 
+  /**
+   * Can this address actually be paid this asset, right now?
+   *
+   * Read-only, and for addresses Selkie does not own. Stellar fails both of
+   * these at the sender's end, after the money has left: an address with no
+   * account behind it cannot be paid at all, and one that has never opted into
+   * an asset bounces it back. Selkie provisions its own users out of that
+   * problem, but it cannot provision a stranger's wallet, so the only honest
+   * thing to do is look before sending and say plainly what is wrong.
+   */
+  async canReceive(
+    address: string,
+    code: string,
+  ): Promise<{ ok: true } | { ok: false; reason: "no-account" | "no-trustline" }> {
+    if (!(await this.network.accountExists(address))) {
+      return { ok: false, reason: "no-account" };
+    }
+
+    const def = this.assets.get(code);
+    // Native XLM needs no trustline: every account holds it by definition.
+    if (!def.issuer) return { ok: true };
+
+    return (await hasTrustline(this.network, address, def.code, def.issuer))
+      ? { ok: true }
+      : { ok: false, reason: "no-trustline" };
+  }
+
   async getBalance(account: Account): Promise<Balance> {
     const balances: Money[] = [];
     try {

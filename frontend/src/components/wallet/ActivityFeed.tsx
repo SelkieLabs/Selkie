@@ -5,7 +5,8 @@ import { ArrowDownLeft, ArrowUpRight, Clock, Loader2, Repeat, Sparkles, Undo2 } 
 import { TokenIcon } from "@/components/TokenIcon";
 import { useToast } from "@/contexts/ToastContext";
 import { ApiError, api, type ActivityEntry } from "@/lib/api";
-import { DOLLAR, dayKey, dayLabel, money, timeAgo, usd } from "@/lib/format";
+import { dayKey, dayLabel, money, timeAgo } from "@/lib/format";
+import { MASK, useAmountsHidden } from "@/lib/privacy";
 
 type Filter = "all" | "in" | "out";
 
@@ -137,15 +138,12 @@ export function ActivityFeed({
 
 function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void }) {
   const toast = useToast();
+  const hidden = useAmountsHidden();
   const [returning, setReturning] = useState(false);
 
   const incoming = INCOMING[entry.kind] ?? false;
   const waiting = entry.status === "pending";
   const returned = entry.status === "returned";
-  const isDollars = entry.amount.asset === DOLLAR;
-  const amount = isDollars
-    ? usd(entry.amount.amount)
-    : `${money(entry.amount.amount)} ${entry.amount.asset}`;
 
   // Money can only come back once it has finished waiting, so the button only
   // appears when pressing it would actually work.
@@ -170,24 +168,36 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
   };
 
   return (
-    <div className="flex items-center gap-3.5 border-t-2 border-pen/[0.07] px-5 py-3.5 first:border-t-0">
+    <div className="flex items-center gap-3 border-t-2 border-pen/[0.07] px-4 py-3.5 first:border-t-0 sm:gap-3.5 sm:px-5">
+      {/* Direction first, as a boxed arrow: which way the money went is the one
+          thing worth knowing before reading anything else in the row. */}
       <span
-        className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${
-          incoming ? "bg-[#2f7d3f]/12 text-[#2f7d3f]" : "bg-pen/[0.07] text-pen/70"
+        className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border-2 ${
+          returned
+            ? "border-pen/15 bg-pen/[0.05] text-pen/45"
+            : incoming
+              ? "border-[#2f7d3f]/25 bg-[#2f7d3f]/10 text-[#2f7d3f]"
+              : "border-pen/20 bg-pen/[0.05] text-pen/70"
         }`}
       >
         <Icon kind={entry.kind} waiting={waiting} returned={returned} />
       </span>
 
+      <TokenIcon asset={entry.amount.asset} size={30} />
+
       <div className="min-w-0 flex-1">
         <p
-          className={`truncate text-[15px] font-bold tracking-tight ${
-            returned ? "text-pen/45 line-through" : ""
+          className={`flex items-baseline gap-1.5 font-display text-[17px] font-bold tracking-tight tabular-nums ${
+            returned ? "text-pen/40 line-through" : incoming ? "text-[#2f7d3f]" : "text-pen"
           }`}
         >
-          {title(entry)}
+          <span>
+            {incoming ? "+" : "−"}
+            {hidden ? MASK : money(entry.amount.amount)}
+          </span>
+          <span className="text-[13px] font-bold text-pen/45">{entry.amount.asset}</span>
         </p>
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] font-medium text-pen/50">
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 truncate text-[13px] font-medium text-pen/50">
           {waiting && !incoming && (
             <span className="inline-flex items-center gap-1 rounded-full bg-gold/20 px-2 py-0.5 text-[11px] font-bold text-gold-ink">
               <Clock size={10} strokeWidth={2.6} /> Waiting
@@ -198,7 +208,7 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
               <Undo2 size={10} strokeWidth={2.6} /> Back with you
             </span>
           )}
-          {timeAgo(entry.at)}
+          {title(entry)}
         </p>
       </div>
 
@@ -213,16 +223,7 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
         </button>
       )}
 
-      <span
-        className={`flex shrink-0 items-center gap-1.5 font-display text-[15px] font-bold tabular-nums ${
-          returned ? "text-pen/35 line-through" : incoming ? "text-[#2f7d3f]" : "text-pen"
-        }`}
-      >
-        {/* Dollars need no logo; anything else is easier to recognise with one. */}
-        {!isDollars && <TokenIcon asset={entry.amount.asset} size={18} />}
-        {incoming ? "+" : "−"}
-        {amount}
-      </span>
+      <span className="shrink-0 text-[13px] font-semibold text-pen/40">{timeAgo(entry.at)}</span>
     </div>
   );
 }
@@ -243,17 +244,23 @@ function Icon({
   return waiting ? <Clock size={16} strokeWidth={2.3} /> : <ArrowUpRight size={17} strokeWidth={2.4} />;
 }
 
-/** What a row says. Plain sentences, never a transaction type. */
+/**
+ * The line under the amount. Plain sentences, never a transaction type.
+ *
+ * Lower case and short, because it sits beneath the number rather than above it
+ * and is read second. "from @amaka" is a caption; "From @amaka" is a heading
+ * competing with the money for the eye.
+ */
 function title(entry: ActivityEntry): string {
   switch (entry.kind) {
     case "receive":
-      return entry.counterparty ? `From ${entry.counterparty}` : "Money in";
+      return entry.counterparty ? `from ${entry.counterparty}` : "money in";
     case "claim":
-      return "Money that was waiting for you";
+      return "was waiting for you";
     case "swap":
-      return entry.counterparty ? `Converted to ${entry.counterparty}` : "Converted";
+      return entry.counterparty ? `converted to ${entry.counterparty}` : "converted";
     default:
-      return entry.counterparty ? `Sent to ${entry.counterparty}` : "Money out";
+      return entry.counterparty ? `to ${entry.counterparty}` : "money out";
   }
 }
 

@@ -1,4 +1,4 @@
-import { Operation } from "@stellar/stellar-sdk";
+import { Asset, Operation } from "@stellar/stellar-sdk";
 import type { Account, Money, SwapProvider, SwapQuote } from "@selkie/core";
 import { applySlippage, fromStroops, toStellarAmount, toStroops } from "./amounts";
 import type { AssetRegistry } from "./assets";
@@ -33,6 +33,20 @@ export class StellarSwapProvider implements SwapProvider {
    * is what the slippage floor protects against.
    */
   async quote(from: Money, toAsset: string): Promise<SwapQuote> {
+    const { received } = await this.#bestRoute(from, toAsset);
+    return { provider: this.id, from, to: { amount: received, asset: toAsset } };
+  }
+
+  /**
+   * The route behind a quote, not just its price.
+   *
+   * Stellar can reach an asset through intermediate ones, and the best price is
+   * often a hop or two away. Quoting the routed price and then executing without
+   * the route is quoting one trade and making another: the direct market is
+   * worse, or missing entirely, so the payment either fills below the number the
+   * user was shown or fails against its own slippage floor.
+   */
+  async #bestRoute(from: Money, toAsset: string): Promise<{ received: string; path: Asset[] }> {
     const sendAsset = this.assets.toStellarAsset(from.asset);
     const receiveAsset = this.assets.toStellarAsset(toAsset);
     const sendAmount = toStellarAmount(from.amount);
@@ -48,11 +62,7 @@ export class StellarSwapProvider implements SwapProvider {
       );
     }
 
-    return {
-      provider: this.id,
-      from,
-      to: { amount: best.destination_amount, asset: toAsset },
-    };
+    return { received: best.destination_amount, path: (best.path ?? []).map(toAsset_) };
   }
 
   /**
@@ -66,8 +76,8 @@ export class StellarSwapProvider implements SwapProvider {
       throw new NoSwapRouteError(`Selkie cannot sign for ${account.address}.`);
     }
 
-    const quote = await this.quote(from, toAsset);
-    const minimumReceived = applySlippage(toStroops(quote.to.amount), this.options.slippageBps);
+    const { received, path } = await this.#bestRoute(from, toAsset);
+    const minimumReceived = applySlippage(toStroops(received), this.options.slippageBps);
 
     const response = await this.network.submit({
       source: account.address,
@@ -78,7 +88,8 @@ export class StellarSwapProvider implements SwapProvider {
           destination: account.address,
           destAsset: this.assets.toStellarAsset(toAsset),
           destMin: fromStroops(minimumReceived),
-          path: [],
+          // The route the price came from. Anything else is a different trade.
+          path,
         }),
       ],
       signers: [signer],
@@ -90,3 +101,16 @@ export class StellarSwapProvider implements SwapProvider {
 }
 
 export class NoSwapRouteError extends Error {}
+
+/**
+ * Horizon describes a hop as loose JSON. The SDK wants an Asset, and the two
+ * disagree about what to call the native one.
+ */
+function toAsset_(hop: {
+  asset_type: string;
+  asset_code?: string;
+  asset_issuer?: string;
+}): Asset {
+  if (hop.asset_type === "native") return Asset.native();
+  return new Asset(hop.asset_code!, hop.asset_issuer!);
+}

@@ -2,6 +2,7 @@ import {
   InMemorySignerProvider,
   KeypairSigner,
   StellarAdapter,
+  StellarDepositReader,
   StellarSwapProvider,
   publicConfig,
   testnetConfig,
@@ -94,6 +95,7 @@ async function main() {
       if (full) await collectFor({ identity, activity }, full);
     },
     onError: (error) => console.error("[claims]", error),
+    deposits: new StellarDepositReader(adapter.network, adapter.assets),
   });
   watcher.start(config.claimPollSeconds * 1000);
 

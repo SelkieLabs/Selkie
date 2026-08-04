@@ -13,6 +13,54 @@ import type { Signer } from "./signer";
 
 export class StellarNetworkError extends Error {}
 
+/**
+ * A transaction the network refused, with the reason it gave.
+ *
+ * Horizon buries the only useful field in the response, six levels down an axios
+ * error, and printing that error logs three hundred lines of socket internals
+ * with the answer replaced by `[Object]`. That is how a real, specific failure
+ * ("your account cannot hold this asset") reaches someone as "something went
+ * wrong on our side". The code comes out here, once, where every caller can use
+ * it and every log will show it.
+ */
+export class TransactionRejectedError extends StellarNetworkError {
+  constructor(
+    message: string,
+    /** e.g. "tx_failed". */
+    readonly transactionCode: string | undefined,
+    /** Per operation, in order. e.g. ["op_no_trust"]. */
+    readonly operationCodes: string[],
+  ) {
+    super(message);
+    this.name = "TransactionRejectedError";
+  }
+}
+
+/** Pull Horizon's result codes out of whatever it threw. */
+function rejectedFrom(error: unknown): TransactionRejectedError | null {
+  const codes = (
+    error as {
+      response?: {
+        data?: {
+          extras?: {
+            result_codes?: { transaction?: string; operations?: string[] };
+          };
+        };
+      };
+    }
+  )?.response?.data?.extras?.result_codes;
+
+  if (!codes) return null;
+
+  const operations = codes.operations ?? [];
+  const detail = [codes.transaction, ...operations].filter(Boolean).join(" / ");
+  return new TransactionRejectedError(
+    `The network refused the transaction: ${detail || "no reason given"}`,
+    codes.transaction,
+    operations,
+  );
+}
+
 /** Enough fee headroom that a busy ledger does not strand a user's payment. */
 const FEE_MULTIPLIER = 10n;
 const TX_TIMEOUT_SECONDS = 60;
@@ -86,10 +134,16 @@ export class StellarNetwork {
     const tx = builder.setTimeout(TX_TIMEOUT_SECONDS).build();
     for (const signer of params.signers) await signer.sign(tx);
 
-    if (!params.sponsor) {
-      return this.horizon.submitTransaction(tx);
+    try {
+      if (!params.sponsor) {
+        return await this.horizon.submitTransaction(tx);
+      }
+      return await this.horizon.submitTransaction(await this.feeBump(tx, params.sponsor));
+    } catch (error) {
+      // Rethrow with the reason attached. Anything that is not a rejection (a
+      // timeout, Horizon being down) is passed through untouched.
+      throw rejectedFrom(error) ?? error;
     }
-    return this.horizon.submitTransaction(await this.feeBump(tx, params.sponsor));
   }
 
   /**
