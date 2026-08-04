@@ -3,6 +3,7 @@ import {
   InMemorySignerProvider,
   KeypairSigner,
   StellarAdapter,
+  StellarDepositReader,
   StellarSwapProvider,
   publicConfig,
   testnetConfig,
@@ -52,6 +53,7 @@ async function main() {
     provider: new PrivyIdentityProvider(config.privy),
     adapter,
     swap,
+    deposits: new StellarDepositReader(adapter.network, adapter.assets),
   });
 
   await app.listen({ port: config.port, host: "0.0.0.0" });

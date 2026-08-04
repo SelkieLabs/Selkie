@@ -21,7 +21,7 @@ public/
 | URL              | File                          |
 | ---------------- | ----------------------------- |
 | `/`              | `app/page.tsx`                |
-| `/wallet`        | redirects to `/wallet/activity` |
+| `/wallet`        | redirects to `/wallet/home` |
 | `/wallet/[tab]`  | `app/wallet/[tab]/page.tsx`   |
 | anything else    | `app/not-found.tsx` (→ `/`)   |
 

@@ -6,6 +6,7 @@ export * from "./amounts";
 export * from "./assets";
 export * from "./bootstrap";
 export * from "./config";
+export * from "./deposits";
 export * from "./directory";
 export * from "./escrow";
 export * from "./network";

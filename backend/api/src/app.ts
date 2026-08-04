@@ -6,7 +6,13 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify";
 import type { StellarAdapter } from "@selkie/chain-stellar";
-import type { HandleRef, Money, PaymentResult, SwapProvider } from "@selkie/core";
+import type {
+  HandleRef,
+  HistoryEntry,
+  Money,
+  PaymentResult,
+  SwapProvider,
+} from "@selkie/core";
 import { handleKey, parseHandle } from "@selkie/core";
 import type { ActivityStore } from "./activity/store";
 import { InMemoryActivityStore } from "./activity/store";
@@ -23,11 +29,21 @@ import type { UserStore } from "./identity/store";
 import type { IdentityProviderId, User } from "./identity/types";
 import { isPayable, userHandles } from "./identity/types";
 
+/** Just enough of the chain reader to merge deposits into a feed. */
+export interface DepositReader {
+  incoming(address: string, options?: { limit?: number }): Promise<HistoryEntry[]>;
+}
+
 export interface AppDeps {
   users: UserStore;
   provider: IdentityProvider;
   adapter: StellarAdapter;
   swap: SwapProvider;
+  /**
+   * Reads money that arrived without Selkie's help. Optional: without it the
+   * feed still works, it just cannot see deposits made from outside the app.
+   */
+  deposits?: DepositReader;
   activity?: ActivityStore;
   requests?: RequestStore;
   idempotency?: IdempotencyStore;
@@ -720,10 +736,26 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
     const { limit } = (request.query ?? {}) as { limit?: string };
     const parsed = Number(limit);
-    const entries = await activity.list(user.id, {
-      limit: Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 200) : undefined,
-    });
-    return { entries };
+    const cap = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 200) : 50;
+
+    const mine = await activity.list(user.id, { limit: cap });
+
+    // Money can arrive without Selkie ever being asked: someone pastes their
+    // address into an exchange or another wallet. Nothing writes an entry for
+    // that, so the feed has to go and look, or it says "nothing here yet" while
+    // the balance plainly disagrees.
+    let deposits: HistoryEntry[] = [];
+    if (deps.deposits) {
+      try {
+        deposits = await deps.deposits.incoming(user.address, { limit: cap });
+      } catch (error) {
+        // A feed missing its deposits is worse than the alternative, but far
+        // better than a feed that will not load at all because Horizon blinked.
+        request.log.warn({ error }, "could not read deposits");
+      }
+    }
+
+    return { entries: mergeActivity(mine, deposits, cap) };
   });
 
   app.setErrorHandler((error: FastifyError, _request, reply) => {
@@ -749,6 +781,28 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   return app;
+}
+
+/**
+ * One feed out of two sources: what Selkie did, and what the ledger saw.
+ *
+ * Selkie's own entry always wins a tie. Both describe the same transaction, but
+ * only one of them knows it was "from @amaka" rather than from a public key, and
+ * only one of them knows a payment is still waiting to be claimed. The ledger is
+ * here to fill the gap where Selkie has nothing written down at all.
+ */
+export function mergeActivity(
+  mine: HistoryEntry[],
+  deposits: HistoryEntry[],
+  limit: number,
+): HistoryEntry[] {
+  const known = new Set(mine.map((entry) => entry.ref).filter(Boolean));
+  const merged = [...mine, ...deposits.filter((entry) => !known.has(entry.ref))];
+
+  // Newest first. Horizon and the store each sort their own results, but
+  // interleaving two sorted lists does not keep either one's order.
+  merged.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  return merged.slice(0, limit);
 }
 
 /**

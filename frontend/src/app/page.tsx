@@ -28,7 +28,7 @@ export default function Landing() {
   const { status, signIn } = useAuth();
 
   // Someone with an account came for their wallet, not the pitch.
-  if (status === "ready" || status === "needs-account") return <Redirect to="/wallet/activity" />;
+  if (status === "ready" || status === "needs-account") return <Redirect to="/wallet/home" />;
 
   // `loading` deliberately falls through to the page. The landing is the one
   // screen that must render before we know who is looking at it: a spinner here

@@ -1,20 +1,26 @@
 export const ASSETS = ["USDC", "XLM"] as const;
 export type Asset = (typeof ASSETS)[number];
 
-/** What each asset is called in the interface. USDC is money, so it reads as money. */
+/** What each asset is called in the interface. */
 export const ASSET_LABEL: Record<string, string> = {
-  USDC: "Dollars",
+  USDC: "USDC",
   XLM: "XLM",
 };
 
 /** The dollar asset. Balances, sends and totals default to it. */
 export const DOLLAR = "USDC";
 
-/** "$12.50". Only ever used for the asset that actually is dollars. */
+/**
+ * "12.50 USDC". Only ever used for the asset that actually is dollars.
+ *
+ * Named, not signed. A dollar sign in front of a balance claims it is dollars in
+ * a bank; what someone holds here is USDC, worth a dollar because it is backed
+ * by one, and saying so costs four characters. It also stops the interface
+ * quietly implying the XLM sitting next to it is dollars too.
+ */
 export function usd(value: number | string): string {
   const n = Number(value);
-  if (!Number.isFinite(n)) return "$0.00";
-  return `$${money(n)}`;
+  return Number.isFinite(n) ? `${money(n)} ${DOLLAR}` : `0.00 ${DOLLAR}`;
 }
 
 /**

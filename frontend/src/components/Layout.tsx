@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Home, LogOut, Wallet } from "lucide-react";
+import { ChevronDown, Home, LogOut, Settings, Wallet } from "lucide-react";
 import Link from "next/link";
 import { LoaderMark, Mark, Wordmark } from "./Mark";
 import { useAuth } from "@/contexts/useAuth";
@@ -125,8 +125,16 @@ function AccountPill({ user }: { user: User }) {
           <p className="px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-pen/45">
             Signed in as {handle}
           </p>
-          <Link href="/wallet/activity" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
+          <Link href="/wallet/home" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
             <Wallet size={16} /> Your wallet
+          </Link>
+          <Link
+            href="/wallet/settings"
+            onClick={() => setOpen(false)}
+            className="menu-item"
+            role="menuitem"
+          >
+            <Settings size={16} /> Settings
           </Link>
           <Link href="/" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
             <Home size={16} /> Home
