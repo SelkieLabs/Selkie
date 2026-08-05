@@ -91,7 +91,10 @@ export function BalanceCard({
           <span className="block h-[3.25rem] w-52 animate-pulse rounded-xl bg-pen/[0.12]" />
         ) : (
           <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="font-display text-[2.75rem] font-bold leading-none tracking-tight tabular-nums sm:text-[3.35rem]">
+            {/* The dollar sign sits outside the masked part, so hiding the
+                balance hides the number and still reads as money. */}
+            <span className="flex items-baseline font-display text-[2.75rem] font-bold leading-none tracking-tight tabular-nums sm:text-[3.35rem]">
+              <span className="mr-0.5 text-[0.62em] leading-none opacity-70">$</span>
               {hidden ? MASK : money(dollars)}
             </span>
             <span className="flex items-center gap-1.5 rounded-full border-2 border-pen/20 bg-card-bright/60 py-1 pl-1 pr-2.5">

@@ -177,7 +177,7 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
             ? "border-pen/15 bg-pen/[0.05] text-pen/45"
             : incoming
               ? "border-[#2f7d3f]/25 bg-[#2f7d3f]/10 text-[#2f7d3f]"
-              : "border-pen/20 bg-pen/[0.05] text-pen/70"
+              : "border-[#b91c34]/25 bg-[#b91c34]/[0.08] text-[#b91c34]"
         }`}
       >
         <Icon kind={entry.kind} waiting={waiting} returned={returned} />
@@ -188,7 +188,10 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
       <div className="min-w-0 flex-1">
         <p
           className={`flex items-baseline gap-1.5 font-display text-[17px] font-bold tracking-tight tabular-nums ${
-            returned ? "text-pen/40 line-through" : incoming ? "text-[#2f7d3f]" : "text-pen"
+            // Money in reads green, money out reads red, at a glance and
+            // without reading the number. Returned money is neither: it never
+            // went anywhere, so it is struck out and greyed instead.
+            returned ? "text-pen/40 line-through" : incoming ? "text-[#2f7d3f]" : "text-[#b91c34]"
           }`}
         >
           <span>

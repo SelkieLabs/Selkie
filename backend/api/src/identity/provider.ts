@@ -44,6 +44,7 @@ export class FakeIdentityProvider implements IdentityProvider {
       {
         provider,
         subject,
+        attestation: "login",
         username: username || undefined,
         displayName: username || undefined,
       },

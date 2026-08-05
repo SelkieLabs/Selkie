@@ -264,3 +264,85 @@ describe("identity", () => {
     assert.throws(() => new FakeIdentityProvider(false));
   });
 });
+
+/**
+ * What a bot may and may not do on somebody's behalf.
+ *
+ * A bot token says "the platform told me this account wrote this message". That
+ * is enough to act on an instruction from someone who already has an account,
+ * and deliberately not enough to create one or to claim a handle. The gap
+ * matters because the bot secret lives on a worker rather than in a user's
+ * browser, and one leaked string must not be able to empty the escrow.
+ */
+describe("acting on a message rather than a sign-in", () => {
+  let users: InMemoryUserStore;
+  let adapter: AdapterSpy;
+  let service: IdentityService;
+
+  /** Verifies anything, and vouches only for authorship. */
+  const botProvider = {
+    id: "bot-test",
+    verify: async (token: string) => {
+      const [, provider, subject, username] = token.split(":") as [
+        string,
+        "x" | "telegram",
+        string,
+        string,
+      ];
+      return [
+        { provider, subject, username: username || undefined, attestation: "authorship" as const },
+      ];
+    },
+  };
+
+  beforeEach(() => {
+    users = new InMemoryUserStore();
+    adapter = new AdapterSpy();
+    service = new IdentityService({
+      users,
+      provider: botProvider,
+      adapter: adapter as unknown as StellarAdapter,
+    });
+  });
+
+  test("a message never creates an account, even when asked to", async () => {
+    // Otherwise a leaked bot secret mints a wallet for every handle on X, each
+    // one costing the sponsor a reserve.
+    const result = await service.signIn("bot:x:x1:amaka", { createIfMissing: true });
+
+    assert.equal(result, null);
+    assert.equal(adapter.addresses, 0, "no wallet was provisioned");
+  });
+
+  test("a message can act for somebody who already signed in", async () => {
+    const real = new IdentityService({
+      users,
+      provider: new FakeIdentityProvider(true),
+      adapter: adapter as unknown as StellarAdapter,
+    });
+    await real.signIn(xToken("x1", "amaka"), { createIfMissing: true });
+
+    const result = await service.signIn("bot:x:x1:amaka", { createIfMissing: false });
+
+    assert.ok(result, "the bot is recognised as that person");
+    assert.equal(result.isNew, false);
+  });
+
+  test("a message can never attach a handle, because that releases the money", async () => {
+    // The theft this stops: hold the bot secret, attach @victim to your own
+    // account, and everything the escrow was keeping for them lands in yours.
+    const real = new IdentityService({
+      users,
+      provider: new FakeIdentityProvider(true),
+      adapter: adapter as unknown as StellarAdapter,
+    });
+    const owner = await real.signIn(googleToken("attacker"), { createIfMissing: true });
+    assert.ok(owner);
+
+    adapter.pending.set("x:victim", [1n, 2n]);
+
+    await assert.rejects(() => service.link(owner.user.id, "bot:x:victim-id:victim"));
+    assert.deepEqual(adapter.claims, [], "nothing was released");
+    assert.deepEqual(userHandles(owner.user), [], "and no handle was attached");
+  });
+});

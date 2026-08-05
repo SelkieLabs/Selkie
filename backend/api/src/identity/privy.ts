@@ -109,6 +109,9 @@ export class PrivyIdentityProvider implements IdentityProvider {
       identities.push({
         provider,
         subject,
+        // Privy only answers for a token the person signed in with, so this is
+        // proof of ownership and may create a wallet or claim a handle.
+        attestation: "login",
         username: account.username ?? undefined,
         displayName: account.name ?? account.first_name ?? undefined,
         avatarUrl: account.profile_picture_url ?? undefined,

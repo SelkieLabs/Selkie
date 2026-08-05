@@ -28,11 +28,30 @@ export function isPayable(provider: IdentityProviderId): boolean {
 }
 
 /**
+ * What a provider is actually vouching for.
+ *
+ * These are not the same claim, and treating them as one is how money gets
+ * taken.
+ *
+ *  - "login": this person proved they control the account, just now, by signing
+ *    in. It is the only thing strong enough to create a wallet or to attach a
+ *    handle to one, because attaching a handle releases whatever the escrow has
+ *    been holding for it.
+ *  - "authorship": a platform said this account wrote this message. Plenty to
+ *    act on an instruction from someone who already has an account. Not proof of
+ *    ownership, because the bot is asserting it on their behalf and a leaked bot
+ *    secret would otherwise be a way to claim any handle's waiting money.
+ */
+export type Attestation = "login" | "authorship";
+
+/**
  * A verified identity, as returned by an identity provider after a real login.
  * Never constructed from user input.
  */
 export interface VerifiedIdentity {
   provider: IdentityProviderId;
+  /** How this was proven. Required, because a default here would be a guess. */
+  attestation: Attestation;
   /**
    * The provider's permanent id for this person. For X this is the numeric user
    * id, NOT the @handle: handles get renamed and re-registered, and keying on
@@ -74,4 +93,14 @@ export function userHandles(user: User): HandleRef[] {
 
 export function identityKey(provider: IdentityProviderId, subject: string): string {
   return `${provider}:${subject}`;
+}
+
+/**
+ * Whether these identities are proof of ownership, as opposed to proof that
+ * somebody sent a message. Only the former may create or claim an account.
+ */
+export function provesOwnership(identities: VerifiedIdentity[]): boolean {
+  return (
+    identities.length > 0 && identities.every((identity) => identity.attestation === "login")
+  );
 }

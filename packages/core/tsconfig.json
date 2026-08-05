@@ -2,7 +2,12 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    // Core has no dependencies, so unlike every other workspace nothing drags
+    // Node's types in behind it, and its tests run on node:test. Declared here
+    // for the tests only: core's own code stays runtime-neutral and uses Web
+    // Crypto, so it runs in a browser as happily as on a server.
+    "types": ["node"]
   },
   "include": ["src"]
 }

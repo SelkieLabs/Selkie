@@ -20,6 +20,15 @@ export interface ApiConfig {
   sponsorSecret: string;
   /** Attests logins to the escrow contract. Its only power is releasing a claim. */
   oracleSecret: string;
+  /**
+   * Lets the X and Telegram workers act for the person who messaged them.
+   *
+   * Optional, and absent by default on purpose. This secret can act as any user
+   * who has linked X or Telegram, so a deployment that runs no bot should not be
+   * holding one: with it unset the bot provider is never installed and the whole
+   * path does not exist.
+   */
+  botSecret?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -34,6 +43,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     },
     sponsorSecret: required(env, "SELKIE_SPONSOR_SECRET"),
     oracleSecret: required(env, "SELKIE_ORACLE_SECRET"),
+    botSecret: env.SELKIE_BOT_SECRET || undefined,
   };
 }
 

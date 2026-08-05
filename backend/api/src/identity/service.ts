@@ -1,10 +1,11 @@
 import type { HandleRef, Money } from "@selkie/core";
 import type { StellarAdapter } from "@selkie/chain-stellar";
+import { IdentityVerificationError } from "./provider";
 import type { IdentityProvider } from "./provider";
 import type { UserStore } from "./store";
 import { IdentityAlreadyLinkedError } from "./store";
 import type { IdentityProviderId, LinkedIdentity, User, VerifiedIdentity } from "./types";
-import { identityHandle, isPayable, userHandles } from "./types";
+import { identityHandle, isPayable, provesOwnership, userHandles } from "./types";
 
 /**
  * The account model in one place: signing in, linking a handle, releasing money
@@ -80,6 +81,17 @@ export class IdentityService {
 
     if (!options.createIfMissing) return null;
 
+    /**
+     * A bot may act for someone with an account. It may never conjure one.
+     *
+     * A bot token says "X told me this account wrote this message", which is not
+     * the same as someone signing in. Letting it create accounts would mean a
+     * leaked bot secret could mint a wallet for any handle on the platform,
+     * spending the sponsor's reserves on each, and would put a stranger's future
+     * money into an account they never opened.
+     */
+    if (!provesOwnership(identities)) return null;
+
     const address = await this.#addressFor(token, identities);
     const created = await this.deps.users.create({
       address,
@@ -99,6 +111,22 @@ export class IdentityService {
   async link(userId: string, token: string): Promise<LinkResult> {
     const user = await this.#requireUser(userId);
     const identities = await this.deps.provider.verify(token);
+
+    /**
+     * Linking is the one action that hands over money, so it takes the strongest
+     * proof there is and nothing weaker.
+     *
+     * Attaching a handle releases everything the escrow has been holding for it.
+     * A bot token asserts authorship, not ownership, so accepting one here would
+     * mean anybody holding the bot secret could attach @victim to their own
+     * account and walk off with whatever was waiting for them. That is the whole
+     * product, stolen with one leaked string.
+     */
+    if (!provesOwnership(identities)) {
+      throw new IdentityVerificationError(
+        "Linking an account needs a real sign-in, not a message.",
+      );
+    }
 
     for (const identity of identities) {
       const owner = await this.deps.users.findByIdentity(identity.provider, identity.subject);

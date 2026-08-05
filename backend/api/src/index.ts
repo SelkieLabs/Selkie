@@ -10,6 +10,8 @@ import {
 } from "@selkie/chain-stellar";
 import { buildApp } from "./app";
 import { loadConfig } from "./config";
+import { BotIdentityProvider } from "./identity/bot";
+import { CompositeIdentityProvider } from "./identity/composite";
 import { PrivyIdentityProvider } from "./identity/privy";
 import { InMemoryUserStore } from "./identity/store";
 
@@ -48,9 +50,15 @@ async function main() {
     slippageBps: chainConfig.swapSlippageBps,
   });
 
+  // The bot provider exists only where a bot runs. No secret, no path in.
+  const privy = new PrivyIdentityProvider(config.privy);
+  const provider = config.botSecret
+    ? new CompositeIdentityProvider([new BotIdentityProvider(config.botSecret), privy])
+    : privy;
+
   const app = await buildApp({
     users: new InMemoryUserStore(),
-    provider: new PrivyIdentityProvider(config.privy),
+    provider,
     adapter,
     swap,
     deposits: new StellarDepositReader(adapter.network, adapter.assets),
@@ -60,6 +68,7 @@ async function main() {
   console.log(`Selkie API on :${config.port} (${config.network})`);
   console.log(`escrow ${chainConfig.escrowContractId}`);
   console.log(`sponsor ${sponsor.address}`);
+  console.log(config.botSecret ? "bot surface enabled" : "bot surface off (no SELKIE_BOT_SECRET)");
 }
 
 main().catch((error) => {
