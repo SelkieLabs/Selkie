@@ -90,7 +90,11 @@ export function BalanceCard({
         {loading ? (
           <span className="block h-[3.25rem] w-52 animate-pulse rounded-xl bg-pen/[0.12]" />
         ) : (
-          <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          {/* A plain block, not a flex row. Flexbox decides a pill's baseline
+              from the first thing inside it, which is the coin, so the pill
+              could never be lined up by its own edge. Laid out as ordinary
+              inline content, the rule below gives an exact answer instead. */}
+          <p className="leading-none">
             {/* Space Grotesk draws its dollar sign taller than its digits: the
                 stroke pierces above the cap line and below the baseline. At the
                 same size it therefore cannot sit flush, however it is aligned.
@@ -103,14 +107,13 @@ export function BalanceCard({
               <span className="inline-block translate-y-[-0.085em] text-[0.82em] opacity-70">$</span>
               {hidden ? MASK : money(dollars)}
             </span>
-            {/* Laid out inline rather than as a flex row, so that the pill's
-                baseline is the baseline of the word USDC. A flex container
-                takes its baseline from its first item instead, and that item is
-                the coin image, whose baseline is its bottom edge: that is what
-                left the pill floating at the number's middle. Inline, the word
-                sits on the same line the digits sit on, and the coin is centred
-                against it. */}
-            <span className="inline-block whitespace-nowrap rounded-full border-2 border-pen/20 bg-card-bright/60 py-1 pl-1 pr-2.5">
+            {/* An inline-block whose overflow is clipped takes its baseline
+                from its own bottom edge rather than from the text inside it.
+                That is the whole trick: the pill's bottom edge then lands on
+                the line the digits sit on, so it finishes exactly where the
+                zeros finish. Nothing here depends on the font's measurements,
+                which is why this holds at both sizes. */}
+            <span className="ml-3 inline-block overflow-hidden whitespace-nowrap rounded-full border-2 border-pen/20 bg-card-bright/60 py-1 pl-1 pr-2.5">
               <TokenIcon asset={DOLLAR} size={20} className="mr-1.5 inline-block align-middle" />
               <span className="font-display text-[13px] font-bold">{DOLLAR}</span>
             </span>
