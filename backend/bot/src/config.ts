@@ -67,8 +67,26 @@ function xCredentials(env: NodeJS.ProcessEnv): BotConfig["x"] {
     accessToken,
     accessSecret,
     handle: (env.X_HANDLE ?? "SelkiePay").replace(/^@/, ""),
-    pollMs: Math.max(15, Number(env.X_POLL_SECONDS ?? 30)) * 1000,
+    pollMs: pollSeconds(env.X_POLL_SECONDS) * 1000,
   };
+}
+
+/**
+ * How often to look, in seconds.
+ *
+ * Floored at 15 rather than allowing anything smaller. X counts reads against a
+ * quota per fifteen minutes, and polling twice as often does not make a reply
+ * arrive twice as fast: it spends the quota in half the time and then everything
+ * waits for the window to reopen. Quicker than the quota allows is slower.
+ *
+ * Anything unreadable falls back to the default rather than becoming NaN, which
+ * would sail through a `Math.max` floor and turn the wait between polls into no
+ * wait at all.
+ */
+function pollSeconds(value: string | undefined, fallback = 30): number {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return fallback;
+  return Math.max(15, seconds);
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
