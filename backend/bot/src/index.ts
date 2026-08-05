@@ -25,6 +25,7 @@ async function main() {
       webUrl: config.webUrl,
       state: new FileStateStore(config.statePath),
       pollMs: config.x.pollMs,
+      activeMs: config.x.activeMs,
       dryRun: config.dryRun,
     });
     workers.push(worker);

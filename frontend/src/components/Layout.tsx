@@ -168,6 +168,9 @@ export function Footer() {
             <span className="font-display font-bold text-ivory/85">Selkie</span>
           </span>
           <nav className="flex items-center gap-6">
+            <Link href="/docs" className="font-semibold transition-colors hover:text-ivory">
+              Docs
+            </Link>
             <a
               href="https://github.com/SelkieLabs/Selkie"
               target="_blank"

@@ -27,7 +27,7 @@ export interface BotConfig {
    * timeline with a payment API behind it is not something you can take back.
    */
   dryRun: boolean;
-  x?: XCredentials & { handle: string; pollMs: number };
+  x?: XCredentials & { handle: string; pollMs: number; activeMs: number };
 }
 
 export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
@@ -61,32 +61,38 @@ function xCredentials(env: NodeJS.ProcessEnv): BotConfig["x"] {
     );
   }
 
+  const idle = seconds(env.X_POLL_SECONDS, { fallback: 60, floor: 5 });
+  const active = seconds(env.X_ACTIVE_POLL_SECONDS, { fallback: 5, floor: 3 });
+
   return {
     apiKey,
     apiSecret,
     accessToken,
     accessSecret,
     handle: (env.X_HANDLE ?? "SelkiePay").replace(/^@/, ""),
-    pollMs: pollSeconds(env.X_POLL_SECONDS) * 1000,
+    pollMs: idle * 1000,
+    // The live interval cannot be slower than the idle one. Configured the
+    // other way round it would mean the bot slowing down the moment somebody
+    // talked to it, which is exactly backwards.
+    activeMs: Math.min(active, idle) * 1000,
   };
 }
 
 /**
- * How often to look, in seconds.
+ * A number of seconds from the environment, with a floor.
  *
- * Floored at 15 rather than allowing anything smaller. X counts reads against a
- * quota per fifteen minutes, and polling twice as often does not make a reply
- * arrive twice as fast: it spends the quota in half the time and then everything
- * waits for the window to reopen. Quicker than the quota allows is slower.
+ * The floor is a guard, not a policy. How fast the bot actually polls is worked
+ * out at runtime from the quota X reports, because that is the only number that
+ * knows what this account can afford. This is only here so a stray value cannot
+ * turn the wait between polls into a tight loop against a metered API.
  *
- * Anything unreadable falls back to the default rather than becoming NaN, which
- * would sail through a `Math.max` floor and turn the wait between polls into no
- * wait at all.
+ * Anything unreadable falls back rather than becoming NaN, which would sail
+ * through a `Math.max` floor untouched and produce exactly that loop.
  */
-function pollSeconds(value: string | undefined, fallback = 30): number {
-  const seconds = Number(value);
-  if (!Number.isFinite(seconds) || seconds <= 0) return fallback;
-  return Math.max(15, seconds);
+function seconds(value: string | undefined, { fallback, floor }: { fallback: number; floor: number }): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(floor, parsed);
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {

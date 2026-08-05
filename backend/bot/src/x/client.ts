@@ -38,8 +38,30 @@ export interface Mention {
   authorHandle: string;
 }
 
+/**
+ * What is left of the current quota, as X last reported it.
+ *
+ * X sends this on every response, not only on a refusal, which means the right
+ * polling speed can be worked out instead of guessed. Guessing is what forces a
+ * conservative fixed interval: too slow on a generous plan, and still too fast
+ * on a tight one.
+ */
+export interface RateLimit {
+  /** Reads left in this window. */
+  remaining: number;
+  /** When the window refills, as epoch milliseconds. */
+  resetAt: number;
+}
+
 export class XClient {
+  #rateLimit: RateLimit | null = null;
+
   constructor(private readonly credentials: XCredentials) {}
+
+  /** The quota as of the last call, or null if X has not said. */
+  get rateLimit(): RateLimit | null {
+    return this.#rateLimit;
+  }
 
   /** Our own numeric id, needed to read our mentions. */
   async selfId(handle: string): Promise<string> {
@@ -61,7 +83,7 @@ export class XClient {
     userId: string,
     sinceId: string | null,
     max = 20,
-  ): Promise<{ mentions: Mention[]; newestId: string | null }> {
+  ): Promise<{ mentions: Mention[]; newestId: string | null; rateLimit: RateLimit | null }> {
     const query: Record<string, string | number> = {
       max_results: Math.max(5, Math.min(100, max)),
       expansions: "author_id",
@@ -89,7 +111,7 @@ export class XClient {
       .filter((mention): mention is Mention => mention !== null)
       .reverse();
 
-    return { mentions, newestId: response.meta?.newest_id ?? null };
+    return { mentions, newestId: response.meta?.newest_id ?? null, rateLimit: this.#rateLimit };
   }
 
   /** Post a public reply under a tweet. */
@@ -123,6 +145,8 @@ export class XClient {
 
   async #send<T>(url: string, init: RequestInit): Promise<T> {
     const response = await fetch(url, init);
+    this.#rateLimit = readRateLimit(response) ?? this.#rateLimit;
+
     const payload = (await response.json().catch(() => ({}))) as T & { detail?: string; title?: string };
 
     if (!response.ok) {
@@ -185,6 +209,21 @@ export function encodeRfc3986(value: string | number): string {
     /[!*'()]/g,
     (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
   );
+}
+
+/**
+ * The quota headers, if this response carried them.
+ *
+ * Both must be present and readable to be worth anything: a remaining count
+ * with no reset time cannot be turned into a rate, and half a reading would
+ * make the poll interval swing on noise.
+ */
+function readRateLimit(response: Response): RateLimit | null {
+  const remaining = Number(response.headers.get("x-rate-limit-remaining"));
+  const reset = Number(response.headers.get("x-rate-limit-reset"));
+  if (!Number.isFinite(remaining) || !Number.isFinite(reset) || reset <= 0) return null;
+
+  return { remaining: Math.max(0, remaining), resetAt: reset * 1000 };
 }
 
 /**

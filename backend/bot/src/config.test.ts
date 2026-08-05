@@ -14,21 +14,43 @@ const BASE = {
 const load = (extra: NodeJS.ProcessEnv = {}) => loadBotConfig({ ...BASE, ...extra });
 
 describe("how often it looks", () => {
-  it("takes the interval it is given", () => {
-    assert.equal(load({ X_POLL_SECONDS: "15" }).x?.pollMs, 15_000);
+  it("comes ready to answer quickly without being configured to", () => {
+    // The default matters more than the setting. Nobody tunes a bot before
+    // finding out whether it is any good.
+    const x = load().x;
+    assert.equal(x?.activeMs, 5_000, "fast while somebody is talking to it");
+    assert.equal(x?.pollMs, 60_000, "and unhurried when nobody is");
   });
 
-  it("will not go below the floor, because faster than the quota is slower", () => {
-    assert.equal(load({ X_POLL_SECONDS: "2" }).x?.pollMs, 15_000);
+  it("takes the intervals it is given", () => {
+    const x = load({ X_POLL_SECONDS: "30", X_ACTIVE_POLL_SECONDS: "8" }).x;
+    assert.equal(x?.pollMs, 30_000);
+    assert.equal(x?.activeMs, 8_000);
+  });
+
+  it("will not let the live interval be slower than the idle one", () => {
+    // Configured that way round it would mean slowing down the moment somebody
+    // spoke to it, which is exactly backwards.
+    const x = load({ X_POLL_SECONDS: "10", X_ACTIVE_POLL_SECONDS: "45" }).x;
+    assert.ok((x?.activeMs ?? 0) <= (x?.pollMs ?? 0), `${x?.activeMs} vs ${x?.pollMs}`);
+  });
+
+  it("keeps a floor under both, as a guard rather than a policy", () => {
+    // How fast it really polls is worked out at runtime from the quota X
+    // reports. This only stops a stray value becoming a tight loop.
+    const x = load({ X_POLL_SECONDS: "1", X_ACTIVE_POLL_SECONDS: "0.1" }).x;
+    assert.ok((x?.pollMs ?? 0) >= 5_000);
+    assert.ok((x?.activeMs ?? 0) >= 3_000);
   });
 
   it("falls back rather than becoming NaN on nonsense", () => {
     // NaN sails straight through a Math.max floor, and setTimeout(NaN) fires
     // at once: the wait between polls becomes no wait, against a metered API.
     for (const value of ["", "abc", "-5", "0"]) {
-      const pollMs = load({ X_POLL_SECONDS: value }).x?.pollMs;
-      assert.ok(Number.isFinite(pollMs), `${value} gave ${pollMs}`);
-      assert.ok((pollMs ?? 0) >= 15_000, `${value} gave ${pollMs}`);
+      const x = load({ X_POLL_SECONDS: value, X_ACTIVE_POLL_SECONDS: value }).x;
+      assert.ok(Number.isFinite(x?.pollMs), `X_POLL_SECONDS=${value} gave ${x?.pollMs}`);
+      assert.ok(Number.isFinite(x?.activeMs), `X_ACTIVE_POLL_SECONDS=${value} gave ${x?.activeMs}`);
+      assert.ok((x?.activeMs ?? 0) > 0);
     }
   });
 });
