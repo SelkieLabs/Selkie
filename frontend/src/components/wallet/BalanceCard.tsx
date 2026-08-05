@@ -90,10 +90,10 @@ export function BalanceCard({
         {loading ? (
           <span className="block h-[3.25rem] w-52 animate-pulse rounded-xl bg-pen/[0.12]" />
         ) : (
-          {/* A plain block, not a flex row. Flexbox decides a pill's baseline
-              from the first thing inside it, which is the coin, so the pill
-              could never be lined up by its own edge. Laid out as ordinary
-              inline content, the rule below gives an exact answer instead. */}
+          // A plain block, not a flex row. Flexbox decides a pill's baseline
+          // from the first thing inside it, which is the coin, so the pill
+          // could never be lined up by its own edge. Laid out as ordinary
+          // inline content, the rule further down gives an exact answer.
           <p className="leading-none">
             {/* Space Grotesk draws its dollar sign taller than its digits: the
                 stroke pierces above the cap line and below the baseline. At the
