@@ -153,7 +153,7 @@ export class XWorker {
     // conversation with ourselves, billed by the post.
     if (mention.authorHandle.toLowerCase() === this.#options.handle.toLowerCase()) return false;
 
-    const command = parseCommand(mention.text, { self: this.#options.handle });
+    const command = parseCommand(mention.text);
     if (!command) return false;
 
     const text = await respond(
@@ -162,6 +162,7 @@ export class XWorker {
       this.#options.selkie,
       {
         webUrl: this.#options.webUrl,
+        self: this.#options.handle,
         onError: (error) => this.#options.log(`unexpected: ${describe(error)}`),
       },
     );
@@ -215,6 +216,15 @@ export class XWorker {
   }
 }
 
+/**
+ * A failure in one line, with the reason rather than the category.
+ *
+ * Node reports every network problem as "fetch failed" and hides the real one
+ * underneath, which makes a name that will not resolve, a refused connection,
+ * and a laptop that went to sleep all read identically in a log.
+ */
 function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (!(error instanceof Error)) return String(error);
+  const cause = (error as { cause?: unknown }).cause;
+  return cause instanceof Error ? `${error.message}: ${cause.message}` : error.message;
 }

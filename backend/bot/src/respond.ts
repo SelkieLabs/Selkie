@@ -27,6 +27,13 @@ const MAX_LENGTH = 280;
 export interface RespondOptions {
   /** Where people are sent to open their wallet. */
   webUrl: string;
+  /**
+   * The bot's own handle, so it can tell somebody they are paying the bot.
+   *
+   * People try this immediately, and it is the friendliest possible mistake:
+   * they are testing whether the thing works. Silence reads as broken.
+   */
+  self?: string;
   /** Called with anything unexpected. Never shown to the person. */
   onError?: (error: unknown) => void;
 }
@@ -57,9 +64,15 @@ export async function respond(
       return cap(explain(command.reason, app));
 
     case "send":
+      if (isSelf(command.to, options.self)) {
+        return "That one is me. Name a friend and I will send it to them.";
+      }
       return cap(await sendMoney(command, sender, selkie, app, options.onError));
 
     case "request":
+      if (isSelf(command.from, options.self)) {
+        return "That one is me, and I have nothing of my own. Ask a friend instead.";
+      }
       return cap(await askFor(command, sender, selkie, app, options.onError));
   }
 }
@@ -143,6 +156,11 @@ function trouble(
 
   onError?.(error);
   return "Something went wrong on our side. Nothing moved. Try again in a moment.";
+}
+
+/** Whether a handle names the bot itself. */
+function isSelf(handle: string, self?: string): boolean {
+  return Boolean(self) && handle.toLowerCase() === self!.replace(/^@/, "").toLowerCase();
 }
 
 function explain(reason: string, app: string): string {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseCommand } from "./parse";
 
-const parse = (text: string) => parseCommand(text, { self: "SelkiePay" });
+const parse = (text: string) => parseCommand(text);
 
 /** Assert this text reads as a payment, and hand back the payment. */
 function sent(text: string) {
@@ -70,6 +70,17 @@ describe("reading a payment", () => {
 
   it("is not confused by its own handle appearing twice", () => {
     assert.equal(sent("@SelkiePay hey @SelkiePay send 5 to @amaka").to, "amaka");
+  });
+
+  it("keeps the payee when the payee is the bot itself", () => {
+    // The exact tweet that went unanswered in testing. Stripping the bot's
+    // handle from everywhere erased the recipient and left an instruction with
+    // nobody in it, so nothing matched and nothing was said.
+    assert.equal(sent("@SelkiePay send 2 USDC to @SelkiePay").to, "selkiepay");
+  });
+
+  it("drops the whole run of handles X puts at the front of a reply", () => {
+    assert.equal(sent("@SelkiePay @paymesh_ @0xgents send 5 to @amaka").to, "amaka");
   });
 
   it("reads 'dollars' and 'usd' as USDC, because nobody types the ticker", () => {

@@ -67,13 +67,8 @@ const REQUEST_PATTERNS = [
   new RegExp(String.raw`\brequest\s+${HANDLE}\s+(?:for\s+)?${DOLLARS}(${AMOUNT})${ASSET}`, "i"),
 ];
 
-export interface ParseOptions {
-  /** The bot's own handle, stripped before parsing so it is not read as a payee. */
-  self?: string;
-}
-
-export function parseCommand(text: string, options: ParseOptions = {}): Command | null {
-  const cleaned = strip(text, options.self);
+export function parseCommand(text: string): Command | null {
+  const cleaned = strip(text);
 
   for (const pattern of SEND_PATTERNS) {
     const match = cleaned.match(pattern);
@@ -159,18 +154,21 @@ function normalizeAmount(raw: string | undefined): string | null {
 }
 
 /**
- * Remove the bot's own handle and normalize whitespace.
+ * Drop the handles X puts at the front of a reply, and normalize whitespace.
  *
- * X puts "@SelkiePay" at the front of a reply, and without this "@SelkiePay send
- * 5" would read as a payment to the bot. Every mention of it goes, not just the
- * first, because a thread can carry several.
+ * X prefixes a reply with every handle in the thread. That prefix is addressing,
+ * not instruction, so "@SelkiePay send 5 to @amaka" must not read as a payment
+ * to @SelkiePay.
+ *
+ * Only the leading run goes, and only up to the first word that is not a handle.
+ * Removing the bot's handle wherever it appeared was the obvious version and it
+ * was wrong: it also erased the payee in "send 2 to @SelkiePay", leaving an
+ * instruction with nobody in it, which the bot then had nothing to say about.
+ * A handle after the first ordinary word is someone being paid.
  */
-function strip(text: string, self?: string): string {
-  let cleaned = String(text ?? "");
-  if (self) {
-    const escaped = self.replace(/^@/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    cleaned = cleaned.replace(new RegExp(`@${escaped}\\b`, "gi"), " ");
-  }
-  // Collapse whitespace so a line break between words does not defeat a rule.
-  return cleaned.replace(/\s+/g, " ").trim();
+function strip(text: string): string {
+  // Collapse whitespace first, so a line break between the prefix and the
+  // instruction does not hide the prefix from the rule below.
+  const cleaned = String(text ?? "").replace(/\s+/g, " ").trim();
+  return cleaned.replace(/^(?:@[A-Za-z0-9_]{1,32}\s+)+/, "").trim();
 }

@@ -25,7 +25,7 @@ function selkie(overrides: Partial<Record<"send" | "request", unknown>> = {}): S
 
 /** Parse and answer, the way a surface does. */
 function reply(text: string, client: SelkieClient = selkie()): Promise<string | null> {
-  return respond(parseCommand(text, { self: "SelkiePay" }), AMAKA, client, { webUrl: WEB });
+  return respond(parseCommand(text), AMAKA, client, { webUrl: WEB, self: "SelkiePay" });
 }
 
 describe("answering a payment", () => {
@@ -46,6 +46,25 @@ describe("answering a payment", () => {
       send: async () => assert.fail("should never reach the API"),
     });
     assert.match((await reply("@SelkiePay send 5 to @amaka", client)) ?? "", /That is you/);
+  });
+
+  it("says so when somebody tries to pay the bot, rather than going quiet", async () => {
+    // People try this first, to see whether the thing works at all. Silence
+    // reads as broken.
+    const client = selkie({
+      send: async () => assert.fail("should never reach the API"),
+    });
+    const text = (await reply("@SelkiePay send 2 USDC to @SelkiePay", client)) ?? "";
+
+    assert.match(text, /That one is me/);
+    assert.match(text, /friend/i, "and points somewhere useful");
+  });
+
+  it("says so when somebody asks the bot for money", async () => {
+    const client = selkie({
+      request: async () => assert.fail("should never reach the API"),
+    });
+    assert.match((await reply("@SelkiePay request 5 from @SelkiePay", client)) ?? "", /That one is me/);
   });
 });
 
@@ -83,7 +102,7 @@ describe("what is never said in public", () => {
       },
     });
     const text =
-      (await respond(parseCommand("@SelkiePay send 5 to @bo", { self: "SelkiePay" }), AMAKA, client, {
+      (await respond(parseCommand("@SelkiePay send 5 to @bo"), AMAKA, client, {
         webUrl: WEB,
         onError: (error) => seen.push(error),
       })) ?? "";
