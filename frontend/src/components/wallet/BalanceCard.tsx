@@ -113,7 +113,7 @@ export function BalanceCard({
                 the line the digits sit on, so it finishes exactly where the
                 zeros finish. Nothing here depends on the font's measurements,
                 which is why this holds at both sizes. */}
-            <span className="ml-3 inline-block overflow-hidden whitespace-nowrap rounded-full border-2 border-pen/20 bg-card-bright/60 py-1 pl-1 pr-2">
+            <span className="ml-3 inline-block overflow-hidden whitespace-nowrap rounded-full border-2 border-pen/20 bg-card-bright/60 py-0.5 pl-1 pr-2">
               <TokenIcon asset={DOLLAR} size={17} className="mr-1.5 inline-block align-middle" />
               <span className="font-display text-[12px] font-bold">{DOLLAR}</span>
             </span>
