@@ -14,7 +14,16 @@ const ICONS: Record<string, string> = {
  * like a weekend project. An asset we have no mark for falls back to its initial
  * rather than a broken image.
  */
-export function TokenIcon({ asset, size = 28 }: { asset: string; size?: number }) {
+export function TokenIcon({
+  asset,
+  size = 28,
+  className = "",
+}: {
+  asset: string;
+  size?: number;
+  /** For callers that need to place the mark against text rather than in a flex row. */
+  className?: string;
+}) {
   const code = asset.toUpperCase();
   const src = ICONS[code];
   const label = ASSET_LABEL[code] ?? code;
@@ -22,7 +31,7 @@ export function TokenIcon({ asset, size = 28 }: { asset: string; size?: number }
   if (!src) {
     return (
       <span
-        className="grid shrink-0 place-items-center rounded-full border-2 border-pen/15 bg-pen/[0.06] font-display font-bold text-pen/70"
+        className={`grid shrink-0 place-items-center rounded-full border-2 border-pen/15 bg-pen/[0.06] font-display font-bold text-pen/70 ${className}`}
         style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
         aria-hidden="true"
       >
@@ -37,7 +46,7 @@ export function TokenIcon({ asset, size = 28 }: { asset: string; size?: number }
       alt={label}
       width={size}
       height={size}
-      className="shrink-0 rounded-full"
+      className={`shrink-0 rounded-full ${className}`}
       style={{ width: size, height: size }}
     />
   );

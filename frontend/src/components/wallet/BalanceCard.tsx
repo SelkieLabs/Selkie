@@ -100,17 +100,18 @@ export function BalanceCard({
                 digits still lead. It sits outside the masked part, so a hidden
                 balance still reads as money. */}
             <span className="font-display text-[2.5rem] font-bold leading-none tracking-tight tabular-nums sm:text-[3.35rem]">
-              <span className="inline-block translate-y-[-0.085em] text-[0.82em] opacity-40">$</span>
+              <span className="inline-block translate-y-[-0.085em] text-[0.82em] opacity-70">$</span>
               {hidden ? MASK : money(dollars)}
             </span>
-            {/* Centred rather than aligned to a baseline. A flex container takes
-                its baseline from its first item, which here is the coin image,
-                and an image's baseline is its bottom edge, so baseline
-                alignment hung the whole pill below the number by the height of
-                its own lower padding. The digits' ink happens to centre on
-                their line box, so centring puts the pill level with them. */}
-            <span className="flex items-center gap-1.5 self-center rounded-full border-2 border-pen/20 bg-card-bright/60 py-1 pl-1 pr-2.5">
-              <TokenIcon asset={DOLLAR} size={20} />
+            {/* Laid out inline rather than as a flex row, so that the pill's
+                baseline is the baseline of the word USDC. A flex container
+                takes its baseline from its first item instead, and that item is
+                the coin image, whose baseline is its bottom edge: that is what
+                left the pill floating at the number's middle. Inline, the word
+                sits on the same line the digits sit on, and the coin is centred
+                against it. */}
+            <span className="inline-block whitespace-nowrap rounded-full border-2 border-pen/20 bg-card-bright/60 py-1 pl-1 pr-2.5">
+              <TokenIcon asset={DOLLAR} size={20} className="mr-1.5 inline-block align-middle" />
               <span className="font-display text-[13px] font-bold">{DOLLAR}</span>
             </span>
           </p>
