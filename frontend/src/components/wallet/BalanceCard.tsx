@@ -91,13 +91,16 @@ export function BalanceCard({
           <span className="block h-[3.25rem] w-52 animate-pulse rounded-xl bg-pen/[0.12]" />
         ) : (
           <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            {/* One text run, so the sign cannot drift out of line with the
-                digits. Muted rather than shrunk: at a smaller size its
-                descender reads as having slipped below the baseline, and the
-                digits still lead on weight alone. The sign sits outside the
-                masked part, so a hidden balance still reads as money. */}
-            <span className="font-display text-[2.75rem] font-bold leading-none tracking-tight tabular-nums sm:text-[3.35rem]">
-              <span className="opacity-40">$</span>
+            {/* Space Grotesk draws its dollar sign taller than its digits: the
+                stroke pierces above the cap line and below the baseline. At the
+                same size it therefore cannot sit flush, however it is aligned.
+                So it is scaled to the digits' own height and lifted back onto
+                their baseline, which puts its top and bottom on the same two
+                lines as the numerals. Muted rather than shrunk further, so the
+                digits still lead. It sits outside the masked part, so a hidden
+                balance still reads as money. */}
+            <span className="font-display text-[2.5rem] font-bold leading-none tracking-tight tabular-nums sm:text-[3.35rem]">
+              <span className="inline-block translate-y-[-0.085em] text-[0.82em] opacity-40">$</span>
               {hidden ? MASK : money(dollars)}
             </span>
             <span className="flex items-center gap-1.5 rounded-full border-2 border-pen/20 bg-card-bright/60 py-1 pl-1 pr-2.5">
