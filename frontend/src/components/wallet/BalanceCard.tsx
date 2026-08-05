@@ -103,7 +103,13 @@ export function BalanceCard({
               <span className="inline-block translate-y-[-0.085em] text-[0.82em] opacity-40">$</span>
               {hidden ? MASK : money(dollars)}
             </span>
-            <span className="flex items-center gap-1.5 rounded-full border-2 border-pen/20 bg-card-bright/60 py-1 pl-1 pr-2.5">
+            {/* Centred rather than aligned to a baseline. A flex container takes
+                its baseline from its first item, which here is the coin image,
+                and an image's baseline is its bottom edge, so baseline
+                alignment hung the whole pill below the number by the height of
+                its own lower padding. The digits' ink happens to centre on
+                their line box, so centring puts the pill level with them. */}
+            <span className="flex items-center gap-1.5 self-center rounded-full border-2 border-pen/20 bg-card-bright/60 py-1 pl-1 pr-2.5">
               <TokenIcon asset={DOLLAR} size={20} />
               <span className="font-display text-[13px] font-bold">{DOLLAR}</span>
             </span>
