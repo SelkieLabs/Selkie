@@ -158,7 +158,9 @@ export function CashOutPanel({ balance }: { balance: string }) {
 
         {tooMuch && (
           <p className="mt-3 text-sm font-semibold text-[#a11d34]">
-            Your balance is too low. You can cash out {usd(balance)} or less.
+            {available <= 0
+              ? "You have nothing to cash out yet."
+              : `Your balance is too low. You can cash out ${usd(balance)} or less.`}
           </p>
         )}
 

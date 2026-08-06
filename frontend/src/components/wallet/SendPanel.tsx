@@ -473,7 +473,9 @@ export function SendPanel({
 
       {tooMuch && (
         <p className="mt-4 text-sm font-semibold text-[#a11d34]">
-          Your balance is too low. Add money, or send {usd(balance)} or less.
+          {Number(balance) <= 0
+            ? "You have no money to send yet. Add some from the Deposit tab."
+            : `Your balance is too low. Send ${usd(balance)} or less.`}
         </p>
       )}
       {error && <p className="mt-4 text-sm font-semibold text-[#a11d34]">{error}</p>}

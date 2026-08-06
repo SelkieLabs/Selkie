@@ -323,7 +323,9 @@ export function PayManyPanel({
 
       {tooMuch && (
         <p className="mt-3 text-sm font-semibold text-[#a11d34]">
-          Your balance is too low for {usd(total)}. Lower the amount or remove some people.
+          {Number(balance) <= 0
+            ? "You have no money to send yet. Add some from the Deposit tab."
+            : `Your balance is too low for ${usd(total)}. Lower the amount or remove some people.`}
         </p>
       )}
       {tooMany && (

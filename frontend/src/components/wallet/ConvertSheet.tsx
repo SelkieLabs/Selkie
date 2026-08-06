@@ -175,7 +175,9 @@ export function ConvertSheet({
 
       {tooMuch && (
         <p className="mt-3 text-sm font-semibold text-[#a11d34]">
-          Your {from} balance is too low. You can convert {money(available)} {from} or less.
+          {Number(available) <= 0
+            ? `You have no ${from} to convert.`
+            : `Your ${from} balance is too low. Convert ${money(available)} ${from} or less.`}
         </p>
       )}
       {error && <p className="mt-3 text-sm font-semibold text-[#a11d34]">{error}</p>}
