@@ -17,7 +17,8 @@
     "dev:api": "npm --workspace backend/api run dev",
     "dev:bot": "npm --workspace backend/bot run dev",
     "test:contracts": "cargo test --manifest-path contracts/Cargo.toml",
-    "test:live": "tsx packages/chain-stellar/scripts/live-testnet.ts"
+    "test:live": "tsx packages/chain-stellar/scripts/live-testnet.ts",
+    "prove:restart": "tsx --env-file-if-exists=.env backend/api/scripts/prove-restart.ts"
   },
   "license": "MIT",
   "devDependencies": {

@@ -1,3 +1,5 @@
+import { Forgetful, type Keep } from "@selkie/core";
+
 /**
  * Making a money route safe to call twice.
  *
@@ -57,8 +59,27 @@ interface Slot {
   fingerprint: string;
 }
 
+const SHELF = "idempotency";
+
 export class InMemoryIdempotencyStore implements IdempotencyStore {
   readonly #slots = new Map<string, Slot>();
+  readonly #keep: Keep;
+
+  /**
+   * Kept across a restart, because the guard is worth least exactly when it is
+   * needed most. A deploy in the middle of a payment is precisely when the
+   * client gives up and retries, and a guard that forgot what it was guarding
+   * would let that retry through as a second, real payment.
+   */
+  constructor(keep: Keep = new Forgetful()) {
+    this.#keep = keep;
+    for (const [id, slot] of keep.read<[string, Slot][]>(SHELF) ?? []) {
+      // Anything still in flight when the process died is not in flight any
+      // more, and leaving it claimed would wedge that key until it expired.
+      // Dropped, so the genuine retry is the one that does the work.
+      if (slot.record !== null) this.#slots.set(id, slot);
+    }
+  }
 
   async begin(userId: string, key: string, fingerprint: string): Promise<IdempotencyState> {
     this.#prune();
@@ -69,6 +90,7 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
       // Reserved before the work starts, so a second request arriving while the
       // first is still moving money sees "in-flight" rather than "fresh".
       this.#slots.set(id, { at: Date.now(), record: null, fingerprint });
+      this.#save();
       return { kind: "fresh" };
     }
 
@@ -85,10 +107,12 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
     // Keep the fingerprint the key was claimed with. Losing it here would let
     // the next different request through as an ordinary replay.
     this.#slots.set(id, { at: Date.now(), record, fingerprint: slot?.fingerprint ?? "" });
+    this.#save();
   }
 
   async release(userId: string, key: string): Promise<void> {
     this.#slots.delete(slotKey(userId, key));
+    this.#save();
   }
 
   #prune(): void {
@@ -96,6 +120,10 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
     for (const [id, slot] of this.#slots) {
       if (slot.at < cutoff) this.#slots.delete(id);
     }
+  }
+
+  #save(): void {
+    this.#keep.write(SHELF, [...this.#slots]);
   }
 }
 

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Forgetful, type Keep } from "@selkie/core";
 import type { IdentityProviderId, LinkedIdentity, User } from "./types";
 import { identityKey } from "./types";
 
@@ -19,10 +20,33 @@ export interface UserStore {
 
 export class UserNotFoundError extends Error {}
 
+/** Where this store's rows sit in the Keep. */
+const SHELF = "users";
+
 export class InMemoryUserStore implements UserStore {
   readonly #users = new Map<string, User>();
   /** identityKey -> userId. Enforces that an identity belongs to one user. */
   readonly #byIdentity = new Map<string, string>();
+  readonly #keep: Keep;
+
+  /**
+   * Given a Keep, this store reloads whoever it knew about last time.
+   *
+   * Without it, a restart quietly signed everybody out into a new empty
+   * account: the same person came back, we did not recognise their X id, and
+   * they got a second wallet while the first one kept their money.
+   */
+  constructor(keep: Keep = new Forgetful()) {
+    this.#keep = keep;
+    for (const user of keep.read<User[]>(SHELF) ?? []) {
+      this.#users.set(user.id, user);
+      // Rebuilt rather than stored, so the index cannot drift out of step with
+      // the rows it indexes.
+      for (const identity of user.identities) {
+        this.#byIdentity.set(identityKey(identity.provider, identity.subject), user.id);
+      }
+    }
+  }
 
   async create(user: Omit<User, "id" | "createdAt">): Promise<User> {
     const created: User = { ...user, id: randomUUID(), createdAt: new Date().toISOString() };
@@ -30,6 +54,7 @@ export class InMemoryUserStore implements UserStore {
     for (const identity of created.identities) {
       this.#byIdentity.set(identityKey(identity.provider, identity.subject), created.id);
     }
+    this.#save();
     return structuredClone(created);
   }
 
@@ -77,6 +102,7 @@ export class InMemoryUserStore implements UserStore {
     );
     user.identities.push(identity);
     this.#byIdentity.set(key, userId);
+    this.#save();
     return structuredClone(user);
   }
 
@@ -91,6 +117,7 @@ export class InMemoryUserStore implements UserStore {
       (identity) => !(identity.provider === provider && identity.subject === subject),
     );
     this.#byIdentity.delete(identityKey(provider, subject));
+    this.#save();
     return structuredClone(user);
   }
 
@@ -101,6 +128,11 @@ export class InMemoryUserStore implements UserStore {
       this.#byIdentity.delete(identityKey(identity.provider, identity.subject));
     }
     this.#users.delete(id);
+    this.#save();
+  }
+
+  #save(): void {
+    this.#keep.write(SHELF, [...this.#users.values()]);
   }
 }
 
