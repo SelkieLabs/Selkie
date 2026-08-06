@@ -6,7 +6,7 @@ import { SelkieApiError } from "./selkie";
 import type { SelkieClient, Sender, SendResult } from "./selkie";
 import { weigh, MAX_WEIGHT } from "./text";
 
-const AMAKA: Sender = { platform: "x", subject: "111", username: "amaka" };
+const AMAKA: Sender = { platform: "x", subject: "111", username: "amaka", messageId: "m1" };
 const WEB = "https://selkiepay.vercel.app";
 
 const settled: SendResult = {

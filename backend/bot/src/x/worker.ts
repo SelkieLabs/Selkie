@@ -240,7 +240,12 @@ export class XWorker {
 
     const text = await respond(
       command,
-      { platform: "x", subject: mention.authorId, username: mention.authorHandle },
+      {
+        platform: "x",
+        subject: mention.authorId,
+        username: mention.authorHandle,
+        messageId: mention.id,
+      },
       this.#options.selkie,
       {
         webUrl: this.#options.webUrl,

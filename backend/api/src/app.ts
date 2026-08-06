@@ -172,10 +172,24 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const key = request.headers["idempotency-key"];
     if (typeof key !== "string" || key.length === 0) return run();
 
-    const state = await idempotency.begin(userId, key);
+    const state = await idempotency.begin(userId, key, fingerprint(request.body));
     if (state.kind === "done") return state.record.body;
     if (state.kind === "in-flight") {
       return reply.code(409).send({ error: "That is already going through. Give it a moment." });
+    }
+    /**
+     * The same key, asking for something different.
+     *
+     * Answering this with the first request's "sent" is how somebody is told
+     * their money moved when nothing did, which is the one failure this whole
+     * mechanism exists to prevent rather than cause. A caller that reuses a key
+     * across two different payments has a bug, and it should hear about it here
+     * rather than at the point where the money is missing.
+     */
+    if (state.kind === "mismatch") {
+      return reply.code(422).send({
+        error: "That looks like a different payment under a reference already used. Nothing moved.",
+      });
     }
 
     try {
@@ -188,6 +202,28 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await idempotency.release(userId, key);
       throw error;
     }
+  }
+
+  /**
+   * What a request is asking for, in one short string.
+   *
+   * Keys are sorted so that the same payment written with its fields in a
+   * different order is still the same payment. Hashed rather than kept whole
+   * because this is held for a day and there is no reason to keep somebody's
+   * amounts and handles alive in memory to answer a question about sameness.
+   */
+  function fingerprint(body: unknown): string {
+    return createHash("sha256").update(stable(body)).digest("base64url").slice(0, 32);
+  }
+
+  function stable(value: unknown): string {
+    if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+    if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([name, item]) => `${JSON.stringify(name)}:${stable(item)}`).join(",")}}`;
   }
 
   /**

@@ -19,6 +19,14 @@ export interface Sender {
   subject: string;
   /** Their handle as it reads today. */
   username: string;
+  /**
+   * The message that asked for this, by the platform's id for it.
+   *
+   * Required rather than optional, because it is what makes a payment
+   * repeatable-but-not-repeated and forgetting it is not a small mistake. The
+   * bot acts only because somebody wrote something; this is which something.
+   */
+  messageId: string;
 }
 
 export interface SendResult {
@@ -95,14 +103,21 @@ export class SelkieClient {
   ): Promise<SendResult> {
     return this.#call(sender, "POST", "/payments/send", payment, {
       /**
-       * The key is the message, not the payment.
+       * The key is the message, and nothing else.
        *
-       * If a poll overlaps a retry and the same tweet is read twice, the second
-       * attempt returns the first one's answer instead of paying again. Keying
-       * on the amount and payee instead would wrongly collapse two genuine
-       * payments of the same amount to the same person.
+       * If a poll overlaps a retry and the same post is read twice, the second
+       * attempt returns the first one's answer instead of paying again. One
+       * post means one payment, however many times we happen to read it.
+       *
+       * It used to be platform, payee and sender, which contains no reference
+       * to the message at all despite the comment above it claiming otherwise.
+       * The effect was that the FIRST payment between two people worked and
+       * every payment between them afterwards, of any amount, quietly returned
+       * that first one's answer: Selkie replied "Sent!" and moved nothing. Two
+       * real payments were lost to it before anybody noticed, because the reply
+       * looked exactly like success.
        */
-      idempotencyKey: `${sender.platform}:${payment.to}:${sender.subject}`,
+      idempotencyKey: `${sender.platform}:${sender.messageId}`,
     });
   }
 
@@ -110,7 +125,11 @@ export class SelkieClient {
     sender: Sender,
     ask: { from: string; amount: string; asset: string; platform?: string },
   ): Promise<{ id: string }> {
-    return this.#call(sender, "POST", "/requests", ask);
+    // Keyed the same way. A request moves no money, but two identical ones from
+    // one post is still a bug the person on the other end has to look at.
+    return this.#call(sender, "POST", "/requests", ask, {
+      idempotencyKey: `${sender.platform}:${sender.messageId}`,
+    });
   }
 
 

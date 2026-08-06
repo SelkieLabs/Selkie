@@ -219,6 +219,52 @@ describe("api", () => {
     assert.deepEqual(adapterStub.sent, [{ to: "amaka", amount: "5", platform: "x" }]);
   });
 
+  test("one key, two different payments: the second is refused, not answered", async () => {
+    // The failure that lost two real payments. The bot was reusing one key for
+    // every payment between the same two people, so the first went through and
+    // every one after it came back with the first one's receipt. Selkie said
+    // "Sent!" and moved nothing. A key that stands for one payment must never
+    // answer for another, so this is an error rather than a cache hit.
+    adapterStub.heldForClaim = false;
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const first = await post("/payments/send", { to: "amaka", amount: "5" }, token, "same-key");
+    assert.equal(first.statusCode, 200);
+
+    const second = await post("/payments/send", { to: "amaka", amount: "9" }, token, "same-key");
+    assert.equal(second.statusCode, 422, "a different payment came back as a success");
+    assert.match(second.json().error, /Nothing moved/);
+    assert.equal(adapterStub.sent.length, 1, "and no second payment was attempted");
+  });
+
+  test("one key, the same payment twice: paid once, answered twice", async () => {
+    // The case the key is FOR. A phone that loses signal mid-request retries,
+    // and the retry must not send the money again.
+    adapterStub.heldForClaim = false;
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    const first = await post("/payments/send", { to: "amaka", amount: "5" }, token, "same-key");
+    const again = await post("/payments/send", { to: "amaka", amount: "5" }, token, "same-key");
+
+    assert.equal(again.statusCode, 200);
+    assert.deepEqual(again.json(), first.json(), "the retry should get the original answer");
+    assert.equal(adapterStub.sent.length, 1, "and the money should have moved once");
+  });
+
+  test("the same payment written in a different field order is still the same payment", async () => {
+    adapterStub.heldForClaim = false;
+    const token = xToken("x1", "chidi");
+    await post("/auth/session", { token, createAccount: true });
+
+    await post("/payments/send", { to: "amaka", amount: "5" }, token, "same-key");
+    const reordered = await post("/payments/send", { amount: "5", to: "amaka" }, token, "same-key");
+
+    assert.equal(reordered.statusCode, 200, "field order is not part of what was asked for");
+    assert.equal(adapterStub.sent.length, 1);
+  });
+
   test("sending to an existing user just says sent", async () => {
     adapterStub.heldForClaim = false;
     const token = xToken("x1", "chidi");
