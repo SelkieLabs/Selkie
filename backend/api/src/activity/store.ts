@@ -1,4 +1,4 @@
-import { Forgetful, type HistoryEntry, type HistoryStatus, type Keep } from "@selkie/core";
+import type { HistoryEntry, HistoryStatus } from "@selkie/core";
 
 /**
  * What someone did with their money, described the way they would describe it.
@@ -45,29 +45,9 @@ export type NewActivity = Omit<HistoryEntry, "id" | "at"> & { at?: string };
 
 export class ActivityNotFoundError extends Error {}
 
-const SHELF = "activity";
-
-/** What goes on the shelf. The counter travels with the rows it numbered. */
-interface Saved {
-  sequence: number;
-  byUser: Record<string, HistoryEntry[]>;
-}
-
 export class InMemoryActivityStore implements ActivityStore {
   readonly #byUser = new Map<string, HistoryEntry[]>();
-  readonly #keep: Keep;
   #sequence = 0;
-
-  constructor(keep: Keep = new Forgetful()) {
-    this.#keep = keep;
-    const saved = keep.read<Saved>(SHELF);
-    if (!saved) return;
-    // The counter is restored along with the rows. Starting it back at zero
-    // would hand `act_1` to a second entry while the first one still had it,
-    // and settling one by id would then reach the wrong payment.
-    this.#sequence = saved.sequence;
-    for (const [userId, rows] of Object.entries(saved.byUser)) this.#byUser.set(userId, rows);
-  }
 
   async record(userId: string, entry: NewActivity): Promise<HistoryEntry> {
     const saved: HistoryEntry = {
@@ -79,7 +59,6 @@ export class InMemoryActivityStore implements ActivityStore {
     const rows = this.#byUser.get(userId) ?? [];
     rows.unshift(saved);
     this.#byUser.set(userId, rows);
-    this.#save();
     return structuredClone(saved);
   }
 
@@ -103,7 +82,6 @@ export class InMemoryActivityStore implements ActivityStore {
     if (!row) throw new ActivityNotFoundError(id);
     row.status = status;
     if (ref) row.ref = ref;
-    this.#save();
     return structuredClone(row);
   }
 
@@ -117,13 +95,5 @@ export class InMemoryActivityStore implements ActivityStore {
         if (ref) row.ref = ref;
       }
     }
-    this.#save();
-  }
-
-  #save(): void {
-    this.#keep.write(SHELF, {
-      sequence: this.#sequence,
-      byUser: Object.fromEntries(this.#byUser),
-    } satisfies Saved);
   }
 }

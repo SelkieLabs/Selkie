@@ -1,5 +1,5 @@
-import type { HandleRef, Keep, Money } from "@selkie/core";
-import { Forgetful, handleKey } from "@selkie/core";
+import type { HandleRef, Money } from "@selkie/core";
+import { handleKey } from "@selkie/core";
 
 /**
  * Asking someone for money.
@@ -48,31 +48,9 @@ export interface RequestStore {
   addressedTo(handles: HandleRef[]): Promise<MoneyRequest[]>;
 }
 
-const SHELF = "requests";
-
-interface Saved {
-  sequence: number;
-  rows: MoneyRequest[];
-}
-
 export class InMemoryRequestStore implements RequestStore {
   readonly #rows = new Map<string, MoneyRequest>();
-  readonly #keep: Keep;
   #sequence = 0;
-
-  /**
-   * Reloaded across a restart, because a request outlives the process by
-   * design: it sits there until the person it names signs in, which may be
-   * days. Forgetting them lost somebody an ask they had already sent, with no
-   * sign anything was missing.
-   */
-  constructor(keep: Keep = new Forgetful()) {
-    this.#keep = keep;
-    const saved = keep.read<Saved>(SHELF);
-    if (!saved) return;
-    this.#sequence = saved.sequence;
-    for (const row of saved.rows) this.#rows.set(row.id, row);
-  }
 
   async create(input: NewRequest): Promise<MoneyRequest> {
     const request: MoneyRequest = {
@@ -82,7 +60,6 @@ export class InMemoryRequestStore implements RequestStore {
       createdAt: new Date().toISOString(),
     };
     this.#rows.set(request.id, request);
-    this.#save();
     return request;
   }
 
@@ -100,7 +77,6 @@ export class InMemoryRequestStore implements RequestStore {
       ref: ref ?? existing.ref,
     };
     this.#rows.set(id, settled);
-    this.#save();
     return settled;
   }
 
@@ -116,13 +92,5 @@ export class InMemoryRequestStore implements RequestStore {
   /** Newest first, so every list reads the same way without sorting again. */
   #all(): MoneyRequest[] {
     return [...this.#rows.values()].reverse();
-  }
-
-  /**
-   * Saved oldest first, which is the order the map already holds them in, so a
-   * reload puts them back exactly where `#all` expects to find them.
-   */
-  #save(): void {
-    this.#keep.write(SHELF, { sequence: this.#sequence, rows: [...this.#rows.values()] } satisfies Saved);
   }
 }

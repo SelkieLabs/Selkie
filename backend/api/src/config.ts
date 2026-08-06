@@ -29,15 +29,17 @@ export interface ApiConfig {
    * path does not exist.
    */
   botSecret?: string;
+  /** Postgres. Everything that must outlive the process lives here. */
+  databaseUrl: string;
   /**
-   * Where state that must outlive the process is written.
+   * What seals account keys before they go in the database.
    *
-   * Anchored to the repo the same way the contract id is, and for a stronger
-   * reason: this file holds the key to every account Selkie provisioned, so a
-   * path that moved with the working directory would mean a restart from the
-   * wrong folder came up empty and minted everybody a second wallet.
+   * Separate from the database on purpose: a dump, a backup, or a restored
+   * snapshot is then a set of rows rather than a set of spendable wallets.
+   * Format is `version:base64`, newest first, comma separated, so a key can be
+   * rotated without a day where nothing works.
    */
-  dataFile: string;
+  walletKey: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -53,9 +55,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     sponsorSecret: required(env, "SELKIE_SPONSOR_SECRET"),
     oracleSecret: required(env, "SELKIE_ORACLE_SECRET"),
     botSecret: env.SELKIE_BOT_SECRET || undefined,
-    // Per network, so testnet play money and real money can never load each
-    // other's accounts.
-    dataFile: env.SELKIE_DATA_FILE || resolve(REPO_ROOT, `backend/api/.data/${network}.json`),
+    databaseUrl: required(env, "DATABASE_URL"),
+    walletKey: required(env, "SELKIE_WALLET_KEY"),
   };
 }
 

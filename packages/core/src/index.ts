@@ -5,7 +5,6 @@ export * from "./chains/registry";
 export * from "./services/ramp";
 export * from "./services/airtime";
 export * from "./services/swap";
-export * from "./storage/keep";
 export * from "./domain/bot-token";
 export * from "./domain/handle";
 export * from "./domain/history";
