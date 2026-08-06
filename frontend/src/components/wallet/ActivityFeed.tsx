@@ -1,7 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, Clock, Loader2, Repeat, Sparkles, Undo2 } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Banknote,
+  Clock,
+  Loader2,
+  Repeat,
+  Sparkles,
+  Undo2,
+} from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
 import { useToast } from "@/contexts/ToastContext";
 import { ApiError, api, type ActivityEntry } from "@/lib/api";
@@ -241,6 +250,7 @@ function Icon({
   returned: boolean;
 }) {
   if (returned) return <Undo2 size={16} strokeWidth={2.3} />;
+  if (kind === "cashout") return <Banknote size={16} strokeWidth={2.3} />;
   if (kind === "swap") return <Repeat size={16} strokeWidth={2.3} />;
   if (kind === "claim") return <Sparkles size={16} strokeWidth={2.3} />;
   if (kind === "receive") return <ArrowDownLeft size={17} strokeWidth={2.4} />;
@@ -262,6 +272,8 @@ function title(entry: ActivityEntry): string {
       return "was waiting for you";
     case "swap":
       return entry.counterparty ? `converted to ${entry.counterparty}` : "converted";
+    case "cashout":
+      return entry.counterparty ? `cashed out to ${entry.counterparty}` : "cashed out";
     default:
       return entry.counterparty ? `to ${entry.counterparty}` : "money out";
   }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowDownToLine,
+  Banknote,
   Check,
   Copy,
   Eye,
@@ -127,6 +128,9 @@ export function BalanceCard({
         </Link>
         <Link href="/wallet/receive" className="btn flex-1 sm:flex-none">
           <ArrowDownToLine size={15} strokeWidth={2.4} /> Deposit
+        </Link>
+        <Link href="/wallet/cashout" className="btn flex-1 sm:flex-none">
+          <Banknote size={15} strokeWidth={2.4} /> Cash out
         </Link>
         <button onClick={onConvert} disabled={!hasSomethingToConvert} className="btn">
           <Repeat size={15} strokeWidth={2.4} /> Convert

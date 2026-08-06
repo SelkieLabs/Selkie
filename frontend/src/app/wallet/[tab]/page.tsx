@@ -6,6 +6,7 @@ import { Header, Shell, Spinner } from "@/components/Layout";
 import { Redirect } from "@/components/Redirect";
 import { ActivityFeed } from "@/components/wallet/ActivityFeed";
 import { AssetList, BalanceCard } from "@/components/wallet/BalanceCard";
+import { CashOutPanel } from "@/components/wallet/CashOutPanel";
 import { ConvertSheet } from "@/components/wallet/ConvertSheet";
 import { PayManyPanel } from "@/components/wallet/PayManyPanel";
 import {
@@ -175,6 +176,8 @@ export default function WalletTabPage() {
               )}
 
               {tab === "receive" && <ReceivePanel handle={handle} />}
+
+              {tab === "cashout" && <CashOutPanel balance={dollars} />}
 
               {tab === "requests" && (
                 <RequestsPanel

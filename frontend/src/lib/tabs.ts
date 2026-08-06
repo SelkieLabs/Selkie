@@ -1,5 +1,6 @@
 import {
   ArrowDownToLine,
+  Banknote,
   HandCoins,
   Home,
   Send,
@@ -17,7 +18,14 @@ import {
  * somewhere your money lives. History now sits under the balance on Home, where
  * it is read after the number rather than instead of it.
  */
-export type WalletTab = "home" | "send" | "receive" | "requests" | "many" | "settings";
+export type WalletTab =
+  | "home"
+  | "send"
+  | "receive"
+  | "cashout"
+  | "requests"
+  | "many"
+  | "settings";
 
 export interface TabDef {
   id: WalletTab;
@@ -33,6 +41,9 @@ export const TABS: TabDef[] = [
   { id: "home", label: "Home", short: "Home", icon: Home, onPhone: true },
   { id: "send", label: "Send", short: "Send", icon: Send, onPhone: true },
   { id: "receive", label: "Deposit", short: "Deposit", icon: ArrowDownToLine, onPhone: true },
+  // Money in and money out sit next to each other. Burying the way out of a
+  // wallet is how an app starts to feel like somewhere your money is stuck.
+  { id: "cashout", label: "Cash out", short: "Cash out", icon: Banknote, onPhone: true },
   { id: "requests", label: "Requests", short: "Requests", icon: HandCoins, onPhone: true },
   { id: "many", label: "Pay many", short: "Many", icon: Sparkles, onPhone: true },
   { id: "settings", label: "Settings", short: "Settings", icon: Settings, onPhone: false },
