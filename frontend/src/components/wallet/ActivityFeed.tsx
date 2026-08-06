@@ -5,6 +5,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Banknote,
+  ChevronRight,
   Clock,
   Loader2,
   Repeat,
@@ -12,6 +13,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
+import { TransactionSheet } from "@/components/wallet/TransactionSheet";
 import { useToast } from "@/contexts/ToastContext";
 import { ApiError, api, type ActivityEntry } from "@/lib/api";
 import { dayKey, dayLabel, money, timeAgo } from "@/lib/format";
@@ -149,6 +151,7 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
   const toast = useToast();
   const hidden = useAmountsHidden();
   const [returning, setReturning] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const incoming = INCOMING[entry.kind] ?? false;
   const waiting = entry.status === "pending";
@@ -168,6 +171,7 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
     try {
       const { message } = await api.refund(entry.claimRef);
       toast("success", message);
+      setOpen(false);
       onChanged();
     } catch (error) {
       toast(
@@ -182,66 +186,106 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
   };
 
   return (
-    <div className="flex items-center gap-3 border-t-2 border-pen/[0.07] px-4 py-3.5 first:border-t-0 sm:gap-3.5 sm:px-5">
-      {/* Direction first, as a boxed arrow: which way the money went is the one
-          thing worth knowing before reading anything else in the row. */}
-      <span
-        className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border-2 ${
-          returned
-            ? "border-pen/15 bg-pen/[0.05] text-pen/45"
-            : incoming
-              ? "border-[#2f7d3f]/25 bg-[#2f7d3f]/10 text-[#2f7d3f]"
-              : "border-[#b91c34]/25 bg-[#b91c34]/[0.08] text-[#b91c34]"
-        }`}
+    <>
+      <div
+        // The whole row opens the payment, so the target is the size of the row
+        // rather than a link somewhere inside it. Not a <button>: the take-back
+        // button lives in here, and a button inside a button is invalid.
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen(true)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className="group flex cursor-pointer items-center gap-3 border-t-2 border-pen/[0.07] px-4 py-3.5 transition-colors first:border-t-0 hover:bg-pen/[0.035] focus-visible:bg-pen/[0.05] focus-visible:outline-none sm:gap-3.5 sm:px-5"
       >
-        <Icon kind={entry.kind} waiting={waiting} returned={returned} />
-      </span>
-
-      <TokenIcon asset={entry.amount.asset} size={30} />
-
-      <div className="min-w-0 flex-1">
-        <p
-          className={`flex items-baseline gap-1.5 font-display text-[17px] font-bold tracking-tight tabular-nums ${
-            // Money in reads green, money out reads red, at a glance and
-            // without reading the number. Returned money is neither: it never
-            // went anywhere, so it is struck out and greyed instead.
-            returned ? "text-pen/40 line-through" : incoming ? "text-[#2f7d3f]" : "text-[#b91c34]"
+        {/* Direction first, as a boxed arrow: which way the money went is the one
+            thing worth knowing before reading anything else in the row. */}
+        <span
+          className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border-2 ${
+            returned
+              ? "border-pen/15 bg-pen/[0.05] text-pen/45"
+              : incoming
+                ? "border-[#2f7d3f]/25 bg-[#2f7d3f]/10 text-[#2f7d3f]"
+                : "border-[#b91c34]/25 bg-[#b91c34]/[0.08] text-[#b91c34]"
           }`}
         >
-          <span>
-            {incoming ? "+" : "−"}
-            {hidden ? MASK : money(entry.amount.amount)}
-          </span>
-          <span className="text-[13px] font-bold text-pen/45">{entry.amount.asset}</span>
-        </p>
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 truncate text-[13px] font-medium text-pen/50">
-          {waiting && !incoming && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-gold/20 px-2 py-0.5 text-[11px] font-bold text-gold-ink">
-              <Clock size={10} strokeWidth={2.6} /> Waiting
+          <Icon kind={entry.kind} waiting={waiting} returned={returned} />
+        </span>
+
+        <TokenIcon asset={entry.amount.asset} size={30} />
+
+        <div className="min-w-0 flex-1">
+          <p
+            className={`flex items-baseline gap-1.5 font-display text-[17px] font-bold tracking-tight tabular-nums ${
+              // Money in reads green, money out reads red, at a glance and
+              // without reading the number. Returned money is neither: it never
+              // went anywhere, so it is struck out and greyed instead.
+              returned ? "text-pen/40 line-through" : incoming ? "text-[#2f7d3f]" : "text-[#b91c34]"
+            }`}
+          >
+            <span>
+              {incoming ? "+" : "−"}
+              {hidden ? MASK : money(entry.amount.amount)}
             </span>
-          )}
-          {returned && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-pen/[0.09] px-2 py-0.5 text-[11px] font-bold text-pen/60">
-              <Undo2 size={10} strokeWidth={2.6} /> Back with you
-            </span>
-          )}
-          {title(entry)}
-        </p>
+            <span className="text-[13px] font-bold text-pen/45">{entry.amount.asset}</span>
+          </p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 truncate text-[13px] font-medium text-pen/50">
+            {waiting && !incoming && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-gold/20 px-2 py-0.5 text-[11px] font-bold text-gold-ink">
+                <Clock size={10} strokeWidth={2.6} /> Waiting
+              </span>
+            )}
+            {returned && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-pen/[0.09] px-2 py-0.5 text-[11px] font-bold text-pen/60">
+                <Undo2 size={10} strokeWidth={2.6} /> Back with you
+              </span>
+            )}
+            {title(entry)}
+          </p>
+        </div>
+
+        {canTakeBack && (
+          <button
+            // The row underneath opens the payment. Without this, taking money
+            // back would also throw a sheet up over the confirmation.
+            onClick={(event) => {
+              event.stopPropagation();
+              void takeBack();
+            }}
+            disabled={returning}
+            className="btn btn-dim btn-sm hidden shrink-0 sm:inline-flex"
+          >
+            {returning ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />}
+            {returning ? "Returning" : "Take it back"}
+          </button>
+        )}
+
+        <span className="shrink-0 text-[13px] font-semibold text-pen/40">{timeAgo(entry.at)}</span>
+        <ChevronRight
+          size={16}
+          strokeWidth={2.4}
+          className="-ml-1 shrink-0 text-pen/25 transition-colors group-hover:text-pen/50"
+        />
       </div>
 
-      {canTakeBack && (
-        <button
-          onClick={() => void takeBack()}
-          disabled={returning}
-          className="btn btn-dim btn-sm shrink-0"
-        >
-          {returning ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />}
-          {returning ? "Returning" : "Take it back"}
-        </button>
+      {/* Outside the row, deliberately. The sheet is portaled to <body>, but a
+          portal still bubbles its clicks up the React tree: rendered inside the
+          row, dismissing it would immediately reopen it. */}
+      {open && (
+        <TransactionSheet
+          entry={entry}
+          incoming={incoming}
+          canTakeBack={canTakeBack}
+          returning={returning}
+          onTakeBack={() => void takeBack()}
+          onClose={() => setOpen(false)}
+        />
       )}
-
-      <span className="shrink-0 text-[13px] font-semibold text-pen/40">{timeAgo(entry.at)}</span>
-    </div>
+    </>
   );
 }
 

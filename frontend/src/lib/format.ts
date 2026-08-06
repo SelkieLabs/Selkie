@@ -116,6 +116,20 @@ export function dayLabel(iso: string): string {
   });
 }
 
+/**
+ * The exact moment, spelled out: "6 August 2026 at 14:32".
+ *
+ * The feed says "3d ago" because that is what you want while scanning. Opening
+ * one payment is the other question entirely, and "3d ago" cannot answer it.
+ */
+export function exactTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "unknown";
+  const day = d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return `${day} at ${time}`;
+}
+
 /** Stable calendar-day key (local) for grouping, e.g. "2026-6-24". */
 export function dayKey(iso: string): string {
   const d = new Date(iso);

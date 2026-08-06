@@ -122,6 +122,7 @@ The bot reads its own set, and `SELKIE_BOT_SECRET` has to match the API's:
 | --- | --- | --- |
 | `NEXT_PUBLIC_PRIVY_APP_ID` | yes | The same app id. Public by design: it ships in the browser bundle. |
 | `SELKIE_API_ORIGIN` | no | Where `/api/*` is rewritten to. Defaults to `http://localhost:4000`. |
+| `NEXT_PUBLIC_SELKIE_NETWORK` | no | Which network the explorer links point at. `testnet` unless set to `public`, and it has to agree with the API's `SELKIE_NETWORK`. |
 
 Config is read once at boot, so a missing value fails loudly on start rather
 than quietly at the moment someone tries to send money.

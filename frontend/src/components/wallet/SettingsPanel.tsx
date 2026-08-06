@@ -7,6 +7,7 @@ import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { useToast } from "@/contexts/ToastContext";
 import { useAuth } from "@/contexts/useAuth";
 import type { Handle, Identity, User } from "@/lib/api";
+import { explorer } from "@/lib/explorer";
 
 /** What each login is called in the interface, and what it can do. */
 const PROVIDERS: Record<string, { label: string; payable: boolean }> = {
@@ -181,7 +182,7 @@ function AddressRow({ address }: { address: string }) {
           {copied ? "Copied" : "Copy address"}
         </button>
         <a
-          href={`https://stellar.expert/explorer/testnet/account/${address}`}
+          href={explorer.account(address)}
           target="_blank"
           rel="noreferrer"
           className="btn btn-dim btn-sm"
