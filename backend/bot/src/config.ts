@@ -61,8 +61,8 @@ function xCredentials(env: NodeJS.ProcessEnv): BotConfig["x"] {
     );
   }
 
-  const idle = seconds(env.X_POLL_SECONDS, { fallback: 60, floor: 5 });
-  const active = seconds(env.X_ACTIVE_POLL_SECONDS, { fallback: 5, floor: 3 });
+  const slowest = seconds(env.X_POLL_SECONDS, { fallback: 15, floor: 5 });
+  const fastest = seconds(env.X_ACTIVE_POLL_SECONDS, { fallback: 3, floor: 2 });
 
   return {
     apiKey,
@@ -70,21 +70,24 @@ function xCredentials(env: NodeJS.ProcessEnv): BotConfig["x"] {
     accessToken,
     accessSecret,
     handle: (env.X_HANDLE ?? "SelkiePay").replace(/^@/, ""),
-    pollMs: idle * 1000,
-    // The live interval cannot be slower than the idle one. Configured the
-    // other way round it would mean the bot slowing down the moment somebody
-    // talked to it, which is exactly backwards.
-    activeMs: Math.min(active, idle) * 1000,
+    pollMs: slowest * 1000,
+    // The floor cannot be above the ceiling. Configured the other way round
+    // the clamp between them would have no room to work in.
+    activeMs: Math.min(fastest, slowest) * 1000,
   };
 }
 
 /**
  * A number of seconds from the environment, with a floor.
  *
- * The floor is a guard, not a policy. How fast the bot actually polls is worked
- * out at runtime from the quota X reports, because that is the only number that
- * knows what this account can afford. This is only here so a stray value cannot
- * turn the wait between polls into a tight loop against a metered API.
+ * These two are only the bounds. How fast the bot actually polls is worked out
+ * at runtime from the quota X reports on every response, because that is the
+ * only number that knows what this account can afford, and it is right across a
+ * change of plan without anybody remembering to edit anything. The slower of
+ * the two is what it falls back to when X sends no quota at all.
+ *
+ * The floor here is a guard rather than a policy: it stops a stray value
+ * turning the wait between polls into a tight loop against a metered API.
  *
  * Anything unreadable falls back rather than becoming NaN, which would sail
  * through a `Math.max` floor untouched and produce exactly that loop.

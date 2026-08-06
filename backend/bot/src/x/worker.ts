@@ -35,15 +35,6 @@ const SEEN_LIMIT = 500;
 /** Longest wait between polls when X keeps refusing. */
 const MAX_BACKOFF_MS = 15 * 60 * 1000;
 
-/**
- * How long a conversation stays "live" after the last message.
- *
- * Somebody who just tweeted at Selkie is probably about to tweet again, and
- * they are watching the screen while they do it. Somebody who tweeted an hour
- * ago is not. This is the window in which the fast interval applies.
- */
-const WARM_MS = 3 * 60 * 1000;
-
 export interface XWorkerOptions {
   client: XClient;
   selkie: SelkieClient;
@@ -52,9 +43,9 @@ export interface XWorkerOptions {
   /** Where people are pointed to open their wallet. */
   webUrl: string;
   state: StateStore;
-  /** How long to wait between polls when nothing is happening. */
+  /** The slowest it will poll, used when X reports no quota to work from. */
   pollMs?: number;
-  /** How long to wait between polls while a conversation is live. */
+  /** The fastest it will poll, however generous the quota looks. */
   activeMs?: number;
   /**
    * Work out every reply and post none of them.
@@ -90,13 +81,11 @@ export class XWorker {
    */
   #haveBaseline: boolean;
   #backoffMs = 0;
-  /** When the current conversation stops counting as live. */
-  #warmUntil = 0;
 
   constructor(options: XWorkerOptions) {
     this.#options = {
-      pollMs: 60_000,
-      activeMs: 5_000,
+      pollMs: 15_000,
+      activeMs: 3_000,
       dryRun: false,
       log: console.log,
       sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -124,10 +113,7 @@ export class XWorker {
 
     let answered = 0;
     if (this.#haveBaseline) {
-      // Somebody is talking to us, so poll fast for a while. Set before the
-      // replies rather than after, so a slow payment does not eat the window
-      // that was meant to catch the next message quickly.
-      if (mentions.length > 0) this.#warmUntil = Date.now() + WARM_MS;
+      if (mentions.length > 0) this.#options.log(`read ${mentions.length}${lateness(mentions)}`);
 
       const results = await Promise.all(this.#queues(mentions).map((queue) => this.#drain(queue)));
       answered = results.reduce((total, count) => total + count, 0);
@@ -161,7 +147,7 @@ export class XWorker {
         const { read, answered, nextPollMs } = await this.poll();
         this.#backoffMs = 0;
         wait = nextPollMs;
-        if (read > 0) this.#options.log(`read ${read}, answered ${answered}, next look in ${round(wait)}s`);
+        if (read > 0) this.#options.log(`answered ${answered}, next look in ${round(wait)}s`);
       } catch (error) {
         await this.#absorb(error);
       }
@@ -170,39 +156,42 @@ export class XWorker {
   }
 
   /**
-   * How long to wait before looking again.
+   * How long to wait before looking again: as fast as the quota can sustain.
    *
-   * Two questions, in order. Is anybody talking to us? If so the fast interval
-   * applies, because the person who tweeted is staring at their screen waiting
-   * for the answer, and a minute of silence reads as broken. If not, the slow
-   * one does, because polling an empty timeline costs the same as polling a
-   * busy one and buys nothing.
+   * X reports what is left of the window and when it refills, so the fastest
+   * sustainable interval is simply the time remaining divided by the reads
+   * remaining. Polling quicker than that does not deliver replies sooner; it
+   * spends the window early and then delivers none at all until it reopens.
+   * The arithmetic also corrects itself: poll a little fast and the remaining
+   * count falls faster, which stretches the next interval back out.
    *
-   * Then: can we afford it? X reports what is left of the quota and when it
-   * refills, so the fastest sustainable interval is simply the time remaining
-   * divided by the reads remaining. Polling faster than that does not deliver
-   * replies sooner, it spends the window early and then delivers none at all
-   * until it reopens. Quicker than the quota allows is slower.
+   * There used to be a second question here, whether anybody was talking to us,
+   * with a slow interval when nobody was. That was a mistake, and an expensive
+   * one to find: it made the SECOND message of a conversation fast and the
+   * first one slow, and every conversation starts with a first message. Someone
+   * posting at Selkie after a quiet hour waited the idle interval every time,
+   * which is exactly the moment the product is being judged.
    *
-   * Working it out from the headers rather than from a number in a config file
-   * means this is right on whichever plan the account is on, including after it
-   * changes, without anybody remembering to edit anything.
+   * Nothing is saved by going slower than the quota allows, because the window
+   * refills on a clock whether it was spent or not. So there is one interval
+   * now, and it is the fast one.
    */
   #pace(limit: RateLimit | null): number {
-    const wanted = Date.now() < this.#warmUntil ? this.#options.activeMs : this.#options.pollMs;
-    if (!limit) return wanted;
+    // No headers to work from: fall back to the configured slowest rather than
+    // guess at a plan we have not been told about.
+    if (!limit) return this.#options.pollMs;
 
     const untilReset = limit.resetAt - Date.now();
     // The window has already rolled over, or the clocks disagree. Either way the
     // reading tells us nothing, so fall back rather than act on it.
-    if (untilReset <= 0) return wanted;
+    if (untilReset <= 0) return this.#options.pollMs;
 
     // Nothing left. Wait for the refill instead of spending the next call on a
     // 429, which costs a request and buys a rate limit.
     if (limit.remaining <= 0) return Math.min(untilReset + 1000, MAX_BACKOFF_MS);
 
     const affordable = untilReset / limit.remaining;
-    return Math.min(Math.max(wanted, affordable), MAX_BACKOFF_MS);
+    return clamp(affordable, this.#options.activeMs, this.#options.pollMs);
   }
 
   /**
@@ -325,4 +314,25 @@ function describe(error: unknown): string {
 /** Milliseconds as seconds, for a log line a person reads. */
 function round(ms: number): number {
   return Math.round(ms / 100) / 10;
+}
+
+/**
+ * How long the oldest message in a batch had been sitting there.
+ *
+ * The one number that separates "we polled too slowly" from "X was slow to show
+ * it to us", which look identical from the outside and have completely
+ * different fixes. Without it, a slow reply is a matter of opinion.
+ */
+function lateness(mentions: Mention[]): string {
+  const ages = mentions
+    .map((mention) => (mention.createdAt ? Date.now() - Date.parse(mention.createdAt) : NaN))
+    .filter((age) => Number.isFinite(age));
+  if (ages.length === 0) return "";
+
+  return `, oldest posted ${round(Math.max(...ages))}s ago`;
+}
+
+/** Keep a value inside its bounds, whichever way round they were given. */
+function clamp(value: number, low: number, high: number): number {
+  return Math.min(Math.max(value, low), Math.max(low, high));
 }

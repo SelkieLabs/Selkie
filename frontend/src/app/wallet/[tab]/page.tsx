@@ -23,6 +23,7 @@ import { useAuth } from "@/contexts/useAuth";
 import { api, type ActivityEntry, type MoneyRequest } from "@/lib/api";
 import { DOLLAR } from "@/lib/format";
 import { isWalletTab } from "@/lib/tabs";
+import { useLiveRefresh } from "@/lib/useLiveRefresh";
 
 /**
  * The wallet.
@@ -71,6 +72,26 @@ export default function WalletTabPage() {
     void loadActivity();
     void loadRequests();
   }, [status, loadActivity, loadRequests]);
+
+  /**
+   * Money can arrive without this tab doing anything.
+   *
+   * A payment sent from a post on X, or one a friend sent you, used to leave
+   * the wallet showing yesterday's story until somebody thought to press
+   * refresh. Nothing on screen said it was stale, which is the worst kind of
+   * wrong: an empty history looks exactly like a history that has not loaded.
+   *
+   * Quiet on purpose. No spinner and no flash, because this fires while the
+   * person is reading and an unrequested loading state reads as a glitch.
+   */
+  useLiveRefresh(
+    useCallback(() => {
+      void refresh();
+      void loadActivity();
+      void loadRequests();
+    }, [refresh, loadActivity, loadRequests]),
+    { enabled: status === "ready" },
+  );
 
   /**
    * Everything, on demand.

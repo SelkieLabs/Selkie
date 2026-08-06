@@ -18,8 +18,8 @@ describe("how often it looks", () => {
     // The default matters more than the setting. Nobody tunes a bot before
     // finding out whether it is any good.
     const x = load().x;
-    assert.equal(x?.activeMs, 5_000, "fast while somebody is talking to it");
-    assert.equal(x?.pollMs, 60_000, "and unhurried when nobody is");
+    assert.equal(x?.activeMs, 3_000, "as fast as a healthy quota allows");
+    assert.equal(x?.pollMs, 15_000, "and no slower than this when X says nothing");
   });
 
   it("takes the intervals it is given", () => {
@@ -28,9 +28,8 @@ describe("how often it looks", () => {
     assert.equal(x?.activeMs, 8_000);
   });
 
-  it("will not let the live interval be slower than the idle one", () => {
-    // Configured that way round it would mean slowing down the moment somebody
-    // spoke to it, which is exactly backwards.
+  it("will not let the floor sit above the ceiling", () => {
+    // Configured that way round the clamp between them has no room to work in.
     const x = load({ X_POLL_SECONDS: "10", X_ACTIVE_POLL_SECONDS: "45" }).x;
     assert.ok((x?.activeMs ?? 0) <= (x?.pollMs ?? 0), `${x?.activeMs} vs ${x?.pollMs}`);
   });
@@ -40,7 +39,7 @@ describe("how often it looks", () => {
     // reports. This only stops a stray value becoming a tight loop.
     const x = load({ X_POLL_SECONDS: "1", X_ACTIVE_POLL_SECONDS: "0.1" }).x;
     assert.ok((x?.pollMs ?? 0) >= 5_000);
-    assert.ok((x?.activeMs ?? 0) >= 3_000);
+    assert.ok((x?.activeMs ?? 0) >= 2_000);
   });
 
   it("falls back rather than becoming NaN on nonsense", () => {

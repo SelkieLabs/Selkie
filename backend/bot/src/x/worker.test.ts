@@ -159,83 +159,101 @@ describe("how fast it looks again", () => {
   const started = () => new MemoryStateStore({ sinceId: "1" });
   const quiet = () => new MemoryStateStore({ sinceId: "1" });
 
-  it("takes its time when nobody is talking to it", async () => {
-    const { worker } = build([[]], { state: quiet(), pollMs: 60_000, activeMs: 5_000 });
+  it("is just as quick for the first message as for the second", async () => {
+    // The bug this replaced: a slow interval while nobody was talking meant the
+    // FIRST message of every conversation waited it out, and every conversation
+    // starts with a first message. An empty timeline must not slow us down.
+    const quotaForThreeSeconds = { remaining: 300, resetAt: Date.now() + 900_000 };
 
-    assert.equal((await worker.poll()).nextPollMs, 60_000);
-  });
+    const cold = fakeX([[]], { rateLimit: quotaForThreeSeconds });
+    const idle = build([], { state: quiet(), pollMs: 15_000, activeMs: 3_000 }, cold);
 
-  it("speeds up the moment somebody does", async () => {
-    // The person who just tweeted is watching their screen. A minute of
-    // silence reads as broken.
-    const { worker } = build([[mention("10", "@SelkiePay send 5 to @bo")]], {
-      state: started(),
-      pollMs: 60_000,
-      activeMs: 5_000,
+    const warm = fakeX([[mention("10", "@SelkiePay send 5 to @bo")]], {
+      rateLimit: quotaForThreeSeconds,
     });
+    const busy = build([], { state: started(), pollMs: 15_000, activeMs: 3_000 }, warm);
 
-    assert.equal((await worker.poll()).nextPollMs, 5_000);
+    assert.equal((await idle.worker.poll()).nextPollMs, (await busy.worker.poll()).nextPollMs);
   });
 
-  it("stays fast for a while after the conversation goes quiet", async () => {
-    // The reply usually prompts another message. Dropping straight back to the
-    // slow interval would make the second one feel much slower than the first.
-    const { worker } = build([[mention("10", "@SelkiePay send 5 to @bo")], []], {
-      state: started(),
-      pollMs: 60_000,
-      activeMs: 5_000,
-    });
-
-    await worker.poll();
-    assert.equal((await worker.poll()).nextPollMs, 5_000);
-  });
-
-  it("will not poll faster than the quota can sustain", async () => {
-    // 10 reads left and 10 minutes to go is one read a minute. Asking for one
-    // every 5 seconds would spend the window in under a minute and then answer
-    // nobody for nine.
+  it("slows down when the quota is thin", async () => {
+    // 60 reads left with 10 minutes to go is one every 10 seconds. Asking for
+    // one every 3 would spend the window in three minutes and then answer
+    // nobody for seven.
     const fake = fakeX([[mention("10", "@SelkiePay send 5 to @bo")]], {
-      rateLimit: { remaining: 10, resetAt: Date.now() + 600_000 },
+      rateLimit: { remaining: 60, resetAt: Date.now() + 600_000 },
     });
-    const { worker } = build([], { state: started(), pollMs: 60_000, activeMs: 5_000 }, fake);
+    const { worker } = build([], { state: started(), pollMs: 15_000, activeMs: 3_000 }, fake);
 
     const { nextPollMs } = await worker.poll();
 
-    assert.ok(nextPollMs >= 59_000, `polled every ${nextPollMs}ms, faster than the quota allows`);
+    assert.ok(nextPollMs >= 9_500, `polled every ${nextPollMs}ms, faster than the quota allows`);
   });
 
   it("uses the speed it is paying for when the quota is generous", async () => {
-    // 180 reads in 15 minutes is one every 5 seconds. Sitting at 60 would be
-    // leaving the plan unused and every reply a minute late for no reason.
+    // The measured plan: about 300 reads per 15 minutes, which is one every
+    // three seconds. Sitting slower than that leaves the plan unused and makes
+    // every reply late for no reason.
     const fake = fakeX([[mention("10", "@SelkiePay send 5 to @bo")]], {
-      rateLimit: { remaining: 180, resetAt: Date.now() + 900_000 },
+      rateLimit: { remaining: 300, resetAt: Date.now() + 900_000 },
     });
-    const { worker } = build([], { state: started(), pollMs: 60_000, activeMs: 5_000 }, fake);
+    const { worker } = build([], { state: started(), pollMs: 15_000, activeMs: 3_000 }, fake);
 
-    assert.equal((await worker.poll()).nextPollMs, 5_000);
+    assert.equal((await worker.poll()).nextPollMs, 3_000);
+  });
+
+  it("will not poll faster than its floor, however generous the quota looks", async () => {
+    const fake = fakeX([[]], { rateLimit: { remaining: 100_000, resetAt: Date.now() + 900_000 } });
+    const { worker } = build([], { state: quiet(), pollMs: 15_000, activeMs: 3_000 }, fake);
+
+    assert.equal((await worker.poll()).nextPollMs, 3_000);
   });
 
   it("waits for the window to refill rather than spending a call on a 429", async () => {
     const fake = fakeX([[]], { rateLimit: { remaining: 0, resetAt: Date.now() + 120_000 } });
-    const { worker } = build([], { state: quiet(), pollMs: 60_000, activeMs: 5_000 }, fake);
+    const { worker } = build([], { state: quiet(), pollMs: 15_000, activeMs: 3_000 }, fake);
 
     const { nextPollMs } = await worker.poll();
 
-    assert.ok(nextPollMs > 60_000, `waited only ${nextPollMs}ms with nothing left to spend`);
+    assert.ok(nextPollMs > 15_000, `waited only ${nextPollMs}ms with nothing left to spend`);
   });
 
   it("ignores a quota reading whose window has already passed", async () => {
     // A stale header or a clock that disagrees must not be turned into a
     // negative interval, which is a tight loop against a metered API.
     const fake = fakeX([[]], { rateLimit: { remaining: 5, resetAt: Date.now() - 10_000 } });
-    const { worker } = build([], { state: quiet(), pollMs: 60_000, activeMs: 5_000 }, fake);
+    const { worker } = build([], { state: quiet(), pollMs: 15_000, activeMs: 3_000 }, fake);
 
-    assert.equal((await worker.poll()).nextPollMs, 60_000);
+    assert.equal((await worker.poll()).nextPollMs, 15_000);
+  });
+
+  it("falls back to the slow bound when X reports no quota at all", async () => {
+    const fake = fakeX([[]], { rateLimit: null });
+    const { worker } = build([], { state: quiet(), pollMs: 15_000, activeMs: 3_000 }, fake);
+
+    assert.equal((await worker.poll()).nextPollMs, 15_000);
   });
 });
 
 describe("several people at once", () => {
   const started = () => new MemoryStateStore({ sinceId: "1" });
+
+  it("reports how late it was to a message, so slow can be told from stale", async () => {
+    // Our polling being slow and X being slow to show us a post look identical
+    // from the outside and have completely different fixes.
+    const posted = new Date(Date.now() - 8_000).toISOString();
+    const fake = fakeX([
+      [{ ...mention("10", "@SelkiePay send 5 to @bo"), createdAt: posted }],
+    ]);
+    const { worker, logs } = build([], { state: started() }, fake);
+
+    await worker.poll();
+
+    assert.ok(
+      logs.some((line) => /oldest posted 8(\.\d)?s ago/.test(line)),
+      `no lateness in the log: ${logs.join(" | ")}`,
+    );
+  });
 
   it("does not make one person wait behind another's payment", async () => {
     // Payments are the slow part. Handling a batch strictly in order means the

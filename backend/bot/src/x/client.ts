@@ -36,6 +36,8 @@ export interface Mention {
   text: string;
   authorId: string;
   authorHandle: string;
+  /** When it was posted, so a log can say how late we were to it. */
+  createdAt?: string;
 }
 
 /**
@@ -87,13 +89,13 @@ export class XClient {
     const query: Record<string, string | number> = {
       max_results: Math.max(5, Math.min(100, max)),
       expansions: "author_id",
-      "tweet.fields": "author_id",
+      "tweet.fields": "author_id,created_at",
       "user.fields": "username",
     };
     if (sinceId) query.since_id = sinceId;
 
     const response = await this.get<{
-      data?: { id: string; text: string; author_id: string }[];
+      data?: { id: string; text: string; author_id: string; created_at?: string }[];
       includes?: { users?: { id: string; username: string }[] };
       meta?: { newest_id?: string };
     }>(`/users/${userId}/mentions`, query);
@@ -105,7 +107,15 @@ export class XClient {
         // No author means no way to know who we would be paying from. Skipped
         // rather than guessed.
         return authorHandle
-          ? { id: tweet.id, text: tweet.text, authorId: tweet.author_id, authorHandle }
+          ? {
+              id: tweet.id,
+              text: tweet.text,
+              authorId: tweet.author_id,
+              authorHandle,
+              // Spread rather than assigned, because the field is optional and
+              // an explicit undefined is not the same as an absent one here.
+              ...(tweet.created_at ? { createdAt: tweet.created_at } : {}),
+            }
           : null;
       })
       .filter((mention): mention is Mention => mention !== null)
