@@ -55,11 +55,26 @@ const ASSET = String.raw`(?:\s*([A-Za-z]{2,8}))?`;
 /** A leading currency symbol reads as dollars, so "$5" needs no asset word. */
 const DOLLARS = String.raw`\$?`;
 
+/**
+ * Punctuation somebody typed at the end of a sentence.
+ *
+ * "Can you send 5 to @bo?" is a plain instruction with a question mark on it,
+ * and without this the whole pattern failed to match, the message fell through
+ * to the question rule, and a payment turned into a help card.
+ */
+const TRAILING = String.raw`[?!.]*`;
+
 const SEND_PATTERNS = [
   // send 5 usdc to @amaka [note]
-  new RegExp(String.raw`\b(?:send|pay|transfer)\s+${DOLLARS}(${AMOUNT})${ASSET}\s+to\s+${HANDLE}(?:\s+(.*))?$`, "i"),
+  new RegExp(
+    String.raw`\b(?:send|pay|transfer)\s+${DOLLARS}(${AMOUNT})${ASSET}\s+to\s+${HANDLE}${TRAILING}(?:\s+(.*))?$`,
+    "i",
+  ),
   // send @amaka 5 usdc [note] / pay @amaka $5
-  new RegExp(String.raw`\b(?:send|pay|transfer)\s+${HANDLE}\s+${DOLLARS}(${AMOUNT})${ASSET}(?:\s+(.*))?$`, "i"),
+  new RegExp(
+    String.raw`\b(?:send|pay|transfer)\s+${HANDLE}\s+${DOLLARS}(${AMOUNT})${ASSET}${TRAILING}(?:\s+(.*))?$`,
+    "i",
+  ),
 ];
 
 const REQUEST_PATTERNS = [
@@ -67,8 +82,32 @@ const REQUEST_PATTERNS = [
   new RegExp(String.raw`\brequest\s+${HANDLE}\s+(?:for\s+)?${DOLLARS}(${AMOUNT})${ASSET}`, "i"),
 ];
 
+/**
+ * Words that open a question and cannot open anything else.
+ *
+ * Used with `addressed` and never on its own. "Does anyone know if @SelkiePay
+ * works" opens with a question word and is somebody talking about us to their
+ * followers, which is not ours to answer.
+ */
+const ASKING = /^(?:wh(?:at|o|y|en|ere|ich)|how|explain|tell me)\b/i;
+
+/**
+ * A question opening with a helper verb, which needs its subject to be sure.
+ *
+ * "Is this real" is a question and "is great, I have used it twice" is a
+ * compliment, and the only thing telling them apart is the word after the verb.
+ * A question puts its subject there; a remark about us puts an adjective. Get
+ * this wrong in the generous direction and Selkie replies with a help card to
+ * everybody who says something nice about it.
+ */
+const ASKING_AUX =
+  /^(?:can|could|do|does|did|is|are|will|would|should|have|has)\s+(?:you|i|we|it|this|that|there|they|the|a|an|any|my|your|people|someone|somebody)\b/i;
+
+/** A hello, with nothing else in it. */
+const GREETING = /^(?:hi|hey|hello|yo|gm|good morning|good evening|sup|hola|wassup|what'?s up)\b[\s!.?]*$/i;
+
 export function parseCommand(text: string): Command | null {
-  const cleaned = strip(text);
+  const { cleaned, addressed } = strip(text);
 
   for (const pattern of SEND_PATTERNS) {
     const match = cleaned.match(pattern);
@@ -95,7 +134,13 @@ export function parseCommand(text: string): Command | null {
   // payment and not a balance lookup.
   if (/\bbalance\b/i.test(cleaned)) return { type: "balance" };
   if (/\b(?:history|activity|transactions)\b/i.test(cleaned)) return { type: "history" };
-  if (/\b(?:help|commands|how do i|what can you do)\b/i.test(cleaned)) return { type: "help" };
+  if (
+    /\b(?:help|commands|what can (?:you|i) do|how (?:do i|does (?:this|it)|do you)|who are you|what (?:is|are) (?:this|you)|what do you do)\b/i.test(
+      cleaned,
+    )
+  ) {
+    return { type: "help" };
+  }
 
   /**
    * An instruction we recognise the shape of but cannot read.
@@ -110,7 +155,33 @@ export function parseCommand(text: string): Command | null {
     return { type: "error", reason: "unparsed" };
   }
 
+  /**
+   * Somebody talking to us rather than about us, with something we could not
+   * read as an instruction.
+   *
+   * The list of help words above can only ever cover the phrasings somebody
+   * thought of. "What do you do", "who are you", "is this real", "how does this
+   * work", and a hundred others are all the same question, and a payments bot
+   * that answers nothing when asked what it is looks broken at the exact moment
+   * it is being evaluated.
+   *
+   * Two conditions, and both are needed. The message must be ADDRESSED to us,
+   * meaning it opened with a handle, which on X is what a reply looks like. And
+   * it must be a question or a greeting rather than a remark: "@SelkiePay this
+   * is a great app" wants no answer and buying one costs a post. Anything else
+   * addressed to us still gets silence, because most mentions of a payments bot
+   * are people talking near it.
+   */
+  if (addressed && (cleaned === "" || GREETING.test(cleaned) || asksSomething(cleaned))) {
+    return { type: "help" };
+  }
+
   return null;
+}
+
+/** A question, by its punctuation or by how it opens. */
+function asksSomething(text: string): boolean {
+  return text.endsWith("?") || ASKING.test(text) || ASKING_AUX.test(text);
 }
 
 function build(
@@ -165,10 +236,16 @@ function normalizeAmount(raw: string | undefined): string | null {
  * was wrong: it also erased the payee in "send 2 to @SelkiePay", leaving an
  * instruction with nobody in it, which the bot then had nothing to say about.
  * A handle after the first ordinary word is someone being paid.
+ *
+ * Whether there was a prefix at all is worth keeping. On X a message that opens
+ * with handles is a reply, which is the difference between somebody speaking to
+ * us and somebody mentioning us in passing to their own followers. That
+ * distinction decides whether a question gets an answer or silence.
  */
-function strip(text: string): string {
+function strip(text: string): { cleaned: string; addressed: boolean } {
   // Collapse whitespace first, so a line break between the prefix and the
   // instruction does not hide the prefix from the rule below.
-  const cleaned = String(text ?? "").replace(/\s+/g, " ").trim();
-  return cleaned.replace(/^(?:@[A-Za-z0-9_]{1,32}\s+)+/, "").trim();
+  const collapsed = String(text ?? "").replace(/\s+/g, " ").trim();
+  const cleaned = collapsed.replace(/^(?:@[A-Za-z0-9_]{1,32}(?:\s+|$))+/, "").trim();
+  return { cleaned, addressed: cleaned !== collapsed };
 }

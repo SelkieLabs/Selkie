@@ -135,9 +135,16 @@ describe("staying off the timeline", () => {
     assert.equal(parse("@SelkiePay is great, I used it to send money to @amaka yesterday"), null);
   });
 
-  it("says nothing to a bare mention", () => {
-    assert.equal(parse("@SelkiePay"), null);
+  it("says nothing when it is mentioned in passing", () => {
+    // Not addressed to us: the message opens with a word of their own, so they
+    // are talking to their followers and we are the subject.
     assert.equal(parse("hey @SelkiePay 👋"), null);
+  });
+
+  it("introduces itself to somebody who tagged it and nothing else", () => {
+    // A bare tag is somebody asking what this is, in the fewest characters
+    // possible. It costs one post to answer and looks broken not to.
+    assert.deepEqual(parse("@SelkiePay"), { type: "help" });
   });
 
   it("says nothing to a number with no instruction", () => {
@@ -207,5 +214,125 @@ describe("input nobody should be able to weaponize", () => {
   it("truncates a note rather than passing an essay to the ledger", () => {
     const command = sent(`@SelkiePay send 5 to @amaka ${"x".repeat(500)}`);
     assert.ok((command.note?.length ?? 0) <= 60);
+  });
+});
+
+describe("somebody asking what this is", () => {
+  const asks = (text: string) => parseCommand(text);
+
+  it("answers the question that was actually asked, not the one we listed", () => {
+    // The exact post that got nothing: "what do you do" is not "what can you
+    // do", and a payments bot that says nothing when asked what it is looks
+    // broken at the moment it is being evaluated.
+    assert.deepEqual(asks("@SelkiePay what do you do"), { type: "help" });
+  });
+
+  it("answers every ordinary way of asking the same thing", () => {
+    const ways = [
+      "@SelkiePay what do you do",
+      "@SelkiePay what is this",
+      "@SelkiePay what is this?",
+      "@SelkiePay who are you",
+      "@SelkiePay how does this work",
+      "@SelkiePay how do i use this",
+      "@SelkiePay what can you do",
+      "@SelkiePay is this real?",
+      "@SelkiePay are you a scam",
+      "@SelkiePay can you send money to anyone?",
+      "@SelkiePay does this actually work",
+      "@SelkiePay explain",
+      "@SelkiePay tell me more",
+      "@SelkiePay ?",
+      "@SelkiePay",
+      "@SelkiePay hi",
+      "@SelkiePay gm",
+      "@SelkiePay hey!",
+      "@SelkiePay help",
+      "@SelkiePay commands",
+    ];
+
+    for (const text of ways) {
+      assert.deepEqual(asks(text), { type: "help" }, `no answer to: ${text}`);
+    }
+  });
+
+  it("still answers when X has stacked other handles in front of us", () => {
+    // A reply inside a thread carries every handle in it.
+    assert.deepEqual(asks("@someone @SelkiePay @another what is this?"), { type: "help" });
+  });
+
+  it("says nothing to a remark, however friendly", () => {
+    // Answering these is noise on the timeline and a bill for every post.
+    for (const text of [
+      "@SelkiePay this is a great app",
+      "@SelkiePay nice work team",
+      "@SelkiePay congrats on the launch",
+      "@SelkiePay 🔥🔥🔥",
+    ]) {
+      assert.equal(asks(text), null, `answered a remark: ${text}`);
+    }
+  });
+
+  it("says nothing when people are talking about us to each other", () => {
+    // The question opener is only trusted when the message was addressed to us,
+    // which on X means it opened with a handle.
+    for (const text of [
+      "does anyone know if @SelkiePay works?",
+      "what is @SelkiePay exactly",
+      "how does @SelkiePay make money?",
+      "I wonder who built @SelkiePay",
+    ]) {
+      assert.equal(asks(text), null, `answered a bystander: ${text}`);
+    }
+  });
+
+  it("still prefers a real instruction over reading it as a question", () => {
+    assert.deepEqual(asks("@SelkiePay can you send 5 to @bo?"), {
+      type: "send",
+      amount: "5",
+      asset: "USDC",
+      to: "bo",
+      note: undefined,
+    });
+    assert.deepEqual(asks("@SelkiePay what is my balance?"), { type: "balance" });
+  });
+});
+
+describe("punctuation at the end of an instruction", () => {
+  it("reads a payment with a question mark on it", () => {
+    // "Can you send 5 to @bo?" is an instruction, not a question. Before this
+    // the pattern failed on the "?" and the whole thing became a help card.
+    for (const text of [
+      "@SelkiePay can you send 5 to @bo?",
+      "@SelkiePay send 5 to @bo!",
+      "@SelkiePay send 5 to @bo.",
+      "@SelkiePay please send 5 to @bo?!",
+    ]) {
+      assert.deepEqual(
+        parseCommand(text),
+        { type: "send", amount: "5", asset: "USDC", to: "bo", note: undefined },
+        text,
+      );
+    }
+  });
+
+  it("reads the other ordering with punctuation too", () => {
+    assert.deepEqual(parseCommand("@SelkiePay pay @bo 5?"), {
+      type: "send",
+      amount: "5",
+      asset: "USDC",
+      to: "bo",
+      note: undefined,
+    });
+  });
+
+  it("keeps a note that follows the handle", () => {
+    assert.deepEqual(parseCommand("@SelkiePay send 5 to @bo for lunch"), {
+      type: "send",
+      amount: "5",
+      asset: "USDC",
+      to: "bo",
+      note: "for lunch",
+    });
   });
 });
