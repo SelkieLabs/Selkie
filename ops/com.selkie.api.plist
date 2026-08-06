@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Keeps the API up without a terminal holding it open.
+
+  Every path below is absolute, because launchd has no notion of "the repo" and
+  no PATH worth speaking of. Change the four that mention /Users/admin, and the
+  node version, to match the machine this is going on.
+
+  Install:  cp this to ~/Library/LaunchAgents/ and
+            launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.selkie.api.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.selkie.api</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/admin/.nvm/versions/node/v20.20.2/bin/node</string>
+    <string>/Users/admin/.pg/SelkieLabs/Selkie/node_modules/tsx/dist/cli.mjs</string>
+    <string>--env-file-if-exists=../../.env</string>
+    <string>src/index.ts</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/admin/.pg/SelkieLabs/Selkie/backend/api</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Comes back from a crash, and from the database going away underneath it. -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Ten seconds between restarts, so a boot that fails does not spin. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/admin/.pg/SelkieLabs/Selkie/backend/api/api.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/admin/.pg/SelkieLabs/Selkie/backend/api/api.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/admin/.nvm/versions/node/v20.20.2/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>NODE_ENV</key>
+    <string>development</string>
+  </dict>
+</dict>
+</plist>
