@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Clock, Send, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, Clock, Send, Sparkles } from "lucide-react";
 import { Footer, Header, Shell } from "@/components/Layout";
 import { Redirect } from "@/components/Redirect";
 import { Reveal } from "@/components/Reveal";
@@ -25,7 +25,7 @@ const STEPS = [
 ];
 
 export default function Landing() {
-  const { status, signIn } = useAuth();
+  const { status, signIn, problem } = useAuth();
 
   // Someone with an account came for their wallet, not the pitch.
   if (status === "ready" || status === "needs-account") return <Redirect to="/wallet/home" />;
@@ -61,6 +61,13 @@ export default function Landing() {
                   Continue with Google or X. It takes one tap.
                 </span>
               </div>
+
+              {problem && (
+                <p className="mt-4 flex max-w-md items-start gap-2.5 rounded-xl border border-gold/25 bg-gold/[0.08] p-3.5 text-[14px] leading-relaxed text-ivory/80">
+                  <AlertTriangle size={16} className="mt-0.5 shrink-0 text-gold" />
+                  {problem}
+                </p>
+              )}
             </Reveal>
           </section>
 

@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useLogin, usePrivy, type PrivyErrorCode } from "@privy-io/react-auth";
 import {
   ApiError,
   api,
@@ -49,6 +49,8 @@ export interface AuthState {
   claimed: ClaimOutcome[];
   merge: MergePrompt | null;
   busy: boolean;
+  /** Why the last sign-in did not work, in words a person can act on. */
+  problem: string | null;
   signIn: () => void;
   signOut: () => Promise<void>;
   createAccount: () => Promise<void>;
@@ -71,6 +73,7 @@ export const AuthContext = createContext<AuthState>({
   claimed: [],
   merge: null,
   busy: false,
+  problem: null,
   signIn: () => {},
   signOut: noop,
   createAccount: noop,
@@ -93,6 +96,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [claimed, setClaimed] = useState<ClaimOutcome[]>([]);
   const [merge, setMerge] = useState<MergePrompt | null>(null);
   const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  // privy.login() returns nothing and never rejects, so a failed sign-in is
+  // reported here or nowhere.
+  const { login } = useLogin({
+    onComplete: () => setProblem(null),
+    onError: (code) => setProblem(signInProblem(code)),
+  });
+
+  /**
+   * Which sign-in the replies still in the air belong to.
+   *
+   * The wallet reads `/me` every fifteen seconds and that read waits on the
+   * ledger. Signing out mid-flight used to be undone by the reply landing
+   * afterwards and setting the user again, which is how a signed-out landing
+   * page kept showing somebody's name. A reply from an ended session is dropped.
+   */
+  const session = useRef(0);
+
+  const forget = useCallback(() => {
+    session.current += 1;
+    setUser(null);
+    setBalances([]);
+    setBalancesReady(false);
+    setClaimed([]);
+    setMerge(null);
+  }, []);
 
   // Every API call reads the token through this, so it is always the live one.
   useEffect(() => {
@@ -100,11 +130,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [authenticated, getAccessToken]);
 
   const loadBalances = useCallback(async () => {
+    const mine = session.current;
     try {
       const { user: fresh, balances: money } = await api.me();
+      if (session.current !== mine) return;
       setUser(fresh);
       setBalances(money);
     } catch (error) {
+      if (session.current !== mine) return;
       // A 401 here means the login went stale. Anything else is a network
       // hiccup, and that is not worth signing someone out over.
       if (error instanceof ApiError && error.status === 401) setStatus("signed-out");
@@ -112,13 +145,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       // Even a failed read ends the wait: a skeleton that never resolves is
       // worse than a balance that admits it could not be fetched.
-      setBalancesReady(true);
+      if (session.current === mine) setBalancesReady(true);
     }
   }, []);
 
   /** Trade the provider's token for a Selkie account, without creating one. */
   const loadSession = useCallback(async () => {
+    const mine = session.current;
     const result = await api.session();
+    if (session.current !== mine) return;
+
     if (result.status === "no-account") {
       setUser(null);
       setStatus("needs-account");
@@ -133,18 +169,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     if (!authenticated) {
+      forget();
       setStatus("signed-out");
-      setUser(null);
-      setBalances([]);
-      setBalancesReady(false);
-      setClaimed([]);
       return;
     }
     void loadSession().catch((error) => {
       console.error(error);
       setStatus("signed-out");
     });
-  }, [ready, authenticated, loadSession]);
+  }, [ready, authenticated, loadSession, forget]);
 
   /**
    * Money can arrive while you are just looking at the screen: someone pays your
@@ -211,13 +244,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       claimed,
       merge,
       busy,
-      signIn: () => privy.login(),
+      problem,
+      signIn: () => {
+        setProblem(null);
+        // Asking to log in while already logged in is an error, not a no-op, and
+        // it is reachable: a half-torn-down session can leave the button on
+        // screen with Privy still holding a login.
+        if (authenticated) return;
+        login();
+      },
       signOut: async () => {
-        await privy.logout();
-        setUser(null);
-        setBalances([]);
-        setBalancesReady(false);
-        setStatus("signed-out");
+        try {
+          await privy.logout();
+        } catch (error) {
+          // Signing out has to work even when the round trip does not. Leaving
+          // somebody looking at their own name because a request failed is the
+          // one outcome this must never have, so the local session ends either
+          // way and a stale token is refused by the server anyway.
+          console.error(error);
+        } finally {
+          forget();
+          setStatus("signed-out");
+        }
       },
       createAccount: async () => {
         setBusy(true);
@@ -253,8 +301,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       dismissClaimed: () => setClaimed([]),
       refresh: loadBalances,
     }),
-    [status, user, balances, balancesReady, claimed, merge, busy, privy, loadBalances],
+    [
+      status,
+      user,
+      balances,
+      balancesReady,
+      claimed,
+      merge,
+      busy,
+      problem,
+      authenticated,
+      privy,
+      login,
+      loadBalances,
+      forget,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+/**
+ * What to say when a sign-in does not go through.
+ *
+ * Backing out on purpose says nothing: telling someone they did not do the
+ * thing they just chose not to do is noise. Everything else gets the same
+ * sentence, because the answer is the same in every case. By a distance the
+ * commonest is `invalid_credentials`: the code X hands back is single-use and
+ * short-lived, so a tab left open on the login screen or a reload part-way
+ * through comes back "expired or invalid". Nothing is wrong. Start it again.
+ */
+function signInProblem(code: PrivyErrorCode): string | null {
+  const backedOut = ["exited_auth_flow", "exited_link_flow", "oauth_user_denied"];
+  if (backedOut.includes(code)) return null;
+  return "That sign-in did not finish. Nothing has changed on your account, so tap sign in and try once more.";
 }

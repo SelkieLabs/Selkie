@@ -143,7 +143,11 @@ export function Header() {
         <div className="flex items-center justify-between gap-4">
           {/* No pill: the mark sits straight on the water. */}
           <Wordmark />
-          {user ? (
+          {/* Signed in, not merely "we still have a user object". Those came
+              apart on sign out, and the pill went on showing somebody's name on
+              a page they had just left. Read the state that decides, not the
+              leftovers of the state before it. */}
+          {status === "ready" && user ? (
             <AccountPill user={user} />
           ) : status === "loading" ? (
             <span className="h-10 w-28 rounded-xl bg-ivory/[0.06]" aria-hidden="true" />
