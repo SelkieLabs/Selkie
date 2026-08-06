@@ -125,6 +125,20 @@ export class StellarAdapter implements ChainAdapter {
    * So the Receive screen calls this before it shows anyone an address. It is
    * the one moment where the lazy account creation has to stop being lazy.
    */
+  /**
+   * Has this wallet already been made real, without asking the network?
+   *
+   * Reads the directory rather than the ledger, so it costs nothing and can be
+   * called on every page load. It is deliberately the pessimistic answer: an
+   * unknown wallet reads as not ready, and the worst that follows is one
+   * needless round trip through `ensureReceivable`, which does nothing to an
+   * account that already exists.
+   */
+  async isReceivable(address: string): Promise<boolean> {
+    const record = await this.deps.directory.lookupByAddress(address);
+    return record?.provisioned === true;
+  }
+
   async ensureReceivable(address: string): Promise<{ address: string; accepts: string[] }> {
     const signer = await this.deps.signers.forAddress(address);
     if (!signer) throw new Error(`No signer available for ${address}`);

@@ -32,7 +32,13 @@ const adapterStub = {
     return adapterStub.waitingAmounts;
   },
   provisioned: [] as string[],
+  /** Set when the ledger is refusing, so a test can prove sign-up survives it. */
+  provisioningFails: false,
+  async isReceivable(address: string) {
+    return adapterStub.provisioned.includes(address);
+  },
   async ensureReceivable(address: string) {
+    if (adapterStub.provisioningFails) throw new Error("horizon is having a day");
     adapterStub.provisioned.push(address);
     return { address, accepts: ["USDC", "XLM"] };
   },
@@ -115,6 +121,7 @@ describe("api", () => {
     adapterStub.sent = [];
     adapterStub.heldForClaim = true;
     adapterStub.provisioned = [];
+    adapterStub.provisioningFails = false;
     adapterStub.refunded = [];
     adapterStub.escrowId = 0;
     adapterStub.claimLifetimeSeconds = 0;
@@ -561,7 +568,86 @@ describe("api", () => {
     assert.equal(response.json().address, MINE);
     assert.deepEqual(response.json().accepts, ["USDC", "XLM"]);
     // The point of the route: an address nobody provisioned cannot be paid.
-    assert.deepEqual(adapterStub.provisioned, [MINE]);
+    assert.ok(adapterStub.provisioned.includes(MINE));
+  });
+
+  /**
+   * The address Selkie puts on screen.
+   *
+   * It is not only on the Deposit screen. It sits at the top of every tab with
+   * a copy button beside it, and it is in Settings. Somebody copied it into the
+   * app they keep their money in and was told "the destination account doesn't
+   * exist", because Selkie waited until the Deposit screen to make the wallet
+   * real. The rule these tests hold down: if we show an address, it works.
+   */
+  describe("the address we show people", () => {
+    test("can receive money from the moment the account exists", async () => {
+      const response = await post("/auth/session", {
+        token: xToken("x1", "amaka"),
+        createAccount: true,
+      });
+
+      assert.equal(response.statusCode, 200);
+      assert.ok(
+        adapterStub.provisioned.includes(response.json().user.address),
+        "we handed out an address that cannot be paid",
+      );
+    });
+
+    test("is repaired for accounts made before Selkie did that", async () => {
+      const token = xToken("x1", "amaka");
+      await post("/auth/session", { token, createAccount: true });
+      // An account from before this existed: real to Selkie, absent from the ledger.
+      adapterStub.provisioned = [];
+
+      const me = await app.inject({
+        method: "GET",
+        url: "/me",
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      assert.equal(me.statusCode, 200);
+      assert.deepEqual(adapterStub.provisioned, [MINE], "an old wallet stays unusable");
+    });
+
+    test("is not set up again on every page load", async () => {
+      // This runs on a route the app calls constantly. Doing ledger work each
+      // time would put a network round trip in front of every screen.
+      const token = xToken("x1", "amaka");
+      await post("/auth/session", { token, createAccount: true });
+      const afterSignUp = adapterStub.provisioned.length;
+
+      for (let n = 0; n < 3; n++) {
+        await app.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${token}` } });
+      }
+
+      assert.equal(adapterStub.provisioned.length, afterSignUp);
+    });
+
+    test("a ledger having a bad day does not cost somebody their sign-up", async () => {
+      // Losing the account would be far worse than a wallet that is not ready
+      // yet, and the next page load tries again.
+      adapterStub.provisioningFails = true;
+
+      const response = await post("/auth/session", {
+        token: xToken("x1", "amaka"),
+        createAccount: true,
+      });
+
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.json().status, "created");
+    });
+
+    test("and the wallet is made real on the next page load instead", async () => {
+      const token = xToken("x1", "amaka");
+      adapterStub.provisioningFails = true;
+      await post("/auth/session", { token, createAccount: true });
+
+      adapterStub.provisioningFails = false;
+      await app.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${token}` } });
+
+      assert.deepEqual(adapterStub.provisioned, [MINE]);
+    });
   });
 
   test("asking someone for money moves nothing", async () => {

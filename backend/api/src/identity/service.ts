@@ -55,6 +55,8 @@ export class IdentityService {
       users: UserStore;
       provider: IdentityProvider;
       adapter: StellarAdapter;
+      /** Where a swallowed fault goes, so best-effort work is not silent work. */
+      onError?: (error: unknown) => void;
     },
   ) {}
 
@@ -97,8 +99,36 @@ export class IdentityService {
       address,
       identities: identities.map(stamp),
     });
+    await this.makeWalletReal(created);
     const claimed = await this.claimWaitingMoney(created);
     return { user: created, isNew: true, claimed };
+  }
+
+  /**
+   * Make sure the wallet can actually receive money.
+   *
+   * Selkie used to leave this until somebody opened the Deposit screen, on the
+   * reasoning that an account nobody funds costs nothing to skip. The catch is
+   * that the address is on screen long before then: it sits at the top of every
+   * tab with a copy button next to it. Someone copies it, pastes it into the
+   * app they keep their money in, and is told the destination does not exist.
+   * They have done nothing wrong, and the address we gave them is the problem.
+   *
+   * So the wallet is made real at sign-up, and healed here for anyone whose
+   * account predates that. The rule it enforces is worth stating plainly: if
+   * Selkie shows you an address, money sent to it arrives.
+   *
+   * Best effort on purpose. A ledger that is slow or down must not cost someone
+   * their sign-up, and it must not turn every page load into an error: the
+   * account is real to Selkie either way, and the next call tries again.
+   */
+  async makeWalletReal(user: User): Promise<void> {
+    try {
+      if (await this.deps.adapter.isReceivable(user.address)) return;
+      await this.deps.adapter.ensureReceivable(user.address);
+    } catch (error) {
+      this.deps.onError?.(error);
+    }
   }
 
   /**

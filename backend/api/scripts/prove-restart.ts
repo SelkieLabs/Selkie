@@ -102,6 +102,20 @@ async function main() {
   ok(`@proofamaka is ${amaka.user.id} at ${amaka.user.address}`);
   ok(`@proofbo is ${bo.user.id} at ${bo.user.address}`);
 
+  step("the address we show them works straight away");
+  // Not after they open Deposit. The address is on screen with a copy button
+  // next to it from the first second, and an address that cannot be paid is a
+  // trap: the wallet somebody pastes it into just says the account is not there.
+  for (const [who, account] of [
+    ["@proofamaka", amaka],
+    ["@proofbo", bo],
+  ] as const) {
+    if (!(await first.adapter.network.accountExists(account.user.address))) {
+      throw new Error(`${who} was shown ${account.user.address}, which cannot receive money`);
+    }
+    ok(`${who} can be paid at the address we gave them`);
+  }
+
   step("their accounts are set up on the ledger");
   const receive = await one.inject({
     method: "POST",

@@ -129,7 +129,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const capped = (which: keyof typeof LIMITS) =>
     limits ? { config: { rateLimit: { max: limits[which], timeWindow: "1 minute" } } } : {};
 
-  const identity = new IdentityService(deps);
+  const identity = new IdentityService({
+    ...deps,
+    // Work that is allowed to fail still has to be seen to fail.
+    onError: (error) => app.log.error(error),
+  });
   const activity = deps.activity ?? new InMemoryActivityStore();
   const requests = deps.requests ?? new InMemoryRequestStore();
   const idempotency = deps.idempotency ?? new InMemoryIdempotencyStore();
@@ -373,6 +377,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.get("/me", async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
+    // The address in this response is shown at the top of every screen with a
+    // copy button beside it, so it has to be an address that works. Free once
+    // the wallet is real: the check reads the directory, not the network.
+    await identity.makeWalletReal(user);
     const balance = await deps.adapter.getBalance(accountOf(user));
     return { user: publicUser(user), balances: balance.balances };
   });
