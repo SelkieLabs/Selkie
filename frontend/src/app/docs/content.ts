@@ -1,3 +1,17 @@
+import {
+  ArrowDownToLine,
+  AtSign,
+  Bell,
+  CircleHelp,
+  Hourglass,
+  Inbox,
+  LogIn,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
+
 /**
  * Everything the documentation says, as data.
  *
@@ -18,11 +32,16 @@ export interface Block {
   commands?: { type: string; does: string }[];
   /** A line worth pulling out of the flow. */
   note?: string;
+  /** Questions and their answers, kept as pairs rather than run into prose. */
+  qa?: { q: string; a: string }[];
 }
 
 export interface Section {
   id: string;
   title: string;
+  /** Carried here rather than looked up by id, so a new section cannot be
+   *  added without deciding what it looks like. */
+  icon: LucideIcon;
   /** One line under the heading, before anything else. */
   lead?: string;
   blocks: Block[];
@@ -31,6 +50,7 @@ export interface Section {
 export const SECTIONS: Section[] = [
   {
     id: "what-it-is",
+    icon: Sparkles,
     title: "What Selkie is",
     lead: "Money that finds people by the name you already know them by.",
     blocks: [
@@ -47,6 +67,7 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "getting-started",
+    icon: LogIn,
     title: "Getting started",
     lead: "One tap. There is no form.",
     blocks: [
@@ -66,6 +87,7 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "sending",
+    icon: Send,
     title: "Sending money",
     lead: "A name and an amount.",
     blocks: [
@@ -90,6 +112,7 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "waiting",
+    icon: Hourglass,
     title: "When they have not joined yet",
     lead: "The money waits, and it stays yours until they take it.",
     blocks: [
@@ -113,6 +136,7 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "receiving",
+    icon: Inbox,
     title: "Receiving money",
     lead: "There is nothing to do.",
     blocks: [
@@ -126,6 +150,7 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "requests",
+    icon: Bell,
     title: "Asking for money",
     lead: "A request moves nothing by itself.",
     blocks: [
@@ -142,6 +167,7 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "on-x",
+    icon: AtSign,
     title: "Using Selkie on X",
     lead: "Post at @SelkiePay and it does the rest.",
     blocks: [
@@ -172,6 +198,7 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "adding-money",
+    icon: ArrowDownToLine,
     title: "Adding money",
     lead: "The one place a network gets named.",
     blocks: [
@@ -188,6 +215,7 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "safety",
+    icon: ShieldCheck,
     title: "Safety",
     lead: "What Selkie can and cannot do.",
     blocks: [
@@ -209,25 +237,40 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "questions",
+    icon: CircleHelp,
     title: "Common questions",
     blocks: [
       {
-        p: "Does the person I am paying need an account? No. If they have not joined, the money waits for them under their handle.",
-      },
-      {
-        p: "What does it cost? Nothing to send and nothing to receive. You do not have to hold anything separate to cover a fee.",
-      },
-      {
-        p: "How long does it take? Seconds, if they already have an account. If they do not, it lands the moment they sign in.",
-      },
-      {
-        p: "What if I send to the wrong handle? If they have an account it is gone, the same as handing cash to the wrong person. If they do not, it is still waiting and you can take it back.",
-      },
-      {
-        p: "Can I use more than one account? Yes. Connect your X, Google and Telegram to the same wallet and people can pay you at any of them.",
-      },
-      {
-        p: "Is my balance public? No. It is never posted anywhere, including by the bot on X.",
+        qa: [
+          {
+            q: "Does the person I am paying need an account?",
+            a: "No. If they have not joined, the money waits for them under their handle until they sign in.",
+          },
+          {
+            q: "What does it cost?",
+            a: "Nothing to send and nothing to receive. You do not have to hold anything separate to cover a fee.",
+          },
+          {
+            q: "How long does it take?",
+            a: "Seconds, if they already have an account. If they do not, it lands the moment they sign in.",
+          },
+          {
+            q: "What if I send to the wrong handle?",
+            a: "If they have an account it is gone, the same as handing cash to the wrong person. If they do not, it is still waiting and you can take it back.",
+          },
+          {
+            q: "Can I use more than one account?",
+            a: "Yes. Connect your X, Google and Telegram to the same wallet and people can pay you at any of them.",
+          },
+          {
+            q: "Is my balance public?",
+            a: "No. It is never posted anywhere, including by the bot on X.",
+          },
+          {
+            q: "Do I need to know anything about crypto?",
+            a: "No, and you will not be asked to. The only screen that mentions a network is Deposit, because money arriving from outside has to arrive over something.",
+          },
+        ],
       },
     ],
   },
