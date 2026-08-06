@@ -170,7 +170,12 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
       toast("success", message);
       onChanged();
     } catch (error) {
-      toast("error", error instanceof ApiError ? error.message : "We could not take that back.");
+      toast(
+        "error",
+        error instanceof ApiError
+          ? error.message
+          : "That did not go through. Your money is still waiting.",
+      );
     } finally {
       setReturning(false);
     }

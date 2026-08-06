@@ -114,7 +114,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       // gets reported to the caller as our fault.
       errorResponseBuilder: () => ({
         statusCode: 429,
-        message: "That is a lot of requests. Slow down a moment.",
+        message: "Too many tries. Wait a minute and try again.",
       }),
     });
   }
@@ -179,7 +179,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const state = await idempotency.begin(userId, key, fingerprint(request.body));
     if (state.kind === "done") return state.record.body;
     if (state.kind === "in-flight") {
-      return reply.code(409).send({ error: "That is already going through. Give it a moment." });
+      return reply.code(409).send({
+        error: "That payment is already going through. Check your activity in a moment.",
+      });
     }
     /**
      * The same key, asking for something different.
@@ -192,7 +194,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
      */
     if (state.kind === "mismatch") {
       return reply.code(422).send({
-        error: "That looks like a different payment under a reference already used. Nothing moved.",
+        error: "Nothing moved. Something went wrong at our end. Start the payment again.",
       });
     }
 
@@ -316,7 +318,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
    */
   app.post("/auth/session", capped("auth"), async (request, reply) => {
     const body = (request.body ?? {}) as { token?: string; createAccount?: boolean };
-    if (!body.token) return reply.code(400).send({ error: "Missing token." });
+    if (!body.token) return reply.code(400).send({ error: "Sign in again to continue." });
 
     const result = await identity.signIn(body.token, {
       createIfMissing: body.createAccount === true,
@@ -347,7 +349,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     if (!user) return;
 
     const body = (request.body ?? {}) as { token?: string };
-    if (!body.token) return reply.code(400).send({ error: "Missing token." });
+    if (!body.token) return reply.code(400).send({ error: "Sign in again to continue." });
 
     const result = await identity.link(user.id, body.token);
     if (result.status === "merge-required") {
@@ -368,7 +370,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     if (!user) return;
 
     const body = (request.body ?? {}) as { fromUserId?: string };
-    if (!body.fromUserId) return reply.code(400).send({ error: "Missing fromUserId." });
+    if (!body.fromUserId) {
+      return reply.code(400).send({ error: "We lost track of that wallet. Try the merge again." });
+    }
 
     const merged = await identity.merge(user.id, body.fromUserId);
     return { status: "merged", user: publicUser(merged) };
@@ -404,7 +408,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     }
 
     const handle = toHandle(username, platform as "x" | "telegram");
-    if (!handle) return reply.code(400).send({ error: "Who are you paying?" });
+    if (!handle) return reply.code(400).send({ error: "Add the handle you want to pay." });
 
     const found = await identity.findByHandle(platform as IdentityProviderId, handle.username);
     const profile = found?.identities.find(
@@ -436,7 +440,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       note?: string;
     };
     if (!body.to || !body.amount) {
-      return reply.code(400).send({ error: "Who are you paying, and how much?" });
+      return reply.code(400).send({ error: "Add a handle and an amount to send." });
     }
 
     const money: Money = { amount: body.amount, asset: (body.asset ?? "USDC").toUpperCase() };
@@ -455,14 +459,14 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     // whoever happens to have registered that name.
     if (looksLikeAddress(body.to) && !isStellarAddress(body.to)) {
       return reply.code(400).send({
-        error: "That address is not right. Check it for a missing or changed character.",
+        error: "That address is not valid. Check it for a missing or changed character.",
       });
     }
 
     if (isStellarAddress(body.to)) {
       const to = body.to.trim().toUpperCase();
       if (to === user.address) {
-        return reply.code(400).send({ error: "That is your own address." });
+        return reply.code(400).send({ error: "That is your own address. Pick someone else." });
       }
 
       const receivable = await deps.adapter.canReceive(to, money.asset);
@@ -503,7 +507,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     }
 
     const to = toHandle(body.to, (body.platform ?? "x") as "x" | "telegram");
-    if (!to) return reply.code(400).send({ error: "Who are you paying, and how much?" });
+    if (!to) return reply.code(400).send({ error: "That handle is not one we can pay." });
 
     return once(request, user.id, reply, async () => {
       const result = await pay(user, from, to, money, body.note);
@@ -558,7 +562,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       note?: string;
     };
     if (!body.from || !body.amount) {
-      return reply.code(400).send({ error: "Who are you asking, and for how much?" });
+      return reply.code(400).send({ error: "Add a handle and an amount to ask for." });
     }
 
     const asker = userHandles(user)[0];
@@ -569,9 +573,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     }
 
     const target = toHandle(body.from, (body.platform ?? "x") as "x" | "telegram");
-    if (!target) return reply.code(400).send({ error: "Who are you asking?" });
+    if (!target) return reply.code(400).send({ error: "That handle is not one we can ask." });
     if (handleKey(target) === handleKey(asker)) {
-      return reply.code(400).send({ error: "You cannot ask yourself for money." });
+      return reply.code(400).send({ error: "That is your own handle. Pick someone else." });
     }
 
     const created = await requests.create({
@@ -607,14 +611,18 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     // Same answer for "does not exist" and "not yours": knowing a request id
     // should never tell you a request exists.
     if (!found || !ownsHandle(user, found.toHandle)) {
-      return reply.code(404).send({ error: "That request is not waiting for you." });
+      return reply.code(404).send({
+        error: "That request is not waiting for you. It may have been withdrawn.",
+      });
     }
     if (found.status !== "pending") {
-      return reply.code(409).send({ error: "That request was already settled." });
+      return reply.code(409).send({ error: "That request has already been answered." });
     }
 
     const from = userHandles(user)[0];
-    if (!from) return reply.code(409).send({ error: "Link an account before paying." });
+    if (!from) {
+      return reply.code(409).send({ error: "Link your X or Telegram account before paying." });
+    }
 
     return once(request, user.id, reply, async () => {
       const result = await pay(user, from, found.fromHandle, found.amount, found.note);
@@ -635,10 +643,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const { id } = request.params as { id: string };
     const found = await requests.get(id);
     if (!found || !ownsHandle(user, found.toHandle)) {
-      return reply.code(404).send({ error: "That request is not waiting for you." });
+      return reply.code(404).send({
+        error: "That request is not waiting for you. It may have been withdrawn.",
+      });
     }
     if (found.status !== "pending") {
-      return reply.code(409).send({ error: "That request was already settled." });
+      return reply.code(409).send({ error: "That request has already been answered." });
     }
     return { status: "declined", request: await requests.settle(id, "declined") };
   });
@@ -651,10 +661,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const { id } = request.params as { id: string };
     const found = await requests.get(id);
     if (!found || found.fromUserId !== user.id) {
-      return reply.code(404).send({ error: "That is not your request." });
+      return reply.code(404).send({ error: "Only the person who asked can withdraw it." });
     }
     if (found.status !== "pending") {
-      return reply.code(409).send({ error: "That request was already settled." });
+      return reply.code(409).send({ error: "That request has already been answered." });
     }
     return { status: "cancelled", request: await requests.settle(id, "cancelled") };
   });
@@ -679,10 +689,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       note?: string;
     };
     if (!Array.isArray(body.to) || body.to.length === 0 || !body.amount) {
-      return reply.code(400).send({ error: "Who are you paying, and how much each?" });
+      return reply.code(400).send({ error: "Add some handles and an amount for each person." });
     }
     if (body.to.length > MAX_BATCH) {
-      return reply.code(400).send({ error: `That is more than ${MAX_BATCH} people at once.` });
+      return reply.code(400).send({ error: `${MAX_BATCH} people is the most in one go.` });
     }
 
     const from = userHandles(user)[0];
@@ -703,14 +713,16 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       seen.add(handleKey(handle));
       targets.push(handle);
     }
-    if (targets.length === 0) return reply.code(400).send({ error: "Nobody left to pay." });
+    if (targets.length === 0) {
+      return reply.code(400).send({ error: "None of those handles can be paid. Check them." });
+    }
 
     const balance = await deps.adapter.getBalance(accountOf(user));
     const available = Number(balance.balances.find((money) => money.asset === asset)?.amount ?? 0);
     const total = Number(body.amount) * targets.length;
     if (!Number.isFinite(total) || total > available) {
       return reply.code(409).send({
-        error: `That comes to more than you have. ${targets.length} people at ${body.amount} is ${total}.`,
+        error: `Your balance is too low. ${targets.length} people at ${body.amount} ${asset} each comes to ${total} ${asset}.`,
       });
     }
 
@@ -763,14 +775,14 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     // Same answer for "no such payment" and "not yours": knowing an id must
     // never confirm that a payment exists.
     if (!entry || entry.kind !== "send") {
-      return reply.code(404).send({ error: "That payment is not one of yours." });
+      return reply.code(404).send({ error: "That payment is not yours to take back." });
     }
     if (entry.status !== "pending") {
-      return reply.code(409).send({ error: "That payment is already settled." });
+      return reply.code(409).send({ error: "That money has already been claimed." });
     }
     if (entry.refundableAt && Date.now() < Date.parse(entry.refundableAt)) {
       return reply.code(409).send({
-        error: "This one is still waiting to be claimed. You can take it back later.",
+        error: `Too early to take this back. Try again ${inWords(Date.parse(entry.refundableAt) - Date.now())}.`,
         refundableAt: entry.refundableAt,
       });
     }
@@ -793,7 +805,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
     const query = (request.query ?? {}) as { from?: string; to?: string; amount?: string };
     if (!query.from || !query.to || !query.amount) {
-      return reply.code(400).send({ error: "What are you converting, and how much?" });
+      return reply.code(400).send({ error: "Pick what to convert, and how much." });
     }
 
     const quote = await deps.swap.quote(
@@ -810,7 +822,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
     const body = (request.body ?? {}) as { from?: string; to?: string; amount?: string };
     if (!body.from || !body.to || !body.amount) {
-      return reply.code(400).send({ error: "What are you converting, and how much?" });
+      return reply.code(400).send({ error: "Pick what to convert, and how much." });
     }
 
     const source: Money = { amount: body.amount, asset: body.from.toUpperCase() };
@@ -881,7 +893,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       // The reason goes to the log, never to the client: it is how we tell a
       // stale token from a misconfigured app, and it never contains the token.
       console.warn("[auth]", error.message);
-      return reply.code(401).send({ error: "That sign-in could not be verified." });
+      return reply.code(401).send({ error: "We could not verify that sign-in. Sign in again." });
     }
 
     // Fastify's own refusals — too many requests, a body too big, malformed
@@ -905,7 +917,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
     // Never leak internals to a client; the detail goes to the server log.
     console.error("[api]", error);
-    return reply.code(500).send({ error: "Something went wrong on our side." });
+    return reply.code(500).send({ error: "Something went wrong on our side. Try again." });
   });
 
   return app;
@@ -922,24 +934,33 @@ export function explainRejection(error: TransactionRejectedError): string {
   const codes = error.operationCodes;
 
   if (codes.some((code) => code.endsWith("underfunded"))) {
-    return "That is more than you have.";
+    return "Your balance is too low. Add money, or send a smaller amount.";
   }
   if (codes.some((code) => code.endsWith("no_trust") || code.endsWith("no_issuer"))) {
     return "Your wallet is not set up for that yet. Open Deposit once, then try again.";
   }
   if (codes.some((code) => code.endsWith("under_dest_min"))) {
-    return "The rate moved while you were confirming. Try that again.";
+    return "The rate moved while you were confirming. Nothing moved. Try again.";
   }
   if (codes.some((code) => code.endsWith("too_few_offers"))) {
-    return "There is not enough being traded right now to convert that much. Try a smaller amount.";
+    return "Not enough is being traded right now. Try a smaller amount.";
   }
   if (codes.some((code) => code.endsWith("line_full"))) {
     return "That would put more in your wallet than it can hold.";
   }
   if (error.transactionCode === "tx_insufficient_fee") {
-    return "The network is busy. Try that again in a moment.";
+    return "The network is busy. Nothing moved. Try again in a moment.";
   }
-  return "The network would not accept that. Nothing has moved, so it is safe to try again.";
+  return "The network would not accept that. Nothing moved, so it is safe to try again.";
+}
+
+/** "in 3 hours", "in 2 days". Only ever used to say when something is allowed. */
+function inWords(ms: number): string {
+  const hours = Math.ceil(ms / 3_600_000);
+  if (hours <= 1) return "in an hour";
+  if (hours < 24) return `in ${hours} hours`;
+  const days = Math.ceil(hours / 24);
+  return days === 1 ? "tomorrow" : `in ${days} days`;
 }
 
 /**

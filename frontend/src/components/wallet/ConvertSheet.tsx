@@ -81,7 +81,8 @@ export function ConvertSheet({
       toast("success", `Converted to ${money(result.received.amount)} ${result.received.asset}.`);
       onConverted();
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "That conversion did not go through.";
+      const message =
+        err instanceof ApiError ? err.message : "That did not convert. Nothing moved. Try again.";
       setError(message);
       toast("error", message);
     } finally {
@@ -173,7 +174,9 @@ export function ConvertSheet({
       </div>
 
       {tooMuch && (
-        <p className="mt-3 text-sm font-semibold text-[#a11d34]">That is more than you have.</p>
+        <p className="mt-3 text-sm font-semibold text-[#a11d34]">
+          Your {from} balance is too low. You can convert {money(available)} {from} or less.
+        </p>
       )}
       {error && <p className="mt-3 text-sm font-semibold text-[#a11d34]">{error}</p>}
 

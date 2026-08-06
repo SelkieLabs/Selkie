@@ -171,15 +171,21 @@ async function request<T>(
   const token = await tokenProvider();
   const { expect = [], idempotencyKey, ...rest } = init;
 
-  const response = await fetch(`/api${path}`, {
-    ...rest,
-    headers: {
-      ...(rest.body ? { "content-type": "application/json" } : {}),
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
-      ...rest.headers,
-    },
-  });
+  const headers = {
+    ...(rest.body ? { "content-type": "application/json" } : {}),
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+    ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
+    ...rest.headers,
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, { ...rest, headers });
+  } catch {
+    // fetch only throws when there was never an answer: no signal, no server.
+    // Left alone it surfaces as a raw TypeError, which says nothing to anyone.
+    throw new ApiError(0, "Cannot reach Selkie. Check your connection and try again.");
+  }
 
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (response.ok || expect.includes(response.status)) return body as T;

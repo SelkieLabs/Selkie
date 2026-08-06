@@ -15,7 +15,7 @@ describe("explaining a refused transaction", () => {
   });
 
   it("says plainly when there is not enough money", () => {
-    assert.match(explainRejection(rejected(["op_underfunded"])), /more than you have/);
+    assert.match(explainRejection(rejected(["op_underfunded"])), /balance is too low/);
   });
 
   it("invites a retry when the price moved, because retrying works", () => {
@@ -30,7 +30,7 @@ describe("explaining a refused transaction", () => {
     const message = explainRejection(rejected(["op_something_new_entirely"]));
     assert.match(message, /would not accept that/);
     // The reassurance matters: a failed transaction moved nothing.
-    assert.match(message, /Nothing has moved/);
+    assert.match(message, /Nothing moved/);
   });
 
   it("reads a busy network off the transaction code, not the operations", () => {

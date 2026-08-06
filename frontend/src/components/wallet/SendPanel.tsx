@@ -132,7 +132,9 @@ export function SendPanel({
       setIntent(newIdempotencyKey());
       setStep("confirm");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "We could not look that handle up.");
+      setError(
+        err instanceof ApiError ? err.message : "We could not check that handle. Try again.",
+      );
     } finally {
       setChecking(false);
     }
@@ -157,7 +159,8 @@ export function SendPanel({
       toast("success", sent.message ?? "Sent.");
       onSent();
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "That did not go through.";
+      const message =
+        err instanceof ApiError ? err.message : "That did not send. Your money is safe. Try again.";
       setError(message);
       toast("error", message);
     } finally {
@@ -470,7 +473,7 @@ export function SendPanel({
 
       {tooMuch && (
         <p className="mt-4 text-sm font-semibold text-[#a11d34]">
-          That is more than you have right now.
+          Your balance is too low. Add money, or send {usd(balance)} or less.
         </p>
       )}
       {error && <p className="mt-4 text-sm font-semibold text-[#a11d34]">{error}</p>}

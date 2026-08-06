@@ -360,7 +360,7 @@ describe("api", () => {
     const response = await post("/payments/send", { to: typo, amount: "5" }, token);
 
     assert.equal(response.statusCode, 400);
-    assert.match(response.json().error, /not right/);
+    assert.match(response.json().error, /not valid/);
     assert.deepEqual(adapterStub.transfers, []);
     assert.deepEqual(adapterStub.sent, []);
   });
@@ -989,7 +989,7 @@ describe("api", () => {
     const third = await look();
     assert.equal(third.statusCode, 429);
     // A person could read this. It is not a stack trace or a header dump.
-    assert.equal(third.json().error, "That is a lot of requests. Slow down a moment.");
+    assert.equal(third.json().error, "Too many tries. Wait a minute and try again.");
   });
 
   test("without a key nothing is deduplicated, because nothing said it should be", async () => {

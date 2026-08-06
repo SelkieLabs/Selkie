@@ -103,7 +103,8 @@ export function RequestsPanel({
       setNote("");
       onChanged();
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "We could not send that.";
+      const message =
+        err instanceof ApiError ? err.message : "That request did not send. Try again.";
       setError(message);
       toast("error", message);
     } finally {
@@ -259,7 +260,7 @@ export function RequestsPanel({
                           request.id,
                           () => api.declineRequest(request.id),
                           "Turned down.",
-                          "We could not turn that down.",
+                          "That did not go through. It is still waiting for your answer.",
                         )
                       }
                       disabled={busyId === request.id}
@@ -273,7 +274,7 @@ export function RequestsPanel({
                           request.id,
                           () => api.payRequest(request.id),
                           `Paid @${request.fromHandle.username}.`,
-                          "That payment did not go through.",
+                          "That did not send. Your money is safe. Try again.",
                         )
                       }
                       disabled={busyId === request.id}
@@ -307,7 +308,7 @@ export function RequestsPanel({
                             request.id,
                             () => api.cancelRequest(request.id),
                             "Withdrawn.",
-                            "We could not withdraw that.",
+                            "That did not go through. They can still see it.",
                           )
                         }
                         disabled={busyId === request.id}

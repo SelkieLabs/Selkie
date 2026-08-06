@@ -90,7 +90,8 @@ export function PayManyPanel({
       setStep("done");
       onSent();
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "That did not go through.";
+      const message =
+        err instanceof ApiError ? err.message : "Those did not send. Your money is safe. Try again.";
       setError(message);
       toast("error", message);
       setStep("compose");
@@ -322,12 +323,12 @@ export function PayManyPanel({
 
       {tooMuch && (
         <p className="mt-3 text-sm font-semibold text-[#a11d34]">
-          That comes to more than you have right now.
+          Your balance is too low for {usd(total)}. Lower the amount or remove some people.
         </p>
       )}
       {tooMany && (
         <p className="mt-3 text-sm font-semibold text-[#a11d34]">
-          That is more than {MAX} people at once. Split it into two goes.
+          {MAX} people is the most in one go. Remove {handles.length - MAX} and send them next.
         </p>
       )}
 

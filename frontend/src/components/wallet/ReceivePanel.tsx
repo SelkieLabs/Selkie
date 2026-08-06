@@ -28,7 +28,10 @@ function CopyButton({
       toast("success", `${label[0]!.toUpperCase()}${label.slice(1)} copied.`);
       setTimeout(() => setCopied(false), 1800);
     } catch {
-      toast("error", "Your browser would not let us copy that. Select it and copy by hand.");
+      toast(
+        "error",
+        `Your browser would not let us copy that. Press and hold ${label} to copy it by hand.`,
+      );
     }
   };
 
@@ -92,7 +95,7 @@ export function ReceivePanel({ handle }: { handle: string | null }) {
       setDetails(await api.receive());
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "We could not get your address ready just now.",
+        err instanceof ApiError ? err.message : "We could not get your address ready. Try again.",
       );
     }
   }, []);
