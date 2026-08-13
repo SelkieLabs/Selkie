@@ -29,7 +29,14 @@ export default {
         },
       },
       fontFamily: {
-        display: ['"Space Grotesk"', "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: [
+          '"Bricolage Grotesque"',
+          '"Space Grotesk"',
+          "Inter",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
         body: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
       },
       keyframes: {

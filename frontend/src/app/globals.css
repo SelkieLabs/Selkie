@@ -76,7 +76,7 @@
   h1,
   h2,
   h3 {
-    font-family: "Space Grotesk", "Inter", ui-sans-serif, sans-serif;
+    font-family: "Bricolage Grotesque", "Space Grotesk", "Inter", ui-sans-serif, sans-serif;
   }
 
   ::selection {
@@ -529,6 +529,191 @@
 
   .pulse-dot {
     animation: pulse-dot 2.2s ease-in-out infinite;
+  }
+
+  /* ---------- the landing page ----------
+     The wallet is ivory panels floating on dark water. The landing inverts
+     that: the water carries the page and ivory is spent only where it earns
+     its keep, on the product shots and the closing call. A marketing page is
+     a long scroll, and forty heavy paper chunks in a row stops reading as
+     craft and starts reading as noise. So the default surface here is glass:
+     a breath of light over the sea, one hairline border, no drop shadow. */
+
+  .lp-card {
+    position: relative;
+    border-radius: 1.5rem;
+    border: 1px solid rgba(244, 241, 234, 0.1);
+    background: linear-gradient(
+      180deg,
+      rgba(244, 241, 234, 0.055) 0%,
+      rgba(244, 241, 234, 0.02) 100%
+    );
+    backdrop-filter: blur(10px) saturate(1.1);
+    -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  }
+  /* Moonlight catching the top edge, brightest in the middle. Without it a
+     glass card on near-black reads as a flat grey rectangle. */
+  .lp-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(246, 223, 164, 0.32) 32%,
+      rgba(246, 223, 164, 0.32) 68%,
+      transparent
+    );
+  }
+  .lp-lift {
+    transition:
+      transform 340ms cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 340ms ease,
+      background-color 340ms ease;
+  }
+  .lp-lift:hover {
+    transform: translateY(-5px);
+    border-color: rgba(246, 223, 164, 0.28);
+  }
+
+  /* ---------- landing typography ----------
+     One clamp per level, so every heading on the page is set from the same
+     three-step scale instead of a different arbitrary size each section. */
+  .lp-h1 {
+    font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
+    font-weight: 700;
+    font-size: clamp(2.6rem, 6.6vw, 4.75rem);
+    line-height: 0.97;
+    letter-spacing: -0.04em;
+  }
+  .lp-h2 {
+    font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
+    font-weight: 700;
+    font-size: clamp(1.95rem, 4.3vw, 3.15rem);
+    line-height: 1.03;
+    letter-spacing: -0.034em;
+  }
+  .lp-h3 {
+    font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
+    font-weight: 700;
+    font-size: 1.1875rem;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+  }
+  /* Section lead paragraph: wide measure, low contrast, never competing. */
+  .lp-lead {
+    font-size: clamp(1rem, 1.6vw, 1.1875rem);
+    line-height: 1.65;
+    color: rgba(244, 241, 234, 0.62);
+  }
+
+  .lp-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.42rem 0.95rem;
+    border-radius: 999px;
+    border: 1px solid rgba(244, 241, 234, 0.14);
+    background: rgba(244, 241, 234, 0.05);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: rgba(244, 241, 234, 0.76);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  /* Ghost button: the quiet half of a hero pair. Same metrics as .btn so the
+     two sit on one baseline, but no border weight and no hard shadow. */
+  .lp-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    height: 3rem;
+    padding: 0 1.4rem;
+    border-radius: 0.9rem;
+    border: 1px solid rgba(244, 241, 234, 0.2);
+    background: rgba(244, 241, 234, 0.04);
+    color: rgba(244, 241, 234, 0.9);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color 180ms ease,
+      border-color 180ms ease,
+      transform 180ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+  .lp-ghost:hover {
+    transform: translateY(-2px);
+    border-color: rgba(244, 241, 234, 0.34);
+    background: rgba(244, 241, 234, 0.08);
+  }
+
+  /* Graph-paper backdrop, masked to a soft oval so it never reaches an edge
+     and turns into a visible seam. */
+  .lp-grid-bg {
+    background-image:
+      linear-gradient(rgba(244, 241, 234, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(244, 241, 234, 0.05) 1px, transparent 1px);
+    background-size: 68px 68px;
+    -webkit-mask-image: radial-gradient(58% 62% at 50% 42%, #000, transparent 100%);
+    mask-image: radial-gradient(58% 62% at 50% 42%, #000, transparent 100%);
+  }
+
+  /* ---------- the FAQ accordion ----------
+     0fr to 1fr on a grid row is the one way to animate to content height
+     without measuring anything in JavaScript. The inner div must own the
+     overflow, or the answer spills out of the collapsed row. */
+  .lp-faq {
+    border-top: 1px solid rgba(244, 241, 234, 0.1);
+  }
+  .lp-faq:last-child {
+    border-bottom: 1px solid rgba(244, 241, 234, 0.1);
+  }
+  .lp-faq-q {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    width: 100%;
+    padding: 1.4rem 0.25rem;
+    text-align: left;
+    cursor: pointer;
+    color: rgba(244, 241, 234, 0.92);
+    transition: color 180ms ease;
+  }
+  .lp-faq-q:hover {
+    color: var(--ivory);
+  }
+  .lp-faq-a {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 420ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .lp-faq-a > div {
+    overflow: hidden;
+  }
+  .lp-faq-open > .lp-faq-a {
+    grid-template-rows: 1fr;
+  }
+
+  /* A soft coloured bloom behind a section, to lift it off the water. */
+  .lp-halo {
+    position: absolute;
+    border-radius: 999px;
+    filter: blur(90px);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /* The hero product shot drifts, very slowly, so the page has a pulse
+     before anyone scrolls. */
+  .lp-float {
+    animation: drift 7s ease-in-out infinite;
   }
 }
 
