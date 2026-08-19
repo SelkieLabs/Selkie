@@ -8,6 +8,9 @@
     "frontend",
     "backend/*"
   ],
+  "engines": {
+    "node": ">=20.6"
+  },
   "scripts": {
     "dev:web": "npm --workspace frontend run dev",
     "build:web": "npm --workspace frontend run build",
