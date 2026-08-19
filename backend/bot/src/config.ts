@@ -37,7 +37,9 @@ export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
 
   return {
     apiUrl: env.SELKIE_API_URL ?? "http://127.0.0.1:4000",
-    webUrl: env.SELKIE_WEB_URL ?? "https://selkiepay.vercel.app",
+    // The live site. The old `selkiepay.vercel.app` is the frozen Canton build,
+    // so falling back to it would quietly send people to a different product.
+    webUrl: env.SELKIE_WEB_URL ?? "https://selkiepay.com",
     botSecret,
     statePath: env.SELKIE_BOT_STATE ?? resolve(process.cwd(), ".data/x-state.json"),
     dryRun: !isOff(env.SELKIE_BOT_DRY_RUN),
