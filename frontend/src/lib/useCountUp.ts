@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 /**
- * Fast enough to feel like the number is settling rather than being read out,
- * slow enough that the eye registers it moved at all.
+ * Long enough that the slow part at the end is a moment rather than a frame.
+ * Most of the distance is covered in the first fifth of it, so this reads as a
+ * quick count with a settle on the end, not as a slow count.
  */
-const DURATION_MS = 850;
+const DURATION_MS = 1100;
 
 const QUERY = "(prefers-reduced-motion: reduce)";
 
@@ -84,8 +85,12 @@ export function useCountUp(
 
     const tick = (now: number) => {
       const progress = Math.min(1, (now - began) / durationMs);
-      // Cubic ease out.
-      const eased = 1 - (1 - progress) ** 3;
+      // Quartic ease out: steep enough that the number arrives in the right
+      // neighbourhood almost at once, then visibly gives up speed and steps
+      // through the last of it. A higher power than this crosses into looking
+      // stalled, because once only the final cents are still changing there is
+      // nothing left on screen to read as movement.
+      const eased = 1 - (1 - progress) ** 4;
       const value = progress === 1 ? target : start + (target - start) * eased;
       from.current = value;
       setShown(value);
