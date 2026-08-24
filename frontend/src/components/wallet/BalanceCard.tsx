@@ -17,8 +17,9 @@ import {
 import { TokenIcon } from "@/components/TokenIcon";
 import { useToast } from "@/contexts/ToastContext";
 import type { Money, User } from "@/lib/api";
-import { DOLLAR, money, shortAddress } from "@/lib/format";
+import { DOLLAR, money, moneyLike, shortAddress } from "@/lib/format";
 import { MASK, toggleAmountsHidden, useAmountsHidden } from "@/lib/privacy";
+import { useCountUp } from "@/lib/useCountUp";
 
 /**
  * The top of the wallet: who you are, what you have, and what you can do next.
@@ -47,6 +48,13 @@ export function BalanceCard({
   const hidden = useAmountsHidden();
   const dollars = balances.find((balance) => balance.asset === DOLLAR)?.amount ?? "0";
   const hasSomethingToConvert = balances.some((balance) => Number(balance.amount) > 0);
+
+  // Counted, not printed. While the balance is still loading this target is 0,
+  // so the count begins the moment the real figure arrives rather than starting
+  // against a number nobody has seen yet. Off while the balance is covered:
+  // there is nothing to watch behind the mask, and it would mean the number had
+  // already finished moving by the time it was uncovered.
+  const counted = useCountUp(Number(dollars) || 0, { enabled: !hidden });
 
   const profile = user.identities.find((identity) => identity.avatarUrl || identity.displayName);
   const handle = user.handles[0];
@@ -106,7 +114,7 @@ export function BalanceCard({
                 balance still reads as money. */}
             <span className="font-display text-[2.5rem] font-bold leading-none tracking-tight tabular-nums sm:text-[3.35rem]">
               <span className="inline-block translate-y-[-0.085em] text-[0.82em] opacity-70">$</span>
-              {hidden ? MASK : money(dollars)}
+              {hidden ? MASK : moneyLike(counted, dollars)}
             </span>
             {/* An inline-block whose overflow is clipped takes its baseline
                 from its own bottom edge rather than from the text inside it.

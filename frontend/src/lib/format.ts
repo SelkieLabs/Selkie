@@ -38,6 +38,28 @@ export function money(value: number | string): string {
   return small ? text.replace(/(\.\d{2}\d*?[1-9])0+$/, "$1") : text;
 }
 
+/**
+ * The same amount, but written with the decimals the number it is heading for
+ * will settle on.
+ *
+ * Only for a value that is being counted up to another one. `money` picks its
+ * decimals from the amount it is given, which is right for a number standing
+ * still and wrong for one in motion: counting to a small balance would pass
+ * through 0.00, 0.0000005 and 0.000123 and redraw at a different width every
+ * frame. Pinning the shape to the destination means only the digits change.
+ */
+export function moneyLike(value: number, target: number | string): string {
+  const settled = money(target);
+  const point = settled.indexOf(".");
+  const decimals = point === -1 ? 0 : settled.length - point - 1;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return settled;
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
 export const normalizeHandle = (handle: string): string =>
   `@${handle.trim().replace(/^@+/, "").toLowerCase()}`;
 
