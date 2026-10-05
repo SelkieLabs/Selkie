@@ -1403,131 +1403,194 @@
   cursor: not-allowed;
 }
 
-/* ---------- the pitch ----------
-   One page that has to work in two media: a dark document on screen, and a
-   clean PDF when someone hits Download. The print block below is what makes
-   the second one true, so the deck can never drift out of sync with the page
-   it was made from — there is only ever the page. */
+/* ---------- the pitch deck ----------
+   Slides, not a document: each section fills the viewport and the page snaps
+   between them, so it reads the way a deck reads. The same markup prints one
+   slide per landscape page, which is where the PDF comes from — there is no
+   second artifact to keep in sync. */
 
-.pitch-prose p {
-  font-size: 1.0625rem;
-  line-height: 1.72;
+/* Snap only where there is room for it. On a short or narrow screen a
+   mandatory snap traps content taller than the viewport, so the deck quietly
+   becomes an ordinary scrolling page. */
+@media (min-width: 1024px) and (min-height: 640px) {
+  html:has(.deck) {
+    scroll-snap-type: y mandatory;
+  }
+  .deck-slide {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+}
+
+.deck-slide {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 100svh;
+  padding: 6.5rem 1.25rem 4.5rem;
+}
+@media (min-width: 640px) {
+  .deck-slide {
+    padding: 7rem 2rem 5rem;
+  }
+}
+@media (min-width: 1024px) {
+  .deck-slide {
+    padding-right: 7rem;
+  }
+}
+/* A hairline between slides: on a fast scroll it is the only cue that one
+   screen ended and the next began. */
+.deck-slide + .deck-slide::before {
+  content: "";
+  position: absolute;
+  inset: 0 1.25rem auto;
+  height: 1px;
+  background: rgba(244, 241, 234, 0.08);
+}
+
+.deck-stage {
+  width: 100%;
+  max-width: 64rem;
+  margin: 0 auto;
+}
+
+.deck-num {
+  position: absolute;
+  left: 1.5rem;
+  bottom: 1.75rem;
+  font-family: "Space Grotesk", Inter, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(244, 241, 234, 0.3);
+}
+@media (min-width: 640px) {
+  .deck-num {
+    left: 2.25rem;
+  }
+}
+
+.deck-h1 {
+  font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.7rem, 7vw, 5.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.042em;
+}
+.deck-h2 {
+  font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
+  font-weight: 700;
+  font-size: clamp(2rem, 4.6vw, 3.4rem);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+.deck-lead {
+  font-size: clamp(1.0625rem, 1.7vw, 1.3rem);
+  line-height: 1.6;
+  color: rgba(244, 241, 234, 0.62);
+}
+.deck-body {
+  font-size: clamp(1rem, 1.25vw, 1.0625rem);
+  line-height: 1.7;
   color: rgba(244, 241, 234, 0.68);
 }
-.pitch-prose p + p {
-  margin-top: 1.15rem;
+.deck-dd {
+  color: rgba(244, 241, 234, 0.65);
 }
-.pitch-prose em {
-  font-style: italic;
-  color: rgba(244, 241, 234, 0.9);
-}
-/* Blocks that bring their own spacing: the diagram, the ledgers, the ask. */
-.pitch-prose .not-prose p {
-  font-size: inherit;
-  line-height: inherit;
-  color: inherit;
-}
-.pitch-prose .not-prose p + p {
-  margin-top: 0;
+.deck-dim {
+  color: rgba(244, 241, 234, 0.45);
 }
 
 @media print {
-  /* Paper is not a sea. Drop the scene, the glass and the glow, and set the
-     whole document in ink on white. */
+  /* One slide, one landscape page, in ink on white. Chrome drops background
+     graphics by default, so nothing here may depend on a background being
+     painted — every colour that carries meaning is set on the text itself. */
   @page {
-    margin: 16mm 15mm;
+    size: A4 landscape;
+    margin: 13mm 15mm;
   }
 
   html,
   body {
     background: #ffffff !important;
-    color: var(--pen) !important;
+  }
+  html:has(.deck) {
+    scroll-snap-type: none;
   }
   body::before,
   body::after,
   .sea-layer,
   .depth-veil,
   .lp-halo,
-  .lp-grid-bg,
   .print-hide {
     display: none !important;
   }
 
-  main {
-    max-width: none !important;
-    padding: 0 !important;
+  /* The blunt rule first: nothing may print as near-white on white. The
+     accent rules below outrank it on specificity, not on !important. */
+  .deck * {
+    color: #1b2228 !important;
   }
-  /* The rail column collapses so the prose uses the full measure of the page. */
-  main > div {
-    display: block !important;
+  .deck .text-gold,
+  .deck .text-gold-light,
+  .deck .eyebrow,
+  .deck a {
+    color: #8a601f !important;
   }
-
-  .pitch-prose p,
-  .pitch-prose em {
-    color: #2b3138 !important;
+  .deck .deck-lead,
+  .deck .deck-body,
+  .deck .deck-dd,
+  .deck .deck-dim {
+    color: #39414a !important;
   }
-  .lp-lead {
-    color: #3a4149 !important;
-  }
-  .lp-h1,
-  .lp-h2,
-  .lp-h3,
-  h1,
-  h2 {
-    color: var(--pen) !important;
-  }
-  .eyebrow {
-    color: var(--gold-ink) !important;
-  }
-  .text-gold,
-  .text-gold-light {
-    color: var(--gold-ink) !important;
-  }
-  .text-gold-grad {
-    background: none !important;
-    -webkit-text-fill-color: var(--gold-ink) !important;
-    color: var(--gold-ink) !important;
-  }
-  a {
-    color: var(--gold-ink) !important;
+  .deck a {
     text-decoration: none !important;
   }
 
-  /* Hairlines, so the structure of the argument survives the loss of colour. */
-  [class*="border-ivory"] {
-    border-color: rgba(19, 26, 33, 0.18) !important;
-  }
-  .lp-card,
-  .lp-card::before {
-    background: #ffffff !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    border-color: rgba(19, 26, 33, 0.22) !important;
-    box-shadow: none !important;
-  }
-
-  /* Nothing in the diagram or a ledger should straddle a page break, and no
-     heading should be the last thing on a sheet. */
-  .lp-card,
-  .pitch-section ul,
-  .pitch-section dl > div {
+  .deck-slide {
+    display: block;
+    min-height: 0 !important;
+    padding: 0 !important;
+    break-after: page;
     break-inside: avoid;
   }
-  .pitch-section {
-    break-inside: auto;
-    padding-top: 1.6rem !important;
-    padding-bottom: 1.6rem !important;
+  .deck-slide:last-child {
+    break-after: auto;
   }
-  .lp-h2,
-  .lp-h3,
-  .eyebrow {
-    break-after: avoid;
+  .deck-slide + .deck-slide::before {
+    display: none;
+  }
+  .deck-stage {
+    max-width: none;
   }
 
-  /* Entrances have nothing to animate into on paper. */
-  .reveal {
-    opacity: 1 !important;
-    transform: none !important;
-    filter: none !important;
+  /* Hairlines survive the loss of colour; washes do not, so they go. */
+  [class*="border-ivory"],
+  [class*="border-gold"] {
+    border-color: rgba(19, 26, 33, 0.22) !important;
+  }
+  [class*="bg-ivory"],
+  [class*="bg-gold"] {
+    background: transparent !important;
+  }
+  .lp-pill {
+    border-color: rgba(19, 26, 33, 0.25) !important;
+    background: transparent !important;
+  }
+
+  .deck-h1 {
+    font-size: 40pt;
+  }
+  .deck-h2 {
+    font-size: 25pt;
+  }
+  .deck-lead {
+    font-size: 13pt;
+  }
+  .deck-body,
+  .deck-dd {
+    font-size: 11pt;
   }
 }
