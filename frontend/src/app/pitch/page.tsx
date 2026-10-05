@@ -86,12 +86,16 @@ export default function Pitch() {
             aria-label={label}
             aria-current={here === i ? "true" : undefined}
           >
-            <span className="whitespace-nowrap text-[12.5px] font-semibold text-ivory/0 transition-colors group-hover:text-ivory/60">
+            <span
+              className={`whitespace-nowrap text-[12.5px] font-semibold transition-colors ${
+                here === i ? "text-gold" : "text-ivory/40 group-hover:text-ivory/75"
+              }`}
+            >
               {label}
             </span>
             <span
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                here === i ? "w-6 bg-gold" : "w-1.5 bg-ivory/25 group-hover:bg-ivory/50"
+              className={`h-[3px] rounded-full transition-all duration-300 ${
+                here === i ? "w-7 bg-gold" : "w-3 bg-ivory/30 group-hover:bg-ivory/55"
               }`}
             />
           </a>

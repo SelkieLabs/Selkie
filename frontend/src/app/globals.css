@@ -1427,16 +1427,16 @@
   display: flex;
   align-items: center;
   min-height: 100svh;
-  padding: 6.5rem 1.25rem 4.5rem;
+  padding: 9rem 1.25rem 5.5rem;
 }
 @media (min-width: 640px) {
   .deck-slide {
-    padding: 7rem 2rem 5rem;
+    padding: 9.5rem 2.5rem 6rem;
   }
 }
 @media (min-width: 1024px) {
   .deck-slide {
-    padding-right: 7rem;
+    padding: 10rem 3rem 6.5rem 4rem;
   }
 }
 /* A hairline between slides: on a fast scroll it is the only cue that one
@@ -1513,11 +1513,17 @@
   }
 
   html,
-  body {
+  body,
+  .deck {
     background: #ffffff !important;
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
   }
   html:has(.deck) {
-    scroll-snap-type: none;
+    scroll-snap-type: none !important;
   }
   body::before,
   body::after,
@@ -1550,9 +1556,13 @@
   }
 
   .deck-slide {
-    display: block;
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
     min-height: 0 !important;
     padding: 0 !important;
+    page-break-after: always;
     break-after: page;
     break-inside: avoid;
   }
