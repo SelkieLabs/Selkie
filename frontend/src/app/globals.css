@@ -1402,3 +1402,132 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ---------- the pitch ----------
+   One page that has to work in two media: a dark document on screen, and a
+   clean PDF when someone hits Download. The print block below is what makes
+   the second one true, so the deck can never drift out of sync with the page
+   it was made from — there is only ever the page. */
+
+.pitch-prose p {
+  font-size: 1.0625rem;
+  line-height: 1.72;
+  color: rgba(244, 241, 234, 0.68);
+}
+.pitch-prose p + p {
+  margin-top: 1.15rem;
+}
+.pitch-prose em {
+  font-style: italic;
+  color: rgba(244, 241, 234, 0.9);
+}
+/* Blocks that bring their own spacing: the diagram, the ledgers, the ask. */
+.pitch-prose .not-prose p {
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+.pitch-prose .not-prose p + p {
+  margin-top: 0;
+}
+
+@media print {
+  /* Paper is not a sea. Drop the scene, the glass and the glow, and set the
+     whole document in ink on white. */
+  @page {
+    margin: 16mm 15mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: var(--pen) !important;
+  }
+  body::before,
+  body::after,
+  .sea-layer,
+  .depth-veil,
+  .lp-halo,
+  .lp-grid-bg,
+  .print-hide {
+    display: none !important;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  /* The rail column collapses so the prose uses the full measure of the page. */
+  main > div {
+    display: block !important;
+  }
+
+  .pitch-prose p,
+  .pitch-prose em {
+    color: #2b3138 !important;
+  }
+  .lp-lead {
+    color: #3a4149 !important;
+  }
+  .lp-h1,
+  .lp-h2,
+  .lp-h3,
+  h1,
+  h2 {
+    color: var(--pen) !important;
+  }
+  .eyebrow {
+    color: var(--gold-ink) !important;
+  }
+  .text-gold,
+  .text-gold-light {
+    color: var(--gold-ink) !important;
+  }
+  .text-gold-grad {
+    background: none !important;
+    -webkit-text-fill-color: var(--gold-ink) !important;
+    color: var(--gold-ink) !important;
+  }
+  a {
+    color: var(--gold-ink) !important;
+    text-decoration: none !important;
+  }
+
+  /* Hairlines, so the structure of the argument survives the loss of colour. */
+  [class*="border-ivory"] {
+    border-color: rgba(19, 26, 33, 0.18) !important;
+  }
+  .lp-card,
+  .lp-card::before {
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-color: rgba(19, 26, 33, 0.22) !important;
+    box-shadow: none !important;
+  }
+
+  /* Nothing in the diagram or a ledger should straddle a page break, and no
+     heading should be the last thing on a sheet. */
+  .lp-card,
+  .pitch-section ul,
+  .pitch-section dl > div {
+    break-inside: avoid;
+  }
+  .pitch-section {
+    break-inside: auto;
+    padding-top: 1.6rem !important;
+    padding-bottom: 1.6rem !important;
+  }
+  .lp-h2,
+  .lp-h3,
+  .eyebrow {
+    break-after: avoid;
+  }
+
+  /* Entrances have nothing to animate into on paper. */
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}
