@@ -1507,9 +1507,11 @@
   /* One slide, one landscape page, in ink on white. Chrome drops background
      graphics by default, so nothing here may depend on a background being
      painted — every colour that carries meaning is set on the text itself. */
+  /* The page keeps a small hard margin; the real whitespace is padding on
+     each slide, so it survives a browser that ignores @page sizing. */
   @page {
     size: A4 landscape;
-    margin: 13mm 15mm;
+    margin: 8mm;
   }
 
   html,
@@ -1561,7 +1563,7 @@
     overflow: visible !important;
     height: auto !important;
     min-height: 0 !important;
-    padding: 0 !important;
+    padding: 12mm 14mm 10mm !important;
     page-break-after: always;
     break-after: page;
     break-inside: avoid;
@@ -1602,5 +1604,39 @@
   .pdk-body,
   .pdk-dd {
     font-size: 11pt;
+  }
+}
+
+@media print {
+  .pdk-num {
+    display: flex !important;
+    position: static !important;
+    justify-content: space-between;
+    margin-top: 11mm;
+    padding-top: 3mm;
+    border-top: 1px solid rgba(19, 26, 33, 0.16);
+    font-size: 8pt;
+    letter-spacing: 0.1em;
+    color: #6f7984 !important;
+  }
+  .pdk-num::after {
+    content: "Selkie — selkiepay.com";
+    letter-spacing: 0;
+  }
+  /* The cover carries the mark, not a page number. */
+  .pdk-slide:first-child .pdk-num {
+    border-top-color: transparent;
+  }
+
+  /* Give the measure room to breathe on a landscape sheet. */
+  .pdk-stage {
+    max-width: 100%;
+  }
+  .pdk-body,
+  .pdk-lead {
+    max-width: 92ch !important;
+  }
+  .lp-pill {
+    padding: 2mm 4mm !important;
   }
 }

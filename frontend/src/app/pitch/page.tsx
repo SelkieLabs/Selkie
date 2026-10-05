@@ -323,7 +323,7 @@ function Slide({
         {eyebrow && <p className="eyebrow mb-5">{eyebrow}</p>}
         {children}
       </div>
-      <span className="pdk-num print-hide" aria-hidden="true">
+      <span className="pdk-num" aria-hidden="true">
         {String(index + 1).padStart(2, "0")} / {String(SLIDES.length).padStart(2, "0")}
       </span>
     </section>
