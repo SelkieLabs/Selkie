@@ -1413,16 +1413,16 @@
    mandatory snap traps content taller than the viewport, so the deck quietly
    becomes an ordinary scrolling page. */
 @media (min-width: 1024px) and (min-height: 640px) {
-  html:has(.deck) {
+  html:has(.pdk) {
     scroll-snap-type: y mandatory;
   }
-  .deck-slide {
+  .pdk-slide {
     scroll-snap-align: start;
     scroll-snap-stop: always;
   }
 }
 
-.deck-slide {
+.pdk-slide {
   position: relative;
   display: flex;
   align-items: center;
@@ -1430,18 +1430,18 @@
   padding: 9rem 1.25rem 5.5rem;
 }
 @media (min-width: 640px) {
-  .deck-slide {
+  .pdk-slide {
     padding: 9.5rem 2.5rem 6rem;
   }
 }
 @media (min-width: 1024px) {
-  .deck-slide {
+  .pdk-slide {
     padding: 10rem 3rem 6.5rem 4rem;
   }
 }
 /* A hairline between slides: on a fast scroll it is the only cue that one
    screen ended and the next began. */
-.deck-slide + .deck-slide::before {
+.pdk-slide + .pdk-slide::before {
   content: "";
   position: absolute;
   inset: 0 1.25rem auto;
@@ -1449,13 +1449,13 @@
   background: rgba(244, 241, 234, 0.08);
 }
 
-.deck-stage {
+.pdk-stage {
   width: 100%;
   max-width: 64rem;
   margin: 0 auto;
 }
 
-.deck-num {
+.pdk-num {
   position: absolute;
   left: 1.5rem;
   bottom: 1.75rem;
@@ -1467,39 +1467,39 @@
   color: rgba(244, 241, 234, 0.3);
 }
 @media (min-width: 640px) {
-  .deck-num {
+  .pdk-num {
     left: 2.25rem;
   }
 }
 
-.deck-h1 {
+.pdk-h1 {
   font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
   font-weight: 700;
   font-size: clamp(2.7rem, 7vw, 5.5rem);
   line-height: 0.95;
   letter-spacing: -0.042em;
 }
-.deck-h2 {
+.pdk-h2 {
   font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
   font-weight: 700;
   font-size: clamp(2rem, 4.6vw, 3.4rem);
   line-height: 1.02;
   letter-spacing: -0.035em;
 }
-.deck-lead {
+.pdk-lead {
   font-size: clamp(1.0625rem, 1.7vw, 1.3rem);
   line-height: 1.6;
   color: rgba(244, 241, 234, 0.62);
 }
-.deck-body {
+.pdk-body {
   font-size: clamp(1rem, 1.25vw, 1.0625rem);
   line-height: 1.7;
   color: rgba(244, 241, 234, 0.68);
 }
-.deck-dd {
+.pdk-dd {
   color: rgba(244, 241, 234, 0.65);
 }
-.deck-dim {
+.pdk-dim {
   color: rgba(244, 241, 234, 0.45);
 }
 
@@ -1514,7 +1514,7 @@
 
   html,
   body,
-  .deck {
+  .pdk {
     background: #ffffff !important;
     position: static !important;
     overflow: visible !important;
@@ -1522,7 +1522,7 @@
     min-height: 0 !important;
     max-height: none !important;
   }
-  html:has(.deck) {
+  html:has(.pdk) {
     scroll-snap-type: none !important;
   }
   body::before,
@@ -1536,26 +1536,26 @@
 
   /* The blunt rule first: nothing may print as near-white on white. The
      accent rules below outrank it on specificity, not on !important. */
-  .deck * {
+  .pdk * {
     color: #1b2228 !important;
   }
-  .deck .text-gold,
-  .deck .text-gold-light,
-  .deck .eyebrow,
-  .deck a {
+  .pdk .text-gold,
+  .pdk .text-gold-light,
+  .pdk .eyebrow,
+  .pdk a {
     color: #8a601f !important;
   }
-  .deck .deck-lead,
-  .deck .deck-body,
-  .deck .deck-dd,
-  .deck .deck-dim {
+  .pdk .pdk-lead,
+  .pdk .pdk-body,
+  .pdk .pdk-dd,
+  .pdk .pdk-dim {
     color: #39414a !important;
   }
-  .deck a {
+  .pdk a {
     text-decoration: none !important;
   }
 
-  .deck-slide {
+  .pdk-slide {
     display: block !important;
     position: static !important;
     overflow: visible !important;
@@ -1566,13 +1566,13 @@
     break-after: page;
     break-inside: avoid;
   }
-  .deck-slide:last-child {
+  .pdk-slide:last-child {
     break-after: auto;
   }
-  .deck-slide + .deck-slide::before {
+  .pdk-slide + .pdk-slide::before {
     display: none;
   }
-  .deck-stage {
+  .pdk-stage {
     max-width: none;
   }
 
@@ -1590,17 +1590,17 @@
     background: transparent !important;
   }
 
-  .deck-h1 {
+  .pdk-h1 {
     font-size: 40pt;
   }
-  .deck-h2 {
+  .pdk-h2 {
     font-size: 25pt;
   }
-  .deck-lead {
+  .pdk-lead {
     font-size: 13pt;
   }
-  .deck-body,
-  .deck-dd {
+  .pdk-body,
+  .pdk-dd {
     font-size: 11pt;
   }
 }

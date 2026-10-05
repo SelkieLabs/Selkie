@@ -53,7 +53,7 @@ export default function Pitch() {
   const here = useActiveSlide();
 
   return (
-    <div className="deck">
+    <div className="pdk">
       {/* ---------- chrome ---------- */}
       <header className="print-hide fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-4 px-5 py-4 sm:px-8">
         <Wordmark />
@@ -108,10 +108,10 @@ export default function Pitch() {
           <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-gold" />
           Live on Stellar testnet
         </span>
-        <h1 className="deck-h1 text-balance mt-7 max-w-[16ch] text-ivory">
+        <h1 className="pdk-h1 text-balance mt-7 max-w-[16ch] text-ivory">
           The money is there before they are.
         </h1>
-        <p className="deck-lead mt-7 max-w-[54ch]">
+        <p className="pdk-lead mt-7 max-w-[54ch]">
           Pay anyone by their handle alone. No address, no app, no seed phrase, no gas — and it
           works even when the person you are paying has never heard of us.
         </p>
@@ -122,7 +122,7 @@ export default function Pitch() {
               className="flex flex-col gap-0.5 border-b border-ivory/[0.12] py-3 sm:flex-row sm:gap-8"
             >
               <dt className="w-32 shrink-0 text-[14px] font-bold text-gold">{item.term}</dt>
-              <dd className="deck-dd text-[15px]">{item.detail}</dd>
+              <dd className="pdk-dd text-[15px]">{item.detail}</dd>
             </div>
           ))}
         </dl>
@@ -130,10 +130,10 @@ export default function Pitch() {
 
       {/* ---------- 2. problem ---------- */}
       <Slide index={1} eyebrow="The problem">
-        <h2 className="deck-h2 text-balance max-w-[18ch] text-ivory">
+        <h2 className="pdk-h2 text-balance max-w-[18ch] text-ivory">
           Paying a person is still the hardest easy thing on the internet.
         </h2>
-        <div className="deck-body mt-8 max-w-[58ch] space-y-5">
+        <div className="pdk-body mt-8 max-w-[58ch] space-y-5">
           <p>
             To pay someone you need a 56-character address off them, or you need them to go and make
             an account first — a password, twelve words, kept safe forever. For two people sending
@@ -150,10 +150,10 @@ export default function Pitch() {
 
       {/* ---------- 3. today ---------- */}
       <Slide index={2} eyebrow="What works today">
-        <h2 className="deck-h2 text-balance max-w-[18ch] text-ivory">
+        <h2 className="pdk-h2 text-balance max-w-[18ch] text-ivory">
           Built, deployed, and usable in under a minute.
         </h2>
-        <div className="deck-body mt-8 max-w-[58ch] space-y-5">
+        <div className="pdk-body mt-8 max-w-[58ch] space-y-5">
           <p>
             Open <A href="https://selkiepay.com">selkiepay.com</A>, sign in with Google or X, type a
             handle and an amount. If that person is here it lands in seconds. If they have never
@@ -174,7 +174,7 @@ export default function Pitch() {
 
       {/* ---------- 4. mechanism ---------- */}
       <Slide index={3} eyebrow="How it works">
-        <h2 className="deck-h2 text-balance max-w-[18ch] text-ivory">
+        <h2 className="pdk-h2 text-balance max-w-[18ch] text-ivory">
           The money is held by a contract, not by us.
         </h2>
         <div className="mt-9 grid items-stretch gap-3 sm:grid-cols-[1fr_auto_1.15fr_auto_1fr]">
@@ -188,7 +188,7 @@ export default function Pitch() {
           <Connector caption="on first sign-in" />
           <Node label="Recipient" body="Had no wallet, no account, no idea. Now has the money." />
         </div>
-        <p className="deck-body mt-8 max-w-[58ch]">
+        <p className="pdk-body mt-8 max-w-[58ch]">
           We cannot take it, freeze it, or stop a refund. Our only power is attesting that someone
           signed in with the handle a payment was addressed to — and that can only ever route money
           to that person. If nobody claims it, the sender takes it back in full. Money can wait; it
@@ -198,10 +198,10 @@ export default function Pitch() {
 
       {/* ---------- 5. moat ---------- */}
       <Slide index={4} eyebrow="Why nobody else has it">
-        <h2 className="deck-h2 text-balance max-w-[18ch] text-ivory">
+        <h2 className="pdk-h2 text-balance max-w-[18ch] text-ivory">
           The existing primitives all need a wallet that already exists.
         </h2>
-        <div className="deck-body mt-8 max-w-[58ch] space-y-5">
+        <div className="pdk-body mt-8 max-w-[58ch] space-y-5">
           <p>
             <Strong>A claimable balance</Strong> has to name a real account at the moment you send.
             You would have to create and fund an account for every handle anyone pays, hold the key
@@ -222,10 +222,10 @@ export default function Pitch() {
 
       {/* ---------- 6. market ---------- */}
       <Slide index={5} eyebrow="The market">
-        <h2 className="deck-h2 text-balance max-w-[18ch] text-ivory">
+        <h2 className="pdk-h2 text-balance max-w-[18ch] text-ivory">
           Emerging markets first, and Nigeria before anywhere else.
         </h2>
-        <div className="deck-body mt-8 max-w-[58ch] space-y-5">
+        <div className="pdk-body mt-8 max-w-[58ch] space-y-5">
           <p>
             The people who need this already move money informally every day, already pay each other
             by name, and already lose a slice of every transfer to fees and spread. They are not
@@ -242,7 +242,7 @@ export default function Pitch() {
 
       {/* ---------- 7. status ---------- */}
       <Slide index={6} eyebrow="Where we are">
-        <h2 className="deck-h2 text-balance max-w-[20ch] text-ivory">
+        <h2 className="pdk-h2 text-balance max-w-[20ch] text-ivory">
           What is real, and what is not, with nothing rounded up.
         </h2>
         <div className="mt-10 grid gap-x-14 gap-y-9 sm:grid-cols-2">
@@ -253,10 +253,10 @@ export default function Pitch() {
 
       {/* ---------- 8. next ---------- */}
       <Slide index={7} eyebrow="Where this goes">
-        <h2 className="deck-h2 text-balance max-w-[18ch] text-ivory">
+        <h2 className="pdk-h2 text-balance max-w-[18ch] text-ivory">
           One product, built to land on more than one chain.
         </h2>
-        <div className="deck-body mt-8 max-w-[58ch] space-y-5">
+        <div className="pdk-body mt-8 max-w-[58ch] space-y-5">
           <p>
             Chain-specific code lives in exactly one adapter. Handles, money and the payment flow
             talk to an interface and know nothing about any ledger. Stellar is the adapter that is
@@ -273,7 +273,7 @@ export default function Pitch() {
 
       {/* ---------- 9. ask ---------- */}
       <Slide index={8} eyebrow="The ask">
-        <h2 className="deck-h2 text-balance max-w-[14ch] text-ivory">What we are looking for.</h2>
+        <h2 className="pdk-h2 text-balance max-w-[14ch] text-ivory">What we are looking for.</h2>
         <dl className="mt-9 max-w-3xl border-t border-ivory/[0.12]">
           {ASK.map((item) => (
             <div
@@ -283,7 +283,7 @@ export default function Pitch() {
               <dt className="w-56 shrink-0 font-display text-[1.0625rem] font-bold tracking-tight text-gold">
                 {item.term}
               </dt>
-              <dd className="deck-dd text-[15.5px] leading-relaxed">{item.detail}</dd>
+              <dd className="pdk-dd text-[15.5px] leading-relaxed">{item.detail}</dd>
             </div>
           ))}
         </dl>
@@ -318,12 +318,12 @@ function Slide({
   children: React.ReactNode;
 }) {
   return (
-    <section id={`s${index}`} className="deck-slide" data-slide={index}>
-      <div className="deck-stage">
+    <section id={`s${index}`} className="pdk-slide" data-slide={index}>
+      <div className="pdk-stage">
         {eyebrow && <p className="eyebrow mb-5">{eyebrow}</p>}
         {children}
       </div>
-      <span className="deck-num print-hide" aria-hidden="true">
+      <span className="pdk-num print-hide" aria-hidden="true">
         {String(index + 1).padStart(2, "0")} / {String(SLIDES.length).padStart(2, "0")}
       </span>
     </section>
@@ -333,12 +333,12 @@ function Slide({
 function Ledger({ title, items, on = false }: { title: string; items: string[]; on?: boolean }) {
   return (
     <div>
-      <p className={`font-display text-[1.0625rem] font-bold tracking-tight ${on ? "text-gold" : "deck-dim"}`}>
+      <p className={`font-display text-[1.0625rem] font-bold tracking-tight ${on ? "text-gold" : "pdk-dim"}`}>
         {title}
       </p>
       <ul className="mt-5 space-y-3">
         {items.map((item) => (
-          <li key={item} className="deck-dd flex gap-3 text-[15.5px] leading-relaxed">
+          <li key={item} className="pdk-dd flex gap-3 text-[15.5px] leading-relaxed">
             <span
               className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border ${
                 on
@@ -371,7 +371,7 @@ function Node({ label, body, lit = false }: { label: string; body: string; lit?:
       >
         {label}
       </p>
-      <p className="deck-dd mt-2 text-[14px] leading-relaxed">{body}</p>
+      <p className="pdk-dd mt-2 text-[14px] leading-relaxed">{body}</p>
     </div>
   );
 }
@@ -412,7 +412,7 @@ function useActiveSlide() {
   const [here, setHere] = useState(0);
 
   useEffect(() => {
-    const slides = Array.from(document.querySelectorAll<HTMLElement>(".deck-slide"));
+    const slides = Array.from(document.querySelectorAll<HTMLElement>(".pdk-slide"));
     if (!slides.length) return;
 
     const io = new IntersectionObserver(
