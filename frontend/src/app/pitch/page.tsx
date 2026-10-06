@@ -16,6 +16,7 @@ const SLIDES = [
   "The market",
   "Where we are",
   "Where this goes",
+  "Why Canton",
   "The ask",
 ];
 
@@ -40,6 +41,24 @@ const PENDING = [
   "Telegram — backend done, no front end",
   "Mainnet — testnet only so far",
   "Users — none. We have not launched.",
+];
+
+const CANTON = [
+  {
+    term: "The work",
+    detail:
+      "Daml templates for the handle escrow — hold against a hashed handle, release on a login attestation, refund on expiry. Then a CantonAdapter behind the ChainAdapter interface we already have: the same five methods Stellar implements, plus party allocation, sponsored fees and a suite mirroring the Stellar one.",
+  },
+  {
+    term: "The size",
+    detail:
+      "Six to eight weeks, one engineer full time plus review. Nearer five with two. We built on Canton before Stellar, so the ramp-up is already paid — this is not a cold start.",
+  },
+  {
+    term: "What it unlocks",
+    detail:
+      "A contract is visible only to its stakeholders. Pay anyone by the handle you already know them by, and nobody can see what you hold.",
+  },
 ];
 
 const ASK = [
@@ -263,16 +282,39 @@ export default function Pitch() {
             live; a second chain is an adapter and a line of registration, not a rewrite.
           </p>
           <p>
-            That matters because of one thing we cannot fix on a public ledger. Every balance on
-            Stellar is visible forever, so we cannot honestly promise anyone privacy there — and we
-            do not. A privacy-preserving ledger gives it back: same handle, same one tap, balances
-            that are nobody else&rsquo;s business. That is a product no transparent chain can ship.
+            That was decided early rather than told afterwards, and it is what makes the next slide
+            a scoped piece of work instead of a pivot.
           </p>
         </div>
       </Slide>
 
-      {/* ---------- 9. ask ---------- */}
-      <Slide index={8} eyebrow="The ask">
+      {/* ---------- 9. why canton ---------- */}
+      <Slide index={8} eyebrow="Why Canton">
+        <h2 className="pdk-h2 text-balance max-w-[20ch] text-ivory">
+          Confidential balances are the one thing a public ledger cannot give.
+        </h2>
+        <p className="pdk-body mt-7 max-w-[62ch]">
+          Every balance and every payment on Stellar is visible forever, to anyone. So we do not
+          promise privacy there. Canton is where that comes back, and it is scoped work, not a
+          rewrite.
+        </p>
+        <dl className="mt-9 max-w-4xl border-t border-ivory/[0.12]">
+          {CANTON.map((item) => (
+            <div
+              key={item.term}
+              className="flex flex-col gap-1 border-b border-ivory/[0.12] py-4 sm:flex-row sm:gap-10"
+            >
+              <dt className="w-44 shrink-0 font-display text-[1.0625rem] font-bold tracking-tight text-gold">
+                {item.term}
+              </dt>
+              <dd className="pdk-dd text-[15.5px] leading-relaxed">{item.detail}</dd>
+            </div>
+          ))}
+        </dl>
+      </Slide>
+
+      {/* ---------- 10. ask ---------- */}
+      <Slide index={9} eyebrow="The ask">
         <h2 className="pdk-h2 text-balance max-w-[14ch] text-ivory">What we are looking for.</h2>
         <dl className="mt-9 max-w-3xl border-t border-ivory/[0.12]">
           {ASK.map((item) => (
