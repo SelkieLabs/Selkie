@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import type { NextConfig } from "next";
 
 // The API lives on the Selkie server. Rewriting it from this app keeps every
@@ -16,6 +18,13 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@selkie/core"],
 
   turbopack: {
+    // The repo root, not this package. Without it Turbopack walks up past the
+    // repo, finds a stray lockfile in the home directory and takes that as the
+    // root, then watches everything under it — a two minute first page load.
+    // It has to be the workspace root rather than frontend/, because npm
+    // hoists the dependencies up there and pinning this lower hides them.
+    root: resolve(dirname(fileURLToPath(import.meta.url)), ".."),
+
     resolveAlias: {
       "@solana/kit": SOLANA_STUB,
       "@solana-program/system": SOLANA_STUB,
