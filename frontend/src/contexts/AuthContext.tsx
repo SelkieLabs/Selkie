@@ -22,6 +22,9 @@ import { isNear } from "@/lib/chain";
 import { useNearWallet } from "@/lib/near-wallet";
 import { stopPushHere } from "@/lib/push";
 
+/** Privy's linked-account types that are a way to sign in to Selkie (an identity), not a wallet. */
+const SIGN_IN_TYPES = new Set<string>(["twitter_oauth", "telegram", "google_oauth"]);
+
 /**
  * Signing in, in one place.
  *
@@ -258,7 +261,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (status !== "ready" || !user) return;
-    const linked = privy.user?.linkedAccounts?.length ?? 0;
+    // On NEAR the account is opened from the X login and X is the only way in,
+    // so there is never a second identity to attach (and no /auth/link route).
+    if (isNear) return;
+    // Only ways of signing in count. Privy also lists the embedded wallet it
+    // made as a "linked account"; counting it made every wallet user look one
+    // identity short and fire a link request on every load.
+    const linked = privy.user?.linkedAccounts?.filter((account) => SIGN_IN_TYPES.has(account.type)).length ?? 0;
     // Once per newly linked account, so a failure never becomes a retry loop.
     if (linked <= user.identities.length || attempted.current === linked) return;
     attempted.current = linked;
