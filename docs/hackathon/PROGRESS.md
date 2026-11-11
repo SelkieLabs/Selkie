@@ -20,6 +20,7 @@ NEAR (Stellar stays in the code, hidden from users).
 | Restored on NEAR (human asked) | **done**: Pay many (one signature, `hold_many` for non-users), pay any NEAR account, Cash out to a NEAR account or exchange, Requests. Each goes prepare → sign → relay. 16 app tests (`backend/api/src/near/app.test.ts`) run the real app on a simulated chain with real ed25519 signatures |
 | Money in, live | **done**: the wallet polls every 12 s and on returning to the tab; new money in shows a toast ("@tunde sent you 2.00 USDC."). Deposits that skip Selkie (faucet, exchange, another wallet) now get a feed line "from outside Selkie" (`backend/api/src/near/balance-watch.ts`, migration 003). 6 more app tests (22 total) |
 | Push notifications | **built**: Settings → "When money comes in" (and a one-time offer on Home) subscribes the browser to Web Push. Every money-in feed line also goes to the person's devices, even with Selkie closed. Server side tested with a fake push service (13 tests); **real delivery still to be checked in a browser**. iPhone needs Selkie added to the Home Screen first |
+| Email notices | **built**: Settings → Notifications → By email. The address is proven with a 6-digit code, then every money-in line also sends an email (Resend), with a signed one-click unsubscribe. Locally `EMAIL_DEV_LOG=1` prints emails in the API console. **Real sending needs a Resend key and a verified sender domain** (human) |
 | Oracle | **rotated** to `oracle-v2.selkiepay.testnet`: claim-only key, no allowance cap (see Setup) |
 | 6.5 Copy | **done**: landing, FAQ, docs, settings, footer all NEAR |
 | Full loop on testnet | **blocked on test USDC**: fund an account from faucet.circle.com (NEAR Testnet) |
@@ -167,6 +168,20 @@ unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
     silent when a Selkie tab is focused, because Safari withdraws push from sites that
     receive one and show nothing.
   - Signing out unsubscribes the browser.
+- **Email notices** (not in the brief; the human asked). `backend/api/src/email/`, shared
+  wording in `backend/api/src/notify/arrival.ts`:
+  - X sign-in gives no email, so the address is typed in and proven with a code. Only a
+    sha256 of the code is stored. It lasts 15 minutes, allows 5 tries, and a new one can
+    be asked for after 60 s.
+  - Nothing but the code goes to an unproven address.
+  - Each email carries an HMAC-signed unsubscribe link plus
+    `List-Unsubscribe`/`List-Unsubscribe-Post` (RFC 8058). The link page asks before
+    stopping, so mail scanners cannot unsubscribe anyone.
+  - Env: `RESEND_API_KEY`, `EMAIL_FROM` (a domain verified in Resend), optional
+    `EMAIL_LINK_BASE_URL`, `EMAIL_LINK_SECRET`.
+- **Fixed: a `/auth/link` 404 on every load.** Privy lists the embedded NEAR wallet as a
+  linked account, so NEAR users looked one identity short. Now only sign-in methods
+  count, and NEAR never attaches.
 - **Cash out on NEAR = a transfer to any NEAR account** (your wallet or an exchange's
   deposit account), shown as "cashout" in the feed. To other chains it needs NEAR Intents
   on mainnet; the screen says so. Bank cash-out stays the pre-existing "almost open" screen.
