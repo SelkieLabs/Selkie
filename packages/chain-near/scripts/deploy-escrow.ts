@@ -17,12 +17,12 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Account, JsonRpcProvider, KeyPair, actions, nearToYocto, type KeyPairString } from "near-api-js";
+import { Account, JsonRpcProvider, nearToYocto, type KeyPairString } from "near-api-js";
 import { nearConfigFromEnv } from "../src/config";
 import { MIN_HOLD_UNITS } from "../src/escrow";
+import { balanceOf, topUpFromFaucet } from "./faucet";
 
 const WASM = resolve(import.meta.dirname, "../../../contracts-near/target/wasm32-unknown-unknown/release/selkie_handle_escrow.wasm");
-const FAUCET_URL = "https://helper.nearprotocol.com/account";
 const MIN_BALANCE = nearToYocto("6");
 const MAX_LIFETIME_SECS = 365 * 24 * 60 * 60;
 
@@ -37,36 +37,11 @@ const provider = new JsonRpcProvider({ url: config.rpcUrl });
 const escrow = new Account(config.escrowContract, provider, escrowKey);
 const tx = (hash: string) => `${config.explorerUrl}/transactions/${hash}`;
 
-async function balance(accountId: string): Promise<bigint> {
-  const view = await provider.viewAccount({ accountId });
-  return BigInt(view.amount);
-}
+const balance = (accountId: string) => balanceOf(provider, accountId);
 
-/** Faucet -> throwaway account -> DeleteAccount with the escrow as beneficiary. */
 async function topUp(): Promise<void> {
-  while ((await balance(escrow.accountId)) < MIN_BALANCE) {
-    const key = KeyPair.fromRandom("ed25519");
-    const temp = `selkie-topup-${Date.now().toString(36)}.testnet`;
-    const res = await fetch(FAUCET_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ newAccountId: temp, newAccountPublicKey: key.getPublicKey().toString() }),
-    });
-    if (!res.ok) throw new Error(`Faucet refused ${temp}: ${res.status} ${await res.text()}`);
-    for (let i = 0; i < 20; i++) {
-      try {
-        await balance(temp);
-        break;
-      } catch {
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-    }
-    const funder = new Account(temp, provider, key.toString() as KeyPairString);
-    const result = await funder.signAndSendTransaction({
-      receiverId: temp,
-      actions: [actions.deleteAccount(escrow.accountId)],
-    });
-    console.log(`topped up ${escrow.accountId} from the faucet: ${tx(result.transaction.hash)}`);
+  for (const hash of await topUpFromFaucet(provider, escrow.accountId, MIN_BALANCE)) {
+    console.log(`topped up ${escrow.accountId} from the faucet: ${tx(hash)}`);
   }
 }
 

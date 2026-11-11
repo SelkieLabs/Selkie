@@ -1,0 +1,5 @@
+handle,amount
+# One line per person: their X handle and what they get, in USDC.
+# Each amount must be at least 0.01 (the escrow's floor). At most 40 people.
+@first_contributor,5.00
+@second_contributor,2.50
