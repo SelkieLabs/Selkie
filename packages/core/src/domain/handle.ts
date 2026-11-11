@@ -43,3 +43,33 @@ export async function handleHashHex(handle: HandleRef): Promise<string> {
   const hash = await handleHash(handle);
   return Array.from(hash, (b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+/**
+ * Who a held payment waits for, when the sender's handle resolves to an X user id:
+ * sha256("x-id:<numeric id>").
+ *
+ * Why this exists next to handleHash: an X username is not an identity. People
+ * rename, and a released username can be registered by someone else, so money
+ * keyed on "x:amaka" pays whoever holds @amaka on the day they sign in, which
+ * may not be the person the sender meant. The numeric user id never changes
+ * hands. Selkie keys on it whenever it can look the id up (X API), and falls
+ * back to handleHash when it cannot; on claim it releases both, so either form
+ * pays out to the person who proves the login.
+ *
+ * Like handleHash, this is a protocol constant: it must stay byte-identical to
+ * what the escrow stores.
+ */
+export async function xIdHash(xUserId: string): Promise<Uint8Array> {
+  if (!/^\d{1,20}$/.test(xUserId)) throw new Error(`Not an X user id: ${xUserId}`);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`x-id:${xUserId}`));
+  return new Uint8Array(digest);
+}
+
+/** The X-id hash as lowercase hex, the form the NEAR escrow stores. */
+export async function xIdHashHex(xUserId: string): Promise<string> {
+  return toHex(await xIdHash(xUserId));
+}
+
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
