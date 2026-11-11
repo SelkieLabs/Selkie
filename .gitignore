@@ -15,4 +15,6 @@ target/
 test_snapshots/
 /docs/selkie-stellar-product-scope.md
 /docs/stellar-scf-strategy.md
-/docs/submissions.md
+/docs/submissions.md# NEAR agent skills are third-party docs; skills-lock.json records them and
+# `npx skills experimental_install` restores them.
+.claude/skills/
