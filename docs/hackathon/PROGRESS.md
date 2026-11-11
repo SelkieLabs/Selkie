@@ -3,14 +3,38 @@
 The running log the human reads between sessions: what works, what is cut, what
 is next. Newest first within each section. Brief: [CLAUDE.md](../../CLAUDE.md).
 
-## Status — Wed 11 Nov, 17:00 Lagos
+## Status — Wed 11 Nov, evening Lagos
+
+The human said to go ahead without waiting after the spikes, and to make the whole UI
+NEAR (Stellar stays in the code, hidden from users).
 
 | Step | State |
 | --- | --- |
-| 3. Setup | done (see "Setup" below) |
-| 4. Spike A — Privy NEAR wallet signs a delegate action | **server half passed**; browser half built, waiting on a human sign-in |
-| 4. Spike B — escrow skeleton receives an FT transfer | contract + script ready; waiting on testnet USDC from the Circle faucet |
-| 6.x product work | not started: waiting for the human's OK after the spikes |
+| 3. Setup | done |
+| 4. Spike A (Privy NEAR wallet signs a delegate action) | server half passed; browser half is now the real Send flow |
+| 4. Spike B | superseded by the full escrow below |
+| 6.1 Escrow contract | **done**: tests green, deployed and initialised on testnet |
+| 6.2 `packages/chain-near` | **done** (config, amounts, names, recipient keys, escrow calls, delegate build/sign/verify, relay policy, NearChain); 16 unit tests |
+| 6.3 Backend NEAR mode | **done**: `SELKIE_CHAIN=near` serves its own Fastify app on its own DB; runs locally on :4100 |
+| 6.4 Frontend NEAR mode | **built** (sign-in opens the account, send, refund, receive, key proof badge); needs the two-browser test with real X logins |
+| 6.5 Copy | **done**: landing, FAQ, docs, settings, footer all NEAR |
+| Full loop on testnet | **blocked on test USDC**: fund an account from faucet.circle.com (NEAR Testnet) |
+
+## Escrow on testnet (6.1)
+
+- [escrow.selkiepay.testnet](https://explorer.testnet.near.org/accounts/escrow.selkiepay.testnet): 275,370-byte WASM.
+  - Top-up from faucet: [F8hynNn…](https://explorer.testnet.near.org/transactions/F8hynNnxrvMpXJPNenpHgPJCJ4obNTgw479thSARasUz)
+  - Deploy: [CtYc7ZZ…](https://explorer.testnet.near.org/transactions/CtYc7ZZuJgCW8PqnTP5s7mN5zVGDopeVTVqx6pESzZhz)
+  - Init (`new`, `#[private]`, signed by the escrow itself): [9R3PA5L…](https://explorer.testnet.near.org/transactions/9R3PA5LWGuTfkW2xWRXtfHPiK6Udbqo4MXxq8tVaFLzM)
+- Owner `selkiepay.testnet`, oracle `oracle.selkiepay.testnet`, token allowlist = Circle testnet USDC, max lifetime 365 days.
+- Redeploy: `npm run near:deploy-escrow`. Tests: `npm run test:contracts:near`.
+
+## How it runs locally (NEAR mode)
+
+```
+SELKIE_CHAIN=near PORT=4100 npx tsx --env-file=.env backend/api/src/index.ts   # API, needs NEAR_DATABASE_URL
+SELKIE_API_ORIGIN=http://localhost:4100 npm run dev:web                       # web on :3000, NEAR by default
+```
 
 ## Setup (section 3)
 
@@ -64,8 +88,9 @@ is next. Newest first within each section. Brief: [CLAUDE.md](../../CLAUDE.md).
 | USDC `storage_balance_bounds` | min = max = `1250000000000000000000` yocto (0.00125 NEAR) | live call |
 | Hackathon rules | re-read live 11 Nov: tags `pre-hackathon` + `hackathon-submission` (or a branch) + README diff link; hosted demo up through 18 Nov, ideally 25 Nov; 1Click JWT optional (0.2% fee without) | nearhackathon.com/HACKATHON.md |
 
-Still to verify: account-id regex + creation cost (6.2), 1Click fields/statuses (7.1),
-Sputnik testnet factory (7.2), X API v2 user lookup (5.3).
+Still to verify: 1Click fields/statuses (7.1), Sputnik testnet factory (7.2),
+X API v2 user lookup (5.3; the code calls `GET https://api.x.com/2/users/by/username/:u`
+only when `X_BEARER_TOKEN` is set, unverified).
 
 ## Spike A — Privy NEAR wallet signs a NEP-366 delegate action
 
@@ -87,10 +112,34 @@ parses `{"kind":"hold",...}`, emits a NEP-297 `hold` event, refunds on a bad msg
 unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
 `ft_transfer_call`, print logs). Waiting on USDC in `selkiepay.testnet`.
 
+### More deviations (product work)
+
+- **No separate `POST /near/account`.** The account is created inside the existing
+  `POST /auth/session` with `createAccount: true`, through the same `IdentityService`
+  Stellar uses (`IdentityChain.openAccount`). The web app calls it automatically on the
+  first X sign-in, after creating the Privy NEAR wallet, so money waiting for the
+  handle is claimed in the same request. Same checks as the brief: X login present,
+  the key is this Privy user's NEAR wallet.
+- **`IdentityService` refactor** is the "preferred" plan from 6.3: a small
+  `IdentityChain` interface (`backend/api/src/identity/chain.ts`) that the Stellar
+  adapter satisfies unchanged, and `NearIdentityChain` for NEAR.
+- **NEAR is the web app's default chain** on this branch (`NEXT_PUBLIC_SELKIE_CHAIN=stellar`
+  brings Stellar back). Hidden on NEAR via `frontend/src/lib/chain.ts` `features`:
+  Convert, Requests, Telegram, Google sign-in, Pay many, Cash out, pay-to-address.
+
 ## Cut / deferred
 
-Nothing cut yet.
+- Nothing from P0 cut.
+- Escrow audit notes not yet fixed: owner methods (`set_oracle`, `add_token`,
+  `remove_token`) do not require 1 yocto; dust holds can spam storage (contract stops
+  taking holds below 0.5 NEAR spare, so it fails safe, not open).
 
 ## Next
 
-After the human's OK: 6.1 escrow (full), 6.2 chain-near, 6.3 backend, 6.4 frontend, 6.5 copy.
+1. Human: get test USDC from faucet.circle.com (NEAR Testnet) into your account, then
+   run the two-browser loop (6.4 acceptance).
+2. Watch the oracle's 0.25 NEAR function-call allowance after the first claims; if it
+   runs low, add a bigger key and `set_oracle`.
+3. `.env.example` NEAR block, `npm run prove:keys`, `npm run test:live:near`.
+4. README top + `docs/hackathon/SUBMISSION.md`; MIT LICENSE (missing today).
+5. P1: Intents add-money / cash-out (mainnet, needs OK), Pay many with `hold_many`.
