@@ -1,0 +1,6 @@
+# Any stable rustc >= 1.93 builds this (near-sdk 5.29's minimum; Cargo.toml
+# enforces it via rust-version). nearcore accepts the bulk-memory opcodes that
+# rustc >= 1.87 emits from protocol 84 on, and testnet runs 88.
+[toolchain]
+channel = "stable"
+targets = ["wasm32-unknown-unknown"]

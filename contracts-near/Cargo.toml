@@ -1,0 +1,20 @@
+# NEAR contracts for Selkie. A separate workspace from contracts/ (Soroban), on
+# purpose: the two chains want different SDKs, toolchains and release profiles,
+# and sharing a Cargo.lock would let one chain's upgrade break the other's build.
+[workspace]
+resolver = "3"
+members = ["handle-escrow"]
+
+[workspace.dependencies]
+# 5.29 is the newest near-sdk that builds on rustc 1.94 (5.30 needs 1.95).
+near-sdk = "~5.29.1"
+
+# The profile cargo-near's project template uses (cargo near new).
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+# Arithmetic overflow aborts instead of wrapping. Money code wants that.
+overflow-checks = true
