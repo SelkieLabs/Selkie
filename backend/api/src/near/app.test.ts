@@ -17,6 +17,7 @@ import { FakeIdentityProvider } from "../identity/provider";
 import { InMemoryUserStore } from "../identity/store";
 import { InMemoryRequestStore } from "../requests/store";
 import { buildNearApp } from "./app";
+import { OUTSIDE } from "./balance-watch";
 import { SimulatedNearChain } from "./simulated-chain";
 import { InMemoryNearAccountStore, InMemoryPrepareStore } from "./store";
 
@@ -60,15 +61,22 @@ const person = (subject: string, username: string): Person => ({
 let app: FastifyInstance;
 let chain: SimulatedNearChain;
 let requests: InMemoryRequestStore;
+let accounts: InMemoryNearAccountStore;
+/** The balance watch's clock, moved by hand. */
+let clock = 0;
+const SETTLE_MS = 10_000;
 
 beforeEach(async () => {
   chain = new SimulatedNearChain();
   requests = new InMemoryRequestStore();
+  accounts = new InMemoryNearAccountStore();
+  clock = 0;
   app = await buildNearApp({
     users: new InMemoryUserStore(),
     provider: new WalletProvider(),
     chain: chain as unknown as NearChain,
-    accounts: new InMemoryNearAccountStore(),
+    accounts,
+    watch: { settleAfterMs: SETTLE_MS, now: () => clock },
     prepares: new InMemoryPrepareStore(),
     activity: new InMemoryActivityStore(),
     requests,
@@ -108,6 +116,22 @@ async function feed(who: Person) {
   const res = await app.inject({ method: "GET", url: "/activity", headers: auth(who) });
   return res.json().entries as { kind: string; status: string; counterparty?: string; claimRef?: string; amount: { amount: string } }[];
 }
+
+/** What the wallet's 12-second poll does: read the balance. */
+async function look(who: Person) {
+  const res = await app.inject({ method: "GET", url: "/me", headers: auth(who) });
+  assert.equal(res.statusCode, 200, res.body);
+  return res.json().balances[0].amount as string;
+}
+
+/** Look, wait out the settle time, look again: long enough for any real difference to be written. */
+async function settle(who: Person) {
+  await look(who);
+  clock += SETTLE_MS;
+  await look(who);
+}
+
+const fromOutside = async (who: Person) => (await feed(who)).filter((entry) => entry.counterparty === OUTSIDE);
 
 describe("NEAR app", () => {
   test("signing in opens an account whose only key is the user's", async () => {
@@ -377,5 +401,136 @@ describe("NEAR app", () => {
     assert.equal(back.json().status, "returned");
     assert.equal(await chain.usdcBalance(tunde.account!), 5n * DOLLAR);
     assert.equal((await feed(tunde))[0]!.status, "returned");
+  });
+
+  describe("money from outside Selkie", () => {
+    test("a deposit shows in the feed once it has held, and only once", async () => {
+      const amaka = person("1001", "amaka");
+      await signIn(amaka);
+      chain.fund(amaka.account!, 20n * DOLLAR);
+
+      assert.equal(await look(amaka), "20");
+      assert.equal((await fromOutside(amaka)).length, 0, "a difference seen once could be a lagging node");
+      clock += SETTLE_MS - 1;
+      await look(amaka);
+      assert.equal((await fromOutside(amaka)).length, 0);
+      clock += 1;
+      await look(amaka);
+
+      const [line] = await feed(amaka);
+      assert.equal(line!.kind, "receive");
+      assert.equal(line!.counterparty, OUTSIDE);
+      assert.equal(line!.amount.amount, "20");
+
+      clock += 60_000;
+      await look(amaka);
+      await look(amaka);
+      assert.equal((await feed(amaka)).length, 1);
+    });
+
+    test("money Selkie moved itself is never called outside", async () => {
+      const tunde = person("2001", "tunde");
+      const amaka = person("1001", "amaka");
+      await signIn(tunde);
+      await signIn(amaka);
+      chain.fund(tunde.account!, 10n * DOLLAR);
+      await settle(tunde);
+      assert.equal((await fromOutside(tunde)).length, 1, "the faucet money");
+
+      assert.equal((await pay(tunde, { to: "@amaka", amount: "1" })).statusCode, 200);
+      assert.equal((await pay(tunde, { to: "@bisi", amount: "2" })).statusCode, 200);
+      assert.equal((await pay(tunde, { toAccount: amaka.account, amount: "0.5" })).statusCode, 200);
+      assert.equal((await pay(tunde, { toMany: ["@amaka", "@kemi"], amount: "1" })).statusCode, 200);
+      const bisi = person("3001", "bisi");
+      await signIn(bisi);
+
+      for (const who of [tunde, amaka, bisi]) await settle(who);
+      clock += SETTLE_MS;
+      for (const who of [tunde, amaka, bisi]) await settle(who);
+
+      assert.equal((await fromOutside(tunde)).length, 1);
+      assert.equal((await fromOutside(amaka)).length, 0);
+      assert.equal((await fromOutside(bisi)).length, 0);
+      assert.equal(await look(tunde), "4.5");
+    });
+
+    test("a refund is Selkie's own money coming back, not outside money", async () => {
+      const tunde = person("2001", "tunde");
+      await signIn(tunde);
+      chain.fund(tunde.account!, 3n * DOLLAR);
+      await settle(tunde);
+      const sent = await pay(tunde, { to: "@nobody", amount: "2" });
+      const id = sent.json().claimRef as string;
+      chain.expire(id);
+      assert.equal((await pay(tunde, { refundId: id })).statusCode, 200);
+
+      await settle(tunde);
+      assert.equal((await fromOutside(tunde)).length, 1, "only the faucet");
+    });
+
+    test("money leaving by another route shows as a send to outside", async () => {
+      const amaka = person("1001", "amaka");
+      await signIn(amaka);
+      chain.fund(amaka.account!, 3n * DOLLAR);
+      await settle(amaka);
+      // Her key is hers: she can spend from another NEAR wallet app too.
+      chain.balances.set(amaka.account!, 1n * DOLLAR);
+      await settle(amaka);
+
+      const [line] = await feed(amaka);
+      assert.equal(line!.kind, "send");
+      assert.equal(line!.counterparty, OUTSIDE);
+      assert.equal(line!.amount.amount, "2");
+    });
+
+    test("a balance still moving restarts the wait", async () => {
+      const amaka = person("1001", "amaka");
+      await signIn(amaka);
+      chain.fund(amaka.account!, 1n * DOLLAR);
+      await look(amaka);
+      clock += 6_000;
+      chain.fund(amaka.account!, 1n * DOLLAR);
+      await look(amaka);
+      clock += 6_000;
+      await look(amaka);
+      assert.equal((await fromOutside(amaka)).length, 0, "the second deposit has only held 6 seconds");
+      clock += 4_000;
+      await look(amaka);
+      assert.deepEqual(
+        (await fromOutside(amaka)).map((entry) => entry.amount.amount),
+        ["2"],
+      );
+    });
+
+    test("an account opened before Selkie kept count", async () => {
+      const amaka = person("1001", "amaka");
+      const tunde = person("2001", "tunde");
+      await signIn(amaka);
+      await signIn(tunde);
+      chain.fund(amaka.account!, 20n * DOLLAR);
+      chain.fund(tunde.account!, 5n * DOLLAR);
+      assert.equal((await pay(tunde, { to: "@amaka", amount: "1" })).statusCode, 200);
+      accounts.forgetSeenUsdc(amaka.account!);
+      accounts.forgetSeenUsdc(tunde.account!);
+      chain.fund(tunde.account!, 1n * DOLLAR);
+
+      // Amaka has history, so nobody can say which part of her 21 came from
+      // outside: counting starts from now. Tunde too.
+      await settle(amaka);
+      await settle(tunde);
+      assert.equal((await fromOutside(amaka)).length, 0);
+      assert.equal((await fromOutside(tunde)).length, 0);
+
+      // An empty feed with a balance: all of it came from outside.
+      const kemi = person("4001", "kemi");
+      await signIn(kemi);
+      chain.fund(kemi.account!, 7n * DOLLAR);
+      accounts.forgetSeenUsdc(kemi.account!);
+      await settle(kemi);
+      assert.deepEqual(
+        (await fromOutside(kemi)).map((entry) => entry.amount.amount),
+        ["7"],
+      );
+    });
   });
 });

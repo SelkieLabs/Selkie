@@ -18,6 +18,7 @@ import {
   payManyCall,
   recipientKeyFor,
   refundCall,
+  toBaseUnits,
   toPositiveBaseUnits,
   type Call,
   type NearChain,
@@ -30,6 +31,7 @@ import type { UserStore } from "../identity/store";
 import type { User } from "../identity/types";
 import { userHandles } from "../identity/types";
 import type { RequestStore } from "../requests/store";
+import type { BalanceWatch } from "./balance-watch";
 import { Refusal } from "./refusal";
 import type { ManyItem, NearAccountStore, PaymentIntent } from "./store";
 import type { XUserLookup } from "./x-lookup";
@@ -76,6 +78,8 @@ export interface NearPaymentsDeps {
   accounts: NearAccountStore;
   activity: ActivityStore;
   requests: RequestStore;
+  /** Told about every balance Selkie moves, so it can tell those from outside money. */
+  watch: BalanceWatch;
   xLookup: XUserLookup;
 }
 
@@ -206,7 +210,7 @@ export class NearPayments {
       if (recipient) {
         await this.deps.chain.registerForUsdc(recipient.address);
         direct.push({ to: recipient.address, amount: each.toString() });
-        items.push({ to, recipientUserId: recipient.id });
+        items.push({ to, recipientUserId: recipient.id, recipientAccount: recipient.address });
       } else {
         const key = await this.recipientKey(to);
         holds.push({ recipient: key.key, amount: each.toString() });
@@ -253,6 +257,20 @@ export class NearPayments {
     };
   }
 
+  /** Every account whose USDC balance this payment changes, besides the sender's. */
+  accountsTouched(intent: PaymentIntent): string[] {
+    switch (intent.kind) {
+      case "send":
+        return [intent.recipientAccount];
+      case "transfer":
+        return [intent.toAccount];
+      case "many":
+        return intent.items.flatMap((item) => (item.recipientAccount ? [item.recipientAccount] : []));
+      default:
+        return [];
+    }
+  }
+
   // ---- after the chain has spoken ------------------------------------------
 
   async settle(user: User, intent: PaymentIntent, outcome: TxOutcome): Promise<Settled> {
@@ -262,9 +280,13 @@ export class NearPayments {
     if (outcome.failure) throw fail(explainFailure(outcome.failure));
     const from = userHandles(user)[0];
     const holds = outcome.events.filter((event) => event.event === "hold").flatMap((event) => event.data);
+    const amount = toBaseUnits(intent.amount.amount, USDC_DECIMALS);
+    const { watch } = this.deps;
 
     switch (intent.kind) {
       case "send": {
+        await watch.expect(user.address, -amount);
+        await watch.expect(intent.recipientAccount, amount);
         await this.record(user.id, entry("send", intent.amount, "confirmed", ref, handleParty(intent.to)));
         await this.record(intent.recipientUserId, entry("receive", intent.amount, "confirmed", ref, handleParty(from)));
         await this.markRequestPaid(intent.requestId, ref);
@@ -275,6 +297,7 @@ export class NearPayments {
         const hold = holds[0];
         // No hold event: the escrow refused the msg and the token sent the money back.
         if (!hold) throw fail("Nothing moved. The money is still with you. Try again.");
+        await watch.expect(user.address, -amount);
         const waiting = waitingFields(hold);
         await this.record(user.id, { ...entry("send", intent.amount, "pending", ref, handleParty(intent.to)), ...waiting });
         await this.markRequestPaid(intent.requestId, ref);
@@ -290,6 +313,9 @@ export class NearPayments {
 
       case "transfer": {
         const kind = intent.purpose === "cashout" ? "cashout" : "send";
+        await watch.expect(user.address, -amount);
+        // A no-op unless the account is a Selkie one.
+        await watch.expect(intent.toAccount, amount);
         await this.record(user.id, entry(kind, intent.amount, "confirmed", ref, { counterparty: intent.toAccount }));
         if (intent.recipientUserId) {
           await this.record(intent.recipientUserId, entry("receive", intent.amount, "confirmed", ref, handleParty(from)));
@@ -308,6 +334,8 @@ export class NearPayments {
         for (const item of intent.items) {
           const handle = `@${item.to.username}`;
           if (item.recipientUserId) {
+            await watch.expect(user.address, -amount);
+            if (item.recipientAccount) await watch.expect(item.recipientAccount, amount);
             await this.record(user.id, entry("send", intent.amount, "confirmed", ref, handleParty(item.to)));
             await this.record(item.recipientUserId, entry("receive", intent.amount, "confirmed", ref, handleParty(from)));
             results.push({ handle, sent: true, waitingToBeClaimed: false });
@@ -318,6 +346,7 @@ export class NearPayments {
             results.push({ handle, sent: false });
             continue;
           }
+          await watch.expect(user.address, -amount);
           await this.record(user.id, {
             ...entry("send", intent.amount, "pending", ref, handleParty(item.to)),
             ...waitingFields(hold),
@@ -347,6 +376,7 @@ export class NearPayments {
         if (!outcome.events.some((event) => event.event === "refund")) {
           throw fail("Nothing moved. Try taking it back again in a moment.");
         }
+        await watch.expect(user.address, amount);
         const found = await this.deps.activity.findByClaimRef(user.id, intent.claimRef);
         if (found) await this.deps.activity.settle(user.id, found.id, "returned", ref);
         return { status: "returned", ref, explorer, waitingToBeClaimed: false, message: "It's back in your balance." };

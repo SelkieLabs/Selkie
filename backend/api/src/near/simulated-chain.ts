@@ -130,7 +130,7 @@ export class SimulatedNearChain {
     }
     this.balances.set(accountId, (this.balances.get(accountId) ?? 0n) + total);
     const events: EscrowEvent[] = released.length
-      ? [{ event: "claim", data: [{ recipient, account_id: accountId, amount: total.toString(), ids: released.map((p) => p.id) }] }]
+      ? [{ event: "claim", data: [{ recipient, account_id: accountId, token: USDC, amount: total.toString(), ids: released.map((p) => p.id) }] }]
       : [];
     return { txHash: this.#hash(), events, failure: null };
   }

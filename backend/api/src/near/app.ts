@@ -4,9 +4,11 @@ import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, ty
 import {
   AmountError,
   RelayRefusedError,
+  USDC_DECIMALS,
   assertRelayable,
   recipientKeyFor,
   relayPolicy,
+  toBaseUnits,
   verifySignedDelegate,
   type NearChain,
 } from "@selkie/chain-near";
@@ -21,6 +23,7 @@ import { IdentityService } from "../identity/service";
 import type { UserStore } from "../identity/store";
 import type { User } from "../identity/types";
 import { userHandles } from "../identity/types";
+import { BalanceWatch } from "./balance-watch";
 import { NearAccountError, NearIdentityChain } from "./identity-chain";
 import { InMemoryRequestStore, type RequestStore } from "../requests/store";
 import { NearPayments, type PrepareBody } from "./payments";
@@ -39,6 +42,8 @@ export interface NearAppDeps {
   requests?: RequestStore;
   xLookup?: XUserLookup;
   limits?: Partial<Record<keyof typeof LIMITS, number>> | false;
+  /** Tests shorten how long outside money must hold before it is written down. */
+  watch?: { settleAfterMs?: number; now?: () => number };
 }
 
 /** How long a prepared payment may wait for its signature. Matches the delegate's block TTL. */
@@ -75,18 +80,20 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
 
   const { chain } = deps;
   const config = chain.config;
-  const near = new NearIdentityChain({ chain, accounts: deps.accounts });
+  const activity = deps.activity ?? new InMemoryActivityStore();
+  const watch = new BalanceWatch({ accounts: deps.accounts, activity, ...deps.watch });
+  const near = new NearIdentityChain({ chain, accounts: deps.accounts, watch });
   const identity = new IdentityService({
     users: deps.users,
     provider: deps.provider,
     adapter: near,
     onError: (error) => app.log.error(error),
   });
-  const activity = deps.activity ?? new InMemoryActivityStore();
   const xLookup = deps.xLookup ?? noXLookup;
   const requests = deps.requests ?? new InMemoryRequestStore();
   const policy = relayPolicy({ usdc: config.usdcContract, escrow: config.escrowContract });
   const payments = new NearPayments({
+    watch,
     chain,
     identity,
     users: deps.users,
@@ -103,15 +110,15 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
       reply.code(401).send({ error: "Sign in to continue." });
       return null;
     }
-    if (result.claimed.length > 0) await recordClaims(result.user.id, result.claimed);
+    if (result.claimed.length > 0) await recordClaims(result.user, result.claimed);
     return result.user;
   }
 
   /** Money that was waiting just landed: one line for the receiver, and the senders stop "waiting". */
-  async function recordClaims(userId: string, claimed: ClaimOutcome[]): Promise<void> {
+  async function recordClaims(user: User, claimed: ClaimOutcome[]): Promise<void> {
     for (const outcome of claimed) {
       for (const amount of outcome.amounts) {
-        await activity.record(userId, { kind: "claim", chain: "near", amount, status: "confirmed", ref: outcome.ref });
+        await activity.record(user.id, { kind: "claim", chain: "near", amount, status: "confirmed", ref: outcome.ref });
       }
       for (const paymentId of outcome.paymentIds) {
         await activity.settleByClaimRef(paymentId, "confirmed", outcome.ref);
@@ -139,7 +146,7 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     if (!result) {
       return reply.code(404).send({ status: "no-account", message: "Welcome to Selkie. Create your account to continue." });
     }
-    await recordClaims(result.user.id, result.claimed);
+    await recordClaims(result.user, result.claimed);
     return { status: result.isNew ? "created" : "signed-in", user: publicUser(result.user), claimed: result.claimed };
   });
 
@@ -148,6 +155,9 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     if (!user) return;
     await identity.makeWalletReal(user);
     const balance = await near.getBalance(accountOf(user));
+    // Reading the balance is when money from outside Selkie gets noticed.
+    const usdc = balance.balances.find((entry) => entry.asset === "USDC");
+    if (usdc) await watch.check(user, toBaseUnits(usdc.amount, USDC_DECIMALS));
     return {
       user: publicUser(user),
       balances: balance.balances,
@@ -254,9 +264,12 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     assertRelayable(record.delegate, policy);
     const signed = await verifySignedDelegate(record.delegate, body.signedDelegate);
     await payments.stillWanted(record.intent);
-    const outcome = await chain.relay(signed);
-    if (outcome.failure) app.log.warn({ tx: outcome.txHash, failure: outcome.failure }, "relayed transaction failed");
-    return payments.settle(user, record.intent, outcome);
+    const touched = [user.address, ...payments.accountsTouched(record.intent)];
+    return watch.around(touched, async () => {
+      const outcome = await chain.relay(signed);
+      if (outcome.failure) app.log.warn({ tx: outcome.txHash, failure: outcome.failure }, "relayed transaction failed");
+      return payments.settle(user, record.intent, outcome);
+    });
   });
 
   registerNearRequestRoutes(app, { requests, requireUser });

@@ -31,10 +31,34 @@ export class PostgresNearAccountStore implements NearAccountStore {
 
   async insert(record: Omit<NearAccountRecord, "createdAt">) {
     const { rows } = await this.db.query<AccountRow>(
-      `insert into near_accounts (x_user_id, account_id, public_key) values ($1, $2, $3) returning *`,
+      `insert into near_accounts (x_user_id, account_id, public_key, seen_usdc) values ($1, $2, $3, 0) returning *`,
       [record.xUserId, record.accountId, record.publicKey],
     );
     return toAccount(rows[0]!);
+  }
+
+  async seenUsdc(accountId: string) {
+    const { rows } = await this.db.query<{ seen_usdc: string | null }>(
+      "select seen_usdc::text from near_accounts where account_id = $1",
+      [accountId],
+    );
+    const seen = rows[0]?.seen_usdc;
+    return seen === null || seen === undefined ? null : BigInt(seen);
+  }
+
+  async startSeenUsdc(accountId: string, units: bigint) {
+    await this.db.query("update near_accounts set seen_usdc = $2 where account_id = $1 and seen_usdc is null", [
+      accountId,
+      units.toString(),
+    ]);
+  }
+
+  async addSeenUsdc(accountId: string, delta: bigint) {
+    // One statement, so two payments settling at once both count.
+    await this.db.query(
+      "update near_accounts set seen_usdc = seen_usdc + $2 where account_id = $1 and seen_usdc is not null",
+      [accountId, delta.toString()],
+    );
   }
 }
 

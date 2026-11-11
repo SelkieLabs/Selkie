@@ -10,6 +10,7 @@ import {
 } from "@selkie/chain-near";
 import type { IdentityChain } from "../identity/chain";
 import type { User, VerifiedIdentity } from "../identity/types";
+import type { BalanceWatch } from "./balance-watch";
 import type { NearAccountStore } from "./store";
 
 /** Something the person can fix, said in words they can act on. */
@@ -32,6 +33,8 @@ export class NearIdentityChain implements IdentityChain {
     private readonly deps: {
       chain: NearChain;
       accounts: NearAccountStore;
+      /** Told what each claim released, the moment it lands. */
+      watch?: BalanceWatch;
     },
   ) {}
 
@@ -101,6 +104,14 @@ export class NearIdentityChain implements IdentityChain {
    * failed transfer, so nobody is told money arrived that did not.
    */
   async claim(handle: HandleRef, owner: User): Promise<{ ref?: string }> {
+    const { watch } = this.deps;
+    // While the oracle's transactions are in flight, the account's balance is
+    // ahead of the books on purpose; the watch must not call it outside money.
+    return watch ? watch.around([owner.address], () => this.#claim(handle, owner)) : this.#claim(handle, owner);
+  }
+
+  async #claim(handle: HandleRef, owner: User): Promise<{ ref?: string }> {
+    const usdc = this.deps.chain.config.usdcContract;
     let ref: string | undefined;
     for (const key of await this.#keys(handle, owner)) {
       // The escrow releases at most MAX_CLAIM_BATCH per call (a dust flood must
@@ -112,6 +123,12 @@ export class NearIdentityChain implements IdentityChain {
           throw new Error(`Escrow claim failed in ${outcome.txHash}: ${outcome.failure ?? "claim_failed"}`);
         }
         ref = outcome.txHash;
+        for (const event of outcome.events) {
+          if (event.event !== "claim") continue;
+          for (const data of event.data) {
+            if (data.token === usdc) await this.deps.watch?.expect(owner.address, BigInt(String(data.amount)));
+          }
+        }
       }
       this.#emptyUntil.delete(key);
     }
