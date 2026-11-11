@@ -29,6 +29,19 @@ export const GAS = {
 /** Nothing a user signs through the relayer may ask for more than this (one transaction's maximum). */
 export const MAX_RELAYED_GAS = 300n * TGAS;
 
+/**
+ * Cap on all the gas in one relayed delegate. A transaction may prepay at most
+ * 1 PGas (testnet protocol 88, `max_total_prepaid_gas`); this leaves headroom
+ * for the delegate wrapper itself.
+ */
+export const MAX_RELAYED_TOTAL_GAS = 900n * TGAS;
+
+/**
+ * Most people one "pay many" can reach in a single signature: 19 direct
+ * transfers at 30 Tgas plus a 300 Tgas hold_many still fits the total cap.
+ */
+export const MAX_PAY_MANY = 20;
+
 /** The escrow refunds a hold_many with more items than this (NEAR's 16 KB log limit per receipt). */
 export const MAX_HOLD_MANY_ITEMS = 40;
 
@@ -92,6 +105,31 @@ export function holdManyTransfer(
   const total = input.items.reduce((sum, item) => sum + BigInt(item.amount), 0n);
   const msg = JSON.stringify({ kind: "hold_many", lifetime_secs: input.lifetimeSecs, items: input.items });
   return transferCall(usdc, escrow, total.toString(), msg, input.memo, GAS.holdMany);
+}
+
+/**
+ * Pay many people in one signature.
+ *
+ * People already on Selkie get a plain ft_transfer straight into their account;
+ * everyone else is one item in a single hold_many. Every action goes to the
+ * USDC contract, so they share one delegate and one receipt: the direct
+ * transfers land together or not at all.
+ */
+export function payManyCall(
+  usdc: string,
+  escrow: string,
+  input: { direct: { to: string; amount: string }[]; holds: HoldItem[]; lifetimeSecs: number; memo?: string },
+): Call {
+  if (input.direct.length + input.holds.length === 0) throw new Error("Nobody to pay");
+  return {
+    receiverId: usdc,
+    calls: [
+      ...input.direct.flatMap((item) => directTransfer(usdc, { ...item, memo: input.memo }).calls),
+      ...(input.holds.length > 0
+        ? holdManyTransfer(usdc, escrow, { items: input.holds, lifetimeSecs: input.lifetimeSecs, memo: input.memo }).calls
+        : []),
+    ],
+  };
 }
 
 /** Take back a payment nobody claimed. Only its sender, only after expiry. */

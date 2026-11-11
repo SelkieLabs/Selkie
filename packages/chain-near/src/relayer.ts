@@ -14,7 +14,7 @@
 import { PublicKey, type SignedDelegate } from "near-api-js";
 import { delegateHash, encodeSigned, fromBase64, signedDelegate, type PreparedDelegate } from "./delegate";
 import { ONE_YOCTO } from "./amounts";
-import { MAX_RELAYED_GAS } from "./escrow";
+import { MAX_RELAYED_GAS, MAX_RELAYED_TOTAL_GAS } from "./escrow";
 
 export class RelayRefusedError extends Error {}
 
@@ -38,6 +38,8 @@ export function assertRelayable(prepared: PreparedDelegate, policy: RelayPolicy)
   const methods = policy.allowed[prepared.receiverId];
   if (!methods) throw new RelayRefusedError(`Relayer does not pay for calls to ${prepared.receiverId}`);
   if (prepared.calls.length === 0) throw new RelayRefusedError("Nothing to relay");
+  const total = prepared.calls.reduce((sum, call) => sum + BigInt(call.gas), 0n);
+  if (total > MAX_RELAYED_TOTAL_GAS) throw new RelayRefusedError("Total gas above the relayer's cap");
   for (const call of prepared.calls) {
     if (!methods.includes(call.methodName)) {
       throw new RelayRefusedError(`Relayer does not pay for ${prepared.receiverId}.${call.methodName}`);
