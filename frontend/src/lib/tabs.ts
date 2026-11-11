@@ -8,6 +8,7 @@ import {
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
+import { features } from "./chain";
 
 /**
  * The wallet's tabs, in the order they appear.
@@ -37,7 +38,7 @@ export interface TabDef {
   onPhone: boolean;
 }
 
-export const TABS: TabDef[] = [
+const ALL_TABS: TabDef[] = [
   { id: "home", label: "Home", short: "Home", icon: Home, onPhone: true },
   { id: "send", label: "Send", short: "Send", icon: Send, onPhone: true },
   { id: "receive", label: "Deposit", short: "Deposit", icon: ArrowDownToLine, onPhone: true },
@@ -48,6 +49,19 @@ export const TABS: TabDef[] = [
   { id: "many", label: "Pay many", short: "Many", icon: Sparkles, onPhone: true },
   { id: "settings", label: "Settings", short: "Settings", icon: Settings, onPhone: false },
 ];
+
+/** Tabs the current chain supports; the rest stay defined for the Stellar build. */
+const AVAILABLE: Record<WalletTab, boolean> = {
+  home: true,
+  send: true,
+  receive: true,
+  cashout: features.cashOut,
+  requests: features.requests,
+  many: features.payMany,
+  settings: true,
+};
+
+export const TABS: TabDef[] = ALL_TABS.filter((tab) => AVAILABLE[tab.id]);
 
 export const PHONE_TABS = TABS.filter((tab) => tab.onPhone);
 

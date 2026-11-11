@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@privy-io/react-auth": "^3.36.1",
+    "@selkie/chain-near": "*",
     "@selkie/core": "*",
     "lucide-react": "^1.25.0",
     "next": "^16.2.12",

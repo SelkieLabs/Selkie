@@ -7,6 +7,8 @@
  * this file framework-free and swappable.
  */
 
+import type { PreparedDelegate } from "@selkie/chain-near/browser";
+
 export interface Handle {
   platform: "x" | "telegram";
   username: string;
@@ -73,6 +75,12 @@ export interface Recipient {
   isYou: boolean;
   displayName?: string;
   avatarUrl?: string;
+  /** NEAR: their account, when they are on Selkie. Money goes straight there. */
+  nearAccount?: string;
+  /** NEAR: who the escrow will hold the money for, when they are not. */
+  recipientKey?: string;
+  /** NEAR: `x-id` survives a rename on X; `username` is the fallback. */
+  scheme?: "x-id" | "username";
 }
 
 export interface SendResult {
@@ -80,6 +88,10 @@ export interface SendResult {
   ref?: string;
   message: string;
   waitingToBeClaimed: boolean;
+  /** NEAR: the transaction on the explorer. */
+  explorer?: string;
+  /** NEAR: the escrow payment id, while it waits. */
+  claimRef?: string;
 }
 
 export interface Quote {
@@ -142,6 +154,40 @@ export interface ActivityEntry {
   claimRef?: string;
   /** When it can be taken back, as an ISO timestamp. */
   refundableAt?: string;
+}
+
+/** NEAR: where this account lives on chain. */
+export interface NearAccountInfo {
+  network: "testnet" | "mainnet";
+  accountId: string;
+  explorerUrl: string;
+}
+
+export interface Me {
+  user: User;
+  balances: Money[];
+  near?: NearAccountInfo;
+}
+
+/**
+ * NEAR: exactly what the user's key is about to sign, as the backend prepared
+ * it. The relayer refuses anything that differs from this by a single byte.
+ */
+export interface PreparedPayment {
+  prepareId: string;
+  delegate: PreparedDelegate;
+  intent:
+    | { kind: "send"; to: Handle; amount: Money }
+    | { kind: "hold"; to: Handle; amount: Money; scheme: "x-id" | "username" }
+    | { kind: "refund"; claimRef: string; amount: Money };
+}
+
+/** NEAR: the proof behind "Selkie holds no key". */
+export interface AccountKeys {
+  accountId: string;
+  explorerUrl: string;
+  keys: { publicKey: string; fullAccess: boolean; heldBy: "you" | "selkie" | "unknown" }[];
+  selkieHoldsKey: boolean;
 }
 
 export class ApiError extends Error {
@@ -246,7 +292,7 @@ export const api = {
     return request("/auth/merge", json({ fromUserId }));
   },
 
-  async me(): Promise<{ user: User; balances: Money[] }> {
+  async me(): Promise<Me> {
     return request("/me");
   },
 
@@ -353,5 +399,33 @@ export const api = {
   async activity(limit = 50): Promise<ActivityEntry[]> {
     const { entries } = await request<{ entries: ActivityEntry[] }>(`/activity?limit=${limit}`);
     return entries;
+  },
+
+  /**
+   * NEAR mode. Money moves in three steps: the backend prepares the exact
+   * action, the user's own key signs it in the browser, and Selkie's relayer
+   * pays the gas and submits it. `useNearPay` strings them together.
+   */
+  near: {
+    async prepareSend(input: { to: string; amount: string; note?: string }): Promise<PreparedPayment> {
+      return request("/near/payments/prepare", json(input));
+    },
+
+    /** Take back money that waited for someone who never came. */
+    async prepareRefund(claimRef: string): Promise<PreparedPayment> {
+      return request("/near/payments/prepare", json({ refundId: claimRef }));
+    },
+
+    /**
+     * A prepare can be relayed once. A retry or double-tap after the first one
+     * landed is refused by the server, so the money cannot go twice.
+     */
+    async relay(prepareId: string, signedDelegate: string): Promise<SendResult> {
+      return request("/near/relay", json({ prepareId, signedDelegate }));
+    },
+
+    async keys(): Promise<AccountKeys> {
+      return request("/near/account/keys");
+    },
   },
 };

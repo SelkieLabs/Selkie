@@ -14,8 +14,9 @@ const API_ORIGIN = process.env.SELKIE_API_ORIGIN ?? "http://localhost:4000";
 const SOLANA_STUB = "./src/lib/no-solana.cjs";
 
 const nextConfig: NextConfig = {
-  // @selkie/core ships as TypeScript source, so the app compiles it itself.
-  transpilePackages: ["@selkie/core"],
+  // The workspace packages ship as TypeScript source, so the app compiles them.
+  // Only chain-near's browser signer is imported here; it has no Node deps.
+  transpilePackages: ["@selkie/core", "@selkie/chain-near"],
 
   turbopack: {
     // The repo root, not this package. Without it Turbopack walks up past the

@@ -18,6 +18,8 @@ import {
   type Money,
   type User,
 } from "@/lib/api";
+import { isNear } from "@/lib/chain";
+import { useNearWallet } from "@/lib/near-wallet";
 
 /**
  * Signing in, in one place.
@@ -88,6 +90,7 @@ export const AuthContext = createContext<AuthState>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const privy = usePrivy();
   const { ready, authenticated, getAccessToken } = privy;
+  const { ensure: ensureNearWallet } = useNearWallet();
 
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<User | null>(null);
@@ -149,12 +152,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  /** Trade the provider's token for a Selkie account, without creating one. */
+  /**
+   * Create the Selkie account for this login.
+   *
+   * On NEAR the account's only key is the user's Privy NEAR wallet, so that
+   * wallet has to exist before Selkie can open an account with it.
+   */
+  const openAccount = useCallback(async () => {
+    if (isNear) await ensureNearWallet();
+    return api.session({ createAccount: true });
+  }, [ensureNearWallet]);
+
+  /**
+   * Trade the provider's token for a Selkie account.
+   *
+   * On Stellar an unknown login stops and asks, so one person never ends up
+   * with two wallets. On NEAR the only door is X and the account is named after
+   * that handle, so there is nothing to confuse it with: the account opens on
+   * the first sign-in, and any money waiting for the handle lands with it. If
+   * that fails the ask screen is still there to try again from.
+   */
   const loadSession = useCallback(async () => {
     const mine = session.current;
-    const result = await api.session();
+    let result = await api.session();
     if (session.current !== mine) return;
 
+    if (result.status === "no-account" && isNear) {
+      result = await openAccount().catch((error: unknown) => {
+        console.error(error);
+        return result;
+      });
+      if (session.current !== mine) return;
+    }
     if (result.status === "no-account") {
       setUser(null);
       setStatus("needs-account");
@@ -164,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setClaimed(result.claimed);
     setStatus("ready");
     await loadBalances();
-  }, [loadBalances]);
+  }, [loadBalances, openAccount]);
 
   useEffect(() => {
     if (!ready) return;
@@ -270,7 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createAccount: async () => {
         setBusy(true);
         try {
-          const result = await api.session({ createAccount: true });
+          const result = await openAccount();
           if (result.status === "no-account") return;
           setUser(result.user);
           setClaimed(result.claimed);
@@ -314,6 +343,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       privy,
       login,
       loadBalances,
+      openAccount,
       forget,
     ],
   );
