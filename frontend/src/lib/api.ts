@@ -92,6 +92,8 @@ export interface SendResult {
   explorer?: string;
   /** NEAR: the escrow payment id, while it waits. */
   claimRef?: string;
+  /** NEAR pay many: how each person came out. */
+  results?: BatchResult["results"];
 }
 
 export interface Quote {
@@ -409,6 +411,29 @@ export const api = {
   near: {
     async prepareSend(input: { to: string; amount: string; note?: string }): Promise<PreparedPayment> {
       return request("/near/payments/prepare", json(input));
+    },
+
+    /**
+     * Any NEAR account, by name: a friend's wallet or an exchange deposit.
+     * `cashout` only changes how it shows in the feed.
+     */
+    async prepareTransfer(input: {
+      toAccount: string;
+      amount: string;
+      note?: string;
+      purpose?: "send" | "cashout";
+    }): Promise<PreparedPayment> {
+      return request("/near/payments/prepare", json(input));
+    },
+
+    /** Several handles, the same amount each, one signature. */
+    async preparePayMany(input: { toMany: string[]; amount: string; note?: string }): Promise<PreparedPayment> {
+      return request("/near/payments/prepare", json(input));
+    },
+
+    /** A request someone sent you, for exactly the amount it asks. */
+    async preparePayRequest(id: string): Promise<PreparedPayment> {
+      return request("/near/payments/prepare", json({ requestId: id }));
     },
 
     /** Take back money that waited for someone who never came. */

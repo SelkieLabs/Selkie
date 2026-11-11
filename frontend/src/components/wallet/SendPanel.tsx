@@ -15,7 +15,8 @@ import {
   type Recipient,
   type SendResult,
 } from "@/lib/api";
-import { features, isNear } from "@/lib/chain";
+import { isValidAccountId } from "@selkie/chain-near/browser";
+import { NEAR_NETWORK, features, isNear } from "@/lib/chain";
 import { DOLLAR, cleanAmount, looksLikeAddress, shortAddress, usd } from "@/lib/format";
 import { useNearPay } from "@/lib/near-wallet";
 import { PLATFORMS, PLATFORM_FIELD, PLATFORM_LABEL, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
@@ -32,6 +33,37 @@ type Step = "compose" | "confirm" | "done";
 type Mode = "handle" | "address";
 
 const QUICK = ["5", "10", "25", "50"];
+
+/**
+ * What "an address" means on this chain. On Stellar it is a G... key; on NEAR
+ * it is an account name (alice.testnet, an exchange's deposit account) or a
+ * 64-character implicit account.
+ */
+const ADDRESS = isNear
+  ? {
+      tab: "A NEAR account",
+      label: "NEAR account",
+      confirmLabel: "Sending to this NEAR account",
+      placeholder: NEAR_NETWORK === "mainnet" ? "alice.near" : "alice.testnet",
+      capitalize: "none",
+      clean: (raw: string) => raw.trim().toLowerCase(),
+      valid: isValidAccountId,
+      invalid: `That is not a NEAR account name. It looks like ${NEAR_NETWORK === "mainnet" ? "alice.near" : "alice.testnet"}, or 64 letters and numbers.`,
+      blurb: "Straight to any NEAR account: yours, a friend's, or an exchange. Nothing waits and nothing can be taken back, so check it twice.",
+      short: (value: string) => (/^[0-9a-f]{64}$/.test(value) ? shortAddress(value) : value),
+    }
+  : {
+      tab: "An address",
+      label: "Wallet address",
+      confirmLabel: "Sending to this wallet",
+      placeholder: "G…",
+      capitalize: "characters",
+      clean: (raw: string) => raw.trim().toUpperCase(),
+      valid: looksLikeAddress,
+      invalid: "That is not a complete address. It starts with G and is 56 characters long.",
+      blurb: "Straight to a wallet address. Nothing waits and nothing can be taken back, so check it twice.",
+      short: shortAddress,
+    };
 
 interface RecentPerson {
   username: string;
@@ -100,8 +132,8 @@ export function SendPanel({
 
   const recent = useMemo(() => recentPeople(entries), [entries]);
   const cleanHandle = handle.trim().replace(/^@+/, "").toLowerCase();
-  const cleanAddress = address.trim().toUpperCase();
-  const addressValid = looksLikeAddress(cleanAddress);
+  const cleanAddress = ADDRESS.clean(address);
+  const addressValid = ADDRESS.valid(cleanAddress);
   const value = Number(amount);
   const tooMuch = value > Number(balance);
   const destinationReady = mode === "handle" ? cleanHandle.length > 0 : addressValid;
@@ -148,15 +180,20 @@ export function SendPanel({
     setError(null);
     try {
       // On NEAR the user's own key signs; Selkie only prepares and relays.
+      const memo = note.trim() || undefined;
       const sent = isNear
-        ? await nearPay(() => api.near.prepareSend({ to: cleanHandle, amount, note: note.trim() || undefined }))
+        ? await nearPay(() =>
+            mode === "address"
+              ? api.near.prepareTransfer({ toAccount: cleanAddress, amount, note: memo })
+              : api.near.prepareSend({ to: cleanHandle, amount, note: memo }),
+          )
         : await api.send(
             {
               to: mode === "address" ? cleanAddress : cleanHandle,
               amount,
               asset: DOLLAR,
               ...(mode === "handle" ? { platform } : {}),
-              note: note.trim() || undefined,
+              note: memo,
             },
             intent ?? undefined,
           );
@@ -190,7 +227,7 @@ export function SendPanel({
           </p>
           {mode === "address" ? (
             <p className="mt-2 font-mono text-[15px] font-bold text-pen/75">
-              to {shortAddress(cleanAddress)}
+              to {ADDRESS.short(cleanAddress)}
             </p>
           ) : (
             <p className="mt-2 flex items-center gap-2 font-display text-lg font-bold tracking-tight text-pen/75">
@@ -233,7 +270,7 @@ export function SendPanel({
             <Wallet size={26} strokeWidth={2.2} />
           </span>
 
-          <p className="mt-5 label">Sending to this wallet</p>
+          <p className="mt-5 label">{ADDRESS.confirmLabel}</p>
           {/* Whole, never shortened. This is the last chance to catch a wrong
               address, and you cannot check what you cannot see. */}
           <p className="mt-2 max-w-md break-all rounded-xl bg-pen/[0.05] p-3.5 font-mono text-[13px] leading-relaxed text-pen/80">
@@ -350,7 +387,7 @@ export function SendPanel({
         blurb={
           mode === "handle"
             ? "Their handle is enough. They do not need an account, a wallet or an app."
-            : "Straight to a wallet address. Nothing waits and nothing can be taken back, so check it twice."
+            : ADDRESS.blurb
         }
       />
 
@@ -368,7 +405,7 @@ export function SendPanel({
             onClick={() => setMode("address")}
             className={`seg-btn ${mode === "address" ? "seg-on" : ""}`}
           >
-            <Wallet size={14} strokeWidth={2.5} /> An address
+            <Wallet size={14} strokeWidth={2.5} /> {ADDRESS.tab}
           </button>
         </div>
       )}
@@ -376,13 +413,13 @@ export function SendPanel({
       {mode === "address" && (
         <>
           <label className="label mt-5 block" htmlFor="send-address">
-            Wallet address
+            {ADDRESS.label}
           </label>
           <textarea
             id="send-address"
             className="field mt-2 min-h-[5.25rem] resize-none break-all font-mono text-[13px] leading-relaxed"
-            placeholder="G…"
-            autoCapitalize="characters"
+            placeholder={ADDRESS.placeholder}
+            autoCapitalize={ADDRESS.capitalize}
             autoCorrect="off"
             spellCheck={false}
             value={address}
@@ -390,7 +427,7 @@ export function SendPanel({
           />
           {cleanAddress.length > 0 && !addressValid && (
             <p className="mt-2 text-sm font-semibold text-[#a11d34]">
-              That is not a complete address. It starts with G and is 56 characters long.
+              {ADDRESS.invalid}
             </p>
           )}
         </>
