@@ -42,9 +42,27 @@ export interface ManyItem {
 export type PaymentIntent =
   | { kind: "send"; to: HandleRef; amount: Money; recipientAccount: string; recipientUserId: string; requestId?: string }
   | { kind: "hold"; to: HandleRef; amount: Money; recipientKey: string; scheme: RecipientScheme; requestId?: string }
-  | { kind: "transfer"; toAccount: string; amount: Money; purpose: "send" | "cashout"; recipientUserId?: string }
+  | {
+      kind: "transfer";
+      toAccount: string;
+      amount: Money;
+      purpose: "send" | "cashout";
+      recipientUserId?: string;
+      /** Set when the transfer is a NEAR Intents deposit: money leaving for another chain. */
+      intents?: IntentsCashOut;
+    }
   | { kind: "many"; amount: Money; items: ManyItem[] }
   | { kind: "refund"; claimRef: string; amount: Money };
+
+/** A cash-out to another chain, as the quote that priced it described it. */
+export interface IntentsCashOut {
+  depositAddress: string;
+  chainName: string;
+  symbol: string;
+  /** Where it lands on the other chain. */
+  address: string;
+  amountOutFormatted: string;
+}
 
 export interface PrepareRecord {
   id: string;

@@ -9,14 +9,24 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { beforeEach, describe, test } from "node:test";
-import type { NearChain } from "@selkie/chain-near";
+import {
+  IntentsError,
+  PREVIEW_ACCOUNT,
+  fromBaseUnits,
+  type NearChain,
+  type OneClickClient,
+  type OneClickQuote,
+  type OneClickQuoteRequest,
+  type OneClickStatus,
+  type OneClickToken,
+} from "@selkie/chain-near";
 import { signPrepared } from "@selkie/chain-near/browser";
 import type { FastifyInstance } from "fastify";
 import { InMemoryActivityStore } from "../activity/store";
 import { FakeIdentityProvider } from "../identity/provider";
 import { InMemoryUserStore } from "../identity/store";
 import { InMemoryRequestStore } from "../requests/store";
-import { buildNearApp } from "./app";
+import { buildNearApp, type NearAppDeps } from "./app";
 import { OUTSIDE } from "./balance-watch";
 import { EmailService, type OutgoingEmail } from "../email/service";
 import { InMemoryEmailStore } from "../email/store";
@@ -63,6 +73,8 @@ const person = (subject: string, username: string): Person => ({
 });
 
 let app: FastifyInstance;
+/** What the app was built from, so a describe can rebuild it with one more piece. */
+let appDeps: NearAppDeps;
 let chain: SimulatedNearChain;
 let requests: InMemoryRequestStore;
 let accounts: InMemoryNearAccountStore;
@@ -96,7 +108,7 @@ beforeEach(async () => {
       pushed.set(target.endpoint, [...(pushed.get(target.endpoint) ?? []), JSON.parse(payload).body]);
     },
   });
-  app = await buildNearApp({
+  appDeps = {
     push: { store: pushStore, notifier, publicKey: "BPublicKeyForTests" },
     email: emails,
     users: new InMemoryUserStore(),
@@ -108,7 +120,8 @@ beforeEach(async () => {
     activity: new InMemoryActivityStore(),
     requests,
     limits: false,
-  });
+  };
+  app = await buildNearApp(appDeps);
 });
 
 const auth = (who: Person) => ({ authorization: `Bearer ${who.token}` });
@@ -749,6 +762,208 @@ describe("NEAR app", () => {
       const forged = await app.inject({ method: "POST", url: "/email/unsubscribe?u=not-a-uuid&t=x" });
       assert.equal(forged.statusCode, 400);
       assert.equal((await app.inject({ method: "POST", url: "/email/verify" })).statusCode, 401);
+    });
+  });
+});
+
+describe("NEAR Intents: other chains in and out", () => {
+  const BASE_USDC = { assetId: "nep141:base-usdc.omft.near", decimals: 6, blockchain: "base", symbol: "USDC" };
+  const TRON_USDT = { assetId: "nep141:tron-usdt.omft.near", decimals: 6, blockchain: "tron", symbol: "USDT" };
+  /** The USDC the simulated chain holds, as 1Click lists it. */
+  const NEAR_USDC = { assetId: "nep141:usdc.test", decimals: 6, blockchain: "near", symbol: "USDC", contractAddress: "usdc.test" };
+  const ETH = { assetId: "nep141:eth.omft.near", decimals: 18, blockchain: "eth", symbol: "ETH" };
+  const DEPOSIT = "a".repeat(64);
+  const BASE_ADDRESS = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+
+  /** 1Click as the tests need it: every request kept, answers made up from the request. */
+  class FakeOneClick {
+    quotes: OneClickQuoteRequest[] = [];
+    submitted: unknown[] = [];
+    /** What the next quote's amountIn says, to test a quote that does not match. */
+    amountInOverride: string | null = null;
+    async tokens(): Promise<OneClickToken[]> {
+      return [ETH, NEAR_USDC, TRON_USDT, BASE_USDC];
+    }
+    async quote(request: OneClickQuoteRequest): Promise<OneClickQuote> {
+      this.quotes.push(request);
+      if (request.recipient === "not-an-address") throw new IntentsError("That address doesn't look right for that chain.", 400);
+      if (request.amount === "999000000") throw new IntentsError("NEAR Intents could not quote that route just now.", 500);
+      const out = (BigInt(request.amount) * 99n) / 100n;
+      return {
+        amountIn: this.amountInOverride ?? request.amount,
+        amountInFormatted: fromBaseUnits(request.amount, 6),
+        amountOut: out.toString(),
+        amountOutFormatted: fromBaseUnits(out, 6),
+        minAmountOut: ((out * 99n) / 100n).toString(),
+        timeEstimate: 20,
+        depositAddress: request.dry ? undefined : DEPOSIT,
+        deadline: request.dry ? null : request.deadline,
+      };
+    }
+    async status(depositAddress: string): Promise<OneClickStatus> {
+      return {
+        status: "SUCCESS",
+        swapDetails: {
+          amountInFormatted: "5",
+          amountOutFormatted: "4.95",
+          destinationChainTxHashes: [{ hash: "0xabc", explorerUrl: `https://basescan.test/tx/${depositAddress.slice(0, 6)}` }],
+        },
+      };
+    }
+    async submitDeposit(input: unknown): Promise<void> {
+      this.submitted.push(input);
+    }
+  }
+
+  let oneClick: FakeOneClick;
+  const ana = person("9001", "ana");
+
+  async function withIntents(network: "testnet" | "mainnet") {
+    (chain.config as { network: string }).network = network;
+    oneClick = new FakeOneClick();
+    await app.close();
+    app = await buildNearApp({ ...appDeps, intents: oneClick as unknown as OneClickClient });
+  }
+
+  const quote = (who: Person, body: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: "/near/intents/quote", headers: auth(who), payload: body });
+
+  describe("on testnet", () => {
+    beforeEach(() => withIntents("testnet"));
+
+    test("lists stablecoins on other chains and says nothing can move", async () => {
+      await signIn(ana);
+      const res = await app.inject({ method: "GET", url: "/near/intents/tokens", headers: auth(ana) });
+      assert.equal(res.statusCode, 200, res.body);
+      const body = res.json();
+      assert.equal(body.live, false);
+      assert.deepEqual(
+        body.assets.map((asset: { chainName: string; symbol: string }) => `${asset.symbol} on ${asset.chainName}`),
+        ["USDC on Base", "USDT on Tron"],
+      );
+    });
+
+    test("a preview prices the move against a stand-in mainnet account, dry", async () => {
+      await signIn(ana);
+      const res = await quote(ana, { direction: "in", assetId: TRON_USDT.assetId, amount: "120", address: "TXYZrefund" });
+      assert.equal(res.statusCode, 200, res.body);
+      const view = res.json();
+      assert.equal(view.preview, true);
+      assert.equal(view.depositAddress, undefined);
+      assert.equal(view.amountOutFormatted, "118.8");
+      const [sent] = oneClick.quotes;
+      assert.equal(sent!.dry, true);
+      assert.equal(sent!.recipient, PREVIEW_ACCOUNT, "never the .testnet account: 1Click refuses those");
+      assert.equal(sent!.refundTo, "TXYZrefund");
+      assert.equal(sent!.originAsset, TRON_USDT.assetId);
+      assert.equal(sent!.destinationAsset, NEAR_USDC.assetId);
+    });
+
+    test("asking for a deposit address is refused, with words that say why", async () => {
+      await signIn(ana);
+      const res = await quote(ana, { direction: "in", assetId: BASE_USDC.assetId, amount: "5", address: BASE_ADDRESS, commit: true });
+      assert.equal(res.statusCode, 409);
+      assert.match(res.json().error, /mainnet/);
+      assert.equal(oneClick.quotes.length, 0);
+    });
+
+    test("a cash-out to another chain cannot be prepared", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 10n * DOLLAR);
+      const res = await prepare(ana, { amount: "5", toChain: { assetId: BASE_USDC.assetId, address: BASE_ADDRESS } });
+      assert.equal(res.statusCode, 409);
+      assert.equal(oneClick.quotes.length, 0);
+    });
+
+    test("1Click's refusals come back as plain words and the right status", async () => {
+      await signIn(ana);
+      const bad = await quote(ana, { direction: "out", assetId: BASE_USDC.assetId, amount: "5", address: "not-an-address" });
+      assert.equal(bad.statusCode, 400);
+      assert.match(bad.json().error, /address doesn't look right/);
+      const down = await quote(ana, { direction: "out", assetId: BASE_USDC.assetId, amount: "999", address: BASE_ADDRESS });
+      assert.equal(down.statusCode, 502);
+      const unknown = await quote(ana, { direction: "out", assetId: ETH.assetId, amount: "5", address: BASE_ADDRESS });
+      assert.equal(unknown.statusCode, 400, "only the listed stablecoins");
+      const noAmount = await quote(ana, { direction: "in", assetId: BASE_USDC.assetId, amount: "", address: BASE_ADDRESS });
+      assert.equal(noAmount.statusCode, 400);
+    });
+
+    test("status is passed through, with only what the app shows", async () => {
+      await signIn(ana);
+      const res = await app.inject({ method: "GET", url: `/near/intents/status?depositAddress=${DEPOSIT}`, headers: auth(ana) });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.deepEqual(res.json(), {
+        status: "SUCCESS",
+        done: true,
+        amountInFormatted: "5",
+        amountOutFormatted: "4.95",
+        originTxs: [],
+        destinationTxs: ["https://basescan.test/tx/aaaaaa"],
+      });
+      const junk = await app.inject({ method: "GET", url: "/near/intents/status?depositAddress=../x", headers: auth(ana) });
+      assert.equal(junk.statusCode, 400);
+    });
+
+    test("needs a signed-in person", async () => {
+      const res = await app.inject({ method: "GET", url: "/near/intents/tokens" });
+      assert.equal(res.statusCode, 401);
+    });
+  });
+
+  describe("on mainnet", () => {
+    beforeEach(() => withIntents("mainnet"));
+
+    test("money in gets a real quote and a deposit address for the person's own account", async () => {
+      await signIn(ana);
+      const res = await quote(ana, { direction: "in", assetId: BASE_USDC.assetId, amount: "5", address: BASE_ADDRESS, commit: true });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.equal(res.json().preview, false);
+      assert.equal(res.json().depositAddress, DEPOSIT);
+      const [sent] = oneClick.quotes;
+      assert.equal(sent!.dry, false);
+      assert.equal(sent!.recipient, ana.account);
+      assert.equal(sent!.refundTo, BASE_ADDRESS);
+    });
+
+    test("a cash-out signs a transfer of exactly the quote to exactly its deposit address", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 10n * DOLLAR);
+      const res = await pay(ana, { amount: "5", toChain: { assetId: BASE_USDC.assetId, address: BASE_ADDRESS } });
+      assert.equal(res.statusCode, 200, res.body);
+      const body = res.json();
+      assert.equal(body.status, "confirmed");
+      assert.deepEqual(body.intents, { depositAddress: DEPOSIT });
+      assert.match(body.message, /On its way: about 4\.95 USDC to 0x5aAeb6…1BeAed on Base/);
+
+      const [sent] = oneClick.quotes;
+      assert.equal(sent!.dry, false);
+      assert.equal(sent!.originAsset, NEAR_USDC.assetId);
+      assert.equal(sent!.recipient, BASE_ADDRESS);
+      assert.equal(sent!.refundTo, ana.account, "a failed cash-out comes back to the person's own account");
+      assert.equal(chain.balances.get(ana.account!), 5n * DOLLAR);
+      assert.equal(chain.balances.get(DEPOSIT), 5n * DOLLAR);
+      assert.deepEqual(oneClick.submitted, [{ txHash: body.ref, depositAddress: DEPOSIT, nearSenderAccount: ana.account }]);
+
+      const [entry] = await feed(ana);
+      assert.equal(entry!.kind, "cashout");
+      assert.equal(entry!.counterparty, "0x5aAeb6…1BeAed on Base");
+    });
+
+    test("a quote for a different amount is refused before anything is signed", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 10n * DOLLAR);
+      oneClick.amountInOverride = "6000000";
+      const res = await prepare(ana, { amount: "5", toChain: { assetId: BASE_USDC.assetId, address: BASE_ADDRESS } });
+      assert.equal(res.statusCode, 502);
+      assert.equal(chain.balances.get(ana.account!), 10n * DOLLAR);
+    });
+
+    test("a cash-out bigger than the balance never asks 1Click", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 2n * DOLLAR);
+      const res = await prepare(ana, { amount: "5", toChain: { assetId: BASE_USDC.assetId, address: BASE_ADDRESS } });
+      assert.equal(res.statusCode, 409, res.body);
+      assert.equal(oneClick.quotes.length, 0);
     });
   });
 });

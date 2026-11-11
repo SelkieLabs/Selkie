@@ -1,4 +1,4 @@
-import { NearChain, nearConfigFromEnv } from "@selkie/chain-near";
+import { NearChain, OneClickClient, nearConfigFromEnv } from "@selkie/chain-near";
 import { PostgresActivityStore } from "../activity/postgres-store";
 import { migrate } from "../db/migrate";
 import { openPool } from "../db/pool";
@@ -88,6 +88,11 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
     xLookup: env.X_BEARER_TOKEN ? new XApiUserLookup(env.X_BEARER_TOKEN) : noXLookup,
     push,
     email,
+    // 1Click is public; a JWT from partners.near-intents.org only lowers its fee.
+    intents: new OneClickClient({
+      baseUrl: env.ONECLICK_API_URL || "https://1click.chaindefuser.com",
+      jwt: env.ONECLICK_JWT || undefined,
+    }),
   });
 
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
@@ -106,6 +111,11 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
   console.log(`escrow ${config.escrowContract}, USDC ${config.usdcContract}`);
   console.log(`accounts under ${config.handleParent}; relayer ${config.relayerAccount}; oracle ${config.oracleAccount}`);
   console.log(env.X_BEARER_TOKEN ? "X user-id recipient keys on" : "X user-id lookup off (username keys only)");
+  console.log(
+    config.network === "mainnet"
+      ? "NEAR Intents on (1Click)"
+      : "NEAR Intents: previews only (1Click is mainnet; testnet shows live quotes, moves nothing)",
+  );
   console.log(push ? "push notifications on" : "push notifications off (npm run push:keys, then restart)");
   console.log(
     !email

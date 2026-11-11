@@ -3,6 +3,7 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import {
   AmountError,
+  IntentsError,
   RelayRefusedError,
   USDC_DECIMALS,
   assertRelayable,
@@ -12,6 +13,7 @@ import {
   toBaseUnits,
   verifySignedDelegate,
   type NearChain,
+  type OneClickClient,
 } from "@selkie/chain-near";
 import { BODY_LIMIT, LIMITS, publicUser, toHandle } from "../app";
 import type { ActivityStore } from "../activity/store";
@@ -33,6 +35,7 @@ import type { PushNotifier } from "../push/notifier";
 import { registerPushRoutes } from "../push/routes";
 import { InMemoryPushStore, type PushStore } from "../push/store";
 import { InMemoryRequestStore, type RequestStore } from "../requests/store";
+import { IntentsDesk, intentsErrorStatus, registerIntentsRoutes } from "./intents";
 import { CONTRACT_WARNING, NOT_AN_ACCOUNT, NearPayments, type PrepareBody } from "./payments";
 import { Refusal } from "./refusal";
 import { registerNearRequestRoutes } from "./requests";
@@ -53,6 +56,8 @@ export interface NearAppDeps {
   push?: { store: PushStore; notifier: PushNotifier; publicKey: string };
   /** Email notices. Without it, Settings says email is not available. */
   email?: EmailService;
+  /** NEAR Intents (1Click). Without it, the other-chain screens say they are switched off. */
+  intents?: OneClickClient;
   /** Tests shorten how long outside money must hold before it is written down. */
   watch?: { settleAfterMs?: number; now?: () => number };
 }
@@ -106,7 +111,9 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
   const xLookup = deps.xLookup ?? noXLookup;
   const requests = deps.requests ?? new InMemoryRequestStore();
   const policy = relayPolicy({ usdc: config.usdcContract, escrow: config.escrowContract });
+  const desk = deps.intents ? new IntentsDesk(deps.intents, config) : null;
   const payments = new NearPayments({
+    intents: desk,
     watch,
     chain,
     identity,
@@ -313,6 +320,7 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     requireUser,
   });
   registerEmailRoutes(app, { service: deps.email ?? null, requireUser, limited: capped("auth") });
+  registerIntentsRoutes(app, { desk, requireUser, limited: capped("money") });
   // Let notices already on their way finish before the process exits.
   app.addHook("onClose", async () => {
     await Promise.all(notifiers.map((notifier) => notifier.settled()));
@@ -334,6 +342,7 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     }
     if (error instanceof Refusal) return reply.code(error.status).send({ error: error.message, ...error.extra });
     if (error instanceof NearAccountError) return reply.code(400).send({ error: error.message });
+    if (error instanceof IntentsError) return reply.code(intentsErrorStatus(error)).send({ error: error.message });
     if (error instanceof AmountError) return reply.code(400).send({ error: "Enter an amount above zero, up to 6 decimal places." });
     if (error instanceof RelayRefusedError) {
       console.warn("[relay]", error.message);

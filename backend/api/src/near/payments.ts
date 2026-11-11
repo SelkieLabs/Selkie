@@ -33,6 +33,7 @@ import type { User } from "../identity/types";
 import { userHandles } from "../identity/types";
 import type { RequestStore } from "../requests/store";
 import type { BalanceWatch } from "./balance-watch";
+import type { IntentsDesk } from "./intents";
 import { Refusal } from "./refusal";
 import type { ManyItem, NearAccountStore, PaymentIntent } from "./store";
 import type { XUserLookup } from "./x-lookup";
@@ -67,6 +68,8 @@ export interface PrepareBody {
   purpose?: "send" | "cashout";
   /** The sender was told `toAccount` is a contract and still wants to pay it. */
   toContract?: boolean;
+  /** Cash out to another chain through NEAR Intents: this asset, to this address. */
+  toChain?: { assetId?: string; address?: string };
 }
 
 export interface PaymentPlan {
@@ -83,6 +86,8 @@ export interface Settled {
   waitingToBeClaimed: boolean;
   claimRef?: string;
   results?: { handle: string; sent: boolean; waitingToBeClaimed?: boolean }[];
+  /** A cash-out to another chain: where to follow it. */
+  intents?: { depositAddress: string };
 }
 
 export interface NearPaymentsDeps {
@@ -95,6 +100,8 @@ export interface NearPaymentsDeps {
   /** Told about every balance Selkie moves, so it can tell those from outside money. */
   watch: BalanceWatch;
   xLookup: XUserLookup;
+  /** NEAR Intents, for cash-outs to other chains. Null where 1Click is not configured. */
+  intents?: IntentsDesk | null;
 }
 
 export class NearPayments {
@@ -110,6 +117,7 @@ export class NearPayments {
     if (body.refundId !== undefined) return this.planRefund(user, String(body.refundId));
     if (body.requestId !== undefined) return this.planRequest(user, String(body.requestId));
     if (body.toMany !== undefined) return this.planMany(user, body);
+    if (body.toChain !== undefined) return this.planChainCashOut(user, body);
     if (body.toAccount !== undefined) return this.planTransfer(user, body);
     return this.planSend(user, body);
   }
@@ -188,6 +196,51 @@ export class NearPayments {
         amount: usdc(units),
         purpose: body.purpose === "cashout" ? "cashout" : "send",
         recipientUserId: recipient?.id,
+      },
+    };
+  }
+
+  /**
+   * USDC out to another chain. The deposit address comes from a quote made
+   * here, now, on the server; the browser only named the asset and where it
+   * should land. What gets signed is a plain ft_transfer of exactly the quote's
+   * input to exactly its deposit address, and the relay accepts nothing else.
+   */
+  private async planChainCashOut(user: User, body: PrepareBody): Promise<PaymentPlan> {
+    const desk = this.deps.intents;
+    if (!desk) throw new Refusal(503, "Moving money between chains is switched off here.");
+    const units = toPositiveBaseUnits(String(body.amount ?? ""), USDC_DECIMALS);
+    await this.ensureBalance(user, units);
+    const quote = await desk.cashOutQuote(user, {
+      assetId: String(body.toChain?.assetId ?? ""),
+      amount: fromBaseUnits(units, USDC_DECIMALS),
+      address: String(body.toChain?.address ?? ""),
+    });
+    // EXACT_INPUT: 1Click must want precisely what we checked the balance for.
+    if (quote.amountIn !== units.toString()) {
+      throw new Refusal(502, "NEAR Intents quoted a different amount. Nothing moved. Try again.");
+    }
+    if (!isValidAccountId(quote.depositAddress)) {
+      throw new Refusal(502, "NEAR Intents sent a deposit address that is not a NEAR account. Nothing moved.");
+    }
+    // Deposit addresses are fresh accounts; an ft_transfer to one USDC has never
+    // seen fails. Free when 1Click already registered it.
+    await this.deps.chain.registerForUsdc(quote.depositAddress);
+    const address = String(body.toChain?.address ?? "").trim();
+    return {
+      call: directTransfer(this.config.usdcContract, { to: quote.depositAddress, amount: quote.amountIn }),
+      intent: {
+        kind: "transfer",
+        toAccount: quote.depositAddress,
+        amount: usdc(units),
+        purpose: "cashout",
+        intents: {
+          depositAddress: quote.depositAddress,
+          chainName: quote.asset.chainName,
+          symbol: quote.asset.symbol,
+          address,
+          amountOutFormatted: quote.amountOutFormatted,
+        },
       },
     };
   }
@@ -334,6 +387,20 @@ export class NearPayments {
         await watch.expect(user.address, -amount);
         // A no-op unless the account is a Selkie one.
         await watch.expect(intent.toAccount, amount);
+        const via = intent.intents;
+        if (via) {
+          await this.deps.intents?.depositSent({ txHash: ref, depositAddress: via.depositAddress, nearSenderAccount: user.address });
+          const where = `${shortAddress(via.address)} on ${via.chainName}`;
+          await this.record(user.id, entry("cashout", intent.amount, "confirmed", ref, { counterparty: where }));
+          return {
+            status: "confirmed",
+            ref,
+            explorer,
+            waitingToBeClaimed: false,
+            message: `On its way: about ${via.amountOutFormatted} ${via.symbol} to ${where}.`,
+            intents: { depositAddress: via.depositAddress },
+          };
+        }
         await this.record(user.id, entry(kind, intent.amount, "confirmed", ref, { counterparty: intent.toAccount }));
         if (intent.recipientUserId) {
           await this.record(intent.recipientUserId, entry("receive", intent.amount, "confirmed", ref, handleParty(from)));
@@ -476,4 +543,9 @@ function inWords(ms: number): string {
   if (hours < 24) return `in ${hours} hours`;
   const days = Math.ceil(hours / 24);
   return days === 1 ? "tomorrow" : `in ${days} days`;
+}
+
+/** 0x5aAeb6…1BeAed: enough to recognise an address, short enough for a feed line. */
+function shortAddress(address: string): string {
+  return address.length > 16 ? `${address.slice(0, 8)}…${address.slice(-6)}` : address;
 }

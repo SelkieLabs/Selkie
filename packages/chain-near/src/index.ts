@@ -10,6 +10,7 @@ export * from "./config";
 export * from "./dao";
 export * from "./delegate";
 export * from "./escrow";
+export * from "./intents";
 export * from "./keys";
 export * from "./names";
 export * from "./recipient";
