@@ -1,0 +1,159 @@
+export const ASSETS = ["USDC", "XLM"] as const;
+export type Asset = (typeof ASSETS)[number];
+
+/** What each asset is called in the interface. */
+export const ASSET_LABEL: Record<string, string> = {
+  USDC: "USDC",
+  XLM: "XLM",
+};
+
+/** The dollar asset. Balances, sends and totals default to it. */
+export const DOLLAR = "USDC";
+
+/**
+ * "12.50 USDC". Only ever used for the asset that actually is dollars.
+ *
+ * Named, not signed. A dollar sign in front of a balance claims it is dollars in
+ * a bank; what someone holds here is USDC, worth a dollar because it is backed
+ * by one, and saying so costs four characters. It also stops the interface
+ * quietly implying the XLM sitting next to it is dollars too.
+ */
+export function usd(value: number | string): string {
+  const n = Number(value);
+  return Number.isFinite(n) ? `${money(n)} ${DOLLAR}` : `0.00 ${DOLLAR}`;
+}
+
+/**
+ * Money reads cleanly and never jitters: always two decimals so columns line
+ * up, up to eight for small crypto amounts that would round away to nothing.
+ */
+export function money(value: number | string): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0.00";
+  const small = n !== 0 && Math.abs(n) < 1;
+  const text = n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: small ? 8 : 2,
+  });
+  return small ? text.replace(/(\.\d{2}\d*?[1-9])0+$/, "$1") : text;
+}
+
+/**
+ * The same amount, but written with the decimals the number it is heading for
+ * will settle on.
+ *
+ * Only for a value that is being counted up to another one. `money` picks its
+ * decimals from the amount it is given, which is right for a number standing
+ * still and wrong for one in motion: counting to a small balance would pass
+ * through 0.00, 0.0000005 and 0.000123 and redraw at a different width every
+ * frame. Pinning the shape to the destination means only the digits change.
+ */
+export function moneyLike(value: number, target: number | string): string {
+  const settled = money(target);
+  const point = settled.indexOf(".");
+  const decimals = point === -1 ? 0 : settled.length - point - 1;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return settled;
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+export const normalizeHandle = (handle: string): string =>
+  `@${handle.trim().replace(/^@+/, "").toLowerCase()}`;
+
+/**
+ * What someone is allowed to type into an amount field: digits, one dot, and at
+ * most two decimals. Money is typed by a person, not computed, so the field
+ * refuses the impossible rather than correcting it afterwards.
+ */
+export function cleanAmount(raw: string): string {
+  const cleaned = raw.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+  const [whole, decimals] = cleaned.split(".");
+  return decimals === undefined ? whole : `${whole}.${decimals.slice(0, 2)}`;
+}
+
+/**
+ * An address, shortened. It appears in exactly one place, the wallet detail, and
+ * only because someone occasionally needs to prove where their money lives.
+ */
+export function shortAddress(value: string): string {
+  return value.length > 14 ? `${value.slice(0, 6)}…${value.slice(-6)}` : value;
+}
+
+/**
+ * Does this look like a wallet address rather than a handle?
+ *
+ * Shape only. The real check is a checksum the server runs, because money sent
+ * to a mistyped address is gone and the browser is the wrong place to be the
+ * last word on that. This exists so the form can stop someone at "that is not
+ * an address" before it costs them a round trip.
+ */
+export const looksLikeAddress = (value: string): boolean =>
+  /^G[A-Z2-7]{55}$/.test(value.trim().toUpperCase());
+
+export function parseHandles(text: string): string[] {
+  return [
+    ...new Set(
+      text
+        .split(/[\s,;]+/)
+        .map((h) => h.replace(/^@+/, "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+export function timeAgo(iso: string): string {
+  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const units: [number, string][] = [
+    [60, "m"],
+    [3600, "h"],
+    [86400, "d"],
+  ];
+  if (seconds < 3600) return `${Math.floor(seconds / units[0][0])}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / units[1][0])}h ago`;
+  return `${Math.floor(seconds / units[2][0])}d ago`;
+}
+
+/**
+ * A friendly day bucket for grouping activity: Today, Yesterday, the weekday
+ * within the last week, then a plain date (with the year once it's not this
+ * one). Compared by calendar day in local time, not by elapsed hours.
+ */
+export function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOfDay(now) - startOfDay(d)) / 86_400_000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return d.toLocaleDateString("en-US", { weekday: "long" });
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+}
+
+/**
+ * The exact moment, spelled out: "6 August 2026 at 14:32".
+ *
+ * The feed says "3d ago" because that is what you want while scanning. Opening
+ * one payment is the other question entirely, and "3d ago" cannot answer it.
+ */
+export function exactTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "unknown";
+  const day = d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return `${day} at ${time}`;
+}
+
+/** Stable calendar-day key (local) for grouping, e.g. "2026-6-24". */
+export function dayKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}

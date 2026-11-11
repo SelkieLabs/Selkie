@@ -1,0 +1,31 @@
+{
+  "name": "selkie",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Selkie: send money to any social handle. Multi-chain payments, Stellar first.",
+  "workspaces": [
+    "packages/*",
+    "frontend",
+    "backend/*"
+  ],
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "dev:web": "npm --workspace frontend run dev",
+    "build:web": "npm --workspace frontend run build",
+    "start:web": "npm --workspace frontend run start",
+    "test": "tsx --env-file-if-exists=.env --test $(find packages backend -name '*.test.ts' -not -path '*/node_modules/*')",
+    "db:migrate": "tsx --env-file-if-exists=.env backend/api/scripts/migrate.ts",
+    "typecheck": "tsc --noEmit -p packages/core/tsconfig.json && tsc --noEmit -p packages/chain-stellar/tsconfig.json && tsc --noEmit -p backend/api/tsconfig.json && tsc --noEmit -p backend/bot/tsconfig.json && npm --workspace frontend run typecheck",
+    "dev:api": "npm --workspace backend/api run dev",
+    "dev:bot": "npm --workspace backend/bot run dev",
+    "test:contracts": "cargo test --manifest-path contracts/Cargo.toml",
+    "test:live": "tsx packages/chain-stellar/scripts/live-testnet.ts",
+    "prove:restart": "tsx --env-file-if-exists=.env backend/api/scripts/prove-restart.ts"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "tsx": "^4.23.1"
+  }
+}

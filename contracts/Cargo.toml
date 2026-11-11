@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = ["handle-escrow"]
+
+[workspace.dependencies]
+# Matches the protocol testnet/mainnet run (protocol 27, stellar-core 27.x).
+soroban-sdk = "27"
+
+# Settings the Soroban toolchain expects for small, deterministic WASM builds.
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true
