@@ -17,7 +17,7 @@ export const features = {
   /** Swap between assets on the Stellar DEX. */
   convert: !isNear,
   /** Asking someone for money. */
-  requests: !isNear,
+  requests: true,
   /** Telegram as a payable handle. NEAR accounts are named after X handles only. */
   telegram: !isNear,
   /** Google as a sign-in door. On NEAR the account is created from the X login. */
@@ -25,9 +25,9 @@ export const features = {
   /** Airtime, bills and the naira off-ramp. */
   localPayouts: !isNear,
   /** Pay a list of handles at once. */
-  payMany: !isNear,
-  /** Cash out to a bank or another chain. */
-  cashOut: !isNear,
-  /** Send to a raw Stellar address. On NEAR, people are paid by handle. */
-  payToAddress: !isNear,
+  payMany: true,
+  /** Move money out: to a bank or anchor on Stellar, to any NEAR account on NEAR. */
+  cashOut: true,
+  /** Send to an address instead of a handle: a Stellar G... key, or a NEAR account name. */
+  payToAddress: true,
 } as const;

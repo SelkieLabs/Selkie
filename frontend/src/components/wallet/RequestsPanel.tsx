@@ -7,8 +7,10 @@ import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
 import { ApiError, api, type MoneyRequest } from "@/lib/api";
+import { features, isNear } from "@/lib/chain";
 import { DOLLAR, cleanAmount, money, timeAgo, usd } from "@/lib/format";
-import { PLATFORM_FIELD, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
+import { useNearPay } from "@/lib/near-wallet";
+import { PLATFORMS, PLATFORM_FIELD, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
 
 /** How a settled request reads once nobody has to do anything about it. */
 const SETTLED: Record<string, string> = {
@@ -72,6 +74,7 @@ export function RequestsPanel({
   onChanged: () => void;
 }) {
   const toast = useToast();
+  const nearPay = useNearPay();
   const [platform, setPlatform] = useState<Platform>("x");
   const [from, setFrom] = useState("");
   const [amount, setAmount] = useState("");
@@ -142,11 +145,12 @@ export function RequestsPanel({
 
         {!canAsk && (
           <p className="mt-5 rounded-xl bg-pen/[0.05] p-3.5 text-[14px] leading-relaxed text-pen/70">
-            Add an X or Telegram handle first, so whoever you ask knows who is asking.
+            Add {features.telegram ? "an X or Telegram handle" : "your X handle"} first, so whoever you
+            ask knows who is asking.
           </p>
         )}
 
-        <p className="label mt-6">Where</p>
+        {PLATFORMS.length > 1 && <p className="label mt-6">Where</p>}
         <PlatformToggle value={platform} onChange={setPlatform} idPrefix="ask-platform" />
 
         <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_10rem]">
@@ -272,7 +276,11 @@ export function RequestsPanel({
                       onClick={() =>
                         void act(
                           request.id,
-                          () => api.payRequest(request.id),
+                          // On NEAR the payer's own key signs it, for exactly what was asked.
+                          () =>
+                            isNear
+                              ? nearPay(() => api.near.preparePayRequest(request.id))
+                              : api.payRequest(request.id),
                           `Paid @${request.fromHandle.username}.`,
                           "That did not send. Your money is safe. Try again.",
                         )
