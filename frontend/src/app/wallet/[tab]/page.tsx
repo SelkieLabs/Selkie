@@ -25,6 +25,7 @@ import { api, type ActivityEntry, type MoneyRequest } from "@/lib/api";
 import { features } from "@/lib/chain";
 import { DOLLAR } from "@/lib/format";
 import { isWalletTab } from "@/lib/tabs";
+import { useArrivals } from "@/lib/useArrivals";
 import { useLiveRefresh } from "@/lib/useLiveRefresh";
 
 /**
@@ -41,6 +42,9 @@ export default function WalletTabPage() {
 
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
+  // Set only by a load that worked: a failed first load must not make the next
+  // one look like a pile of brand-new payments.
+  const [feedLoaded, setFeedLoaded] = useState(false);
   const [incoming, setIncoming] = useState<MoneyRequest[]>([]);
   const [outgoing, setOutgoing] = useState<MoneyRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
@@ -50,6 +54,7 @@ export default function WalletTabPage() {
   const loadActivity = useCallback(async () => {
     try {
       setEntries(await api.activity());
+      setFeedLoaded(true);
     } catch (error) {
       console.error(error);
     } finally {
@@ -91,11 +96,14 @@ export default function WalletTabPage() {
    *
    * Quiet on purpose. No spinner and no flash, because this fires while the
    * person is reading and an unrequested loading state reads as a glitch.
+   *
+   * Balance before feed: reading the balance is when the API notices money
+   * that came from outside Selkie and writes it to the feed, so the feed read
+   * after it already has the line.
    */
   useLiveRefresh(
     useCallback(() => {
-      void refresh();
-      void loadActivity();
+      void refresh().finally(() => void loadActivity());
       void loadRequests();
     }, [refresh, loadActivity, loadRequests]),
     { enabled: status === "ready" },
@@ -108,6 +116,8 @@ export default function WalletTabPage() {
    * a refresh that returns instantly with the same number looks like a button
    * that does nothing.
    */
+  useArrivals(entries, feedLoaded);
+
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
     const started = Date.now();

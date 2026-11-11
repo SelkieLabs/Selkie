@@ -5,7 +5,7 @@ import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 type Kind = "success" | "error";
 type Toast = { id: number; kind: Kind; text: string };
-type Push = (kind: Kind, text: string) => void;
+type Push = (kind: Kind, text: string, options?: { ms?: number }) => void;
 
 const ToastContext = createContext<Push>(() => {});
 
@@ -17,10 +17,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const next = useRef(1);
 
-  const push = useCallback<Push>((kind, text) => {
+  const push = useCallback<Push>((kind, text, options) => {
     const id = next.current++;
     setToasts((t) => [...t, { id, kind, text }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3800);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), options?.ms ?? 3800);
   }, []);
 
   return (
