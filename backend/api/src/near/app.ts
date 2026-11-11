@@ -1,24 +1,14 @@
 import { createHash } from "node:crypto";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
-import type { HandleRef, Money } from "@selkie/core";
-import { handleKey } from "@selkie/core";
 import {
   AmountError,
   RelayRefusedError,
-  USDC_DECIMALS,
   assertRelayable,
-  directTransfer,
-  fromBaseUnits,
-  holdTransfer,
   recipientKeyFor,
-  refundCall,
   relayPolicy,
-  toPositiveBaseUnits,
   verifySignedDelegate,
-  type Call,
   type NearChain,
-  type TxOutcome,
 } from "@selkie/chain-near";
 import { BODY_LIMIT, LIMITS, publicUser, toHandle } from "../app";
 import type { ActivityStore } from "../activity/store";
@@ -32,7 +22,11 @@ import type { UserStore } from "../identity/store";
 import type { User } from "../identity/types";
 import { userHandles } from "../identity/types";
 import { NearAccountError, NearIdentityChain } from "./identity-chain";
-import type { NearAccountStore, PaymentIntent, PrepareRecord, PrepareStore } from "./store";
+import { InMemoryRequestStore, type RequestStore } from "../requests/store";
+import { NearPayments, type PrepareBody } from "./payments";
+import { Refusal } from "./refusal";
+import { registerNearRequestRoutes } from "./requests";
+import type { NearAccountStore, PrepareStore } from "./store";
 import { noXLookup, type XUserLookup } from "./x-lookup";
 
 export interface NearAppDeps {
@@ -42,6 +36,7 @@ export interface NearAppDeps {
   accounts: NearAccountStore;
   prepares: PrepareStore;
   activity?: ActivityStore;
+  requests?: RequestStore;
   xLookup?: XUserLookup;
   limits?: Partial<Record<keyof typeof LIMITS, number>> | false;
 }
@@ -49,19 +44,8 @@ export interface NearAppDeps {
 /** How long a prepared payment may wait for its signature. Matches the delegate's block TTL. */
 const PREPARE_TTL_MS = 5 * 60_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NOTE_MAX = 120;
 
 type Reply = FastifyReply;
-
-/** A request we will not carry out, with the status and the words to say why. */
-class Refusal extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 /**
  * The HTTP surface in NEAR mode (SELKIE_CHAIN=near).
@@ -100,7 +84,17 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
   });
   const activity = deps.activity ?? new InMemoryActivityStore();
   const xLookup = deps.xLookup ?? noXLookup;
+  const requests = deps.requests ?? new InMemoryRequestStore();
   const policy = relayPolicy({ usdc: config.usdcContract, escrow: config.escrowContract });
+  const payments = new NearPayments({
+    chain,
+    identity,
+    users: deps.users,
+    accounts: deps.accounts,
+    activity,
+    requests,
+    xLookup,
+  });
 
   async function requireUser(request: FastifyRequest, reply: Reply): Promise<User | null> {
     const token = bearerToken(request.headers.authorization);
@@ -218,8 +212,9 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
   /**
    * Step one of paying: decide exactly what the user's key will sign.
    *
-   * `{ to, amount, note? }` pays a handle (straight into their account if they
-   * have one, into the escrow if not); `{ refundId }` takes back an expired one.
+   * One route for every way money leaves a NEAR account (see PrepareBody): a
+   * handle, a NEAR account, many handles, a request, or taking back a payment
+   * nobody claimed. The answer is the delegate to sign and what it means.
    */
   app.post("/near/payments/prepare", capped("money"), async (request, reply) => {
     const user = await requireUser(request, reply);
@@ -227,9 +222,7 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     const account = await deps.accounts.findByAccountId(user.address);
     if (!account) return reply.code(409).send({ error: "Your account is still being set up. Sign in again." });
 
-    const body = (request.body ?? {}) as { to?: string; amount?: string; note?: string; refundId?: string | number };
-    const planned = body.refundId !== undefined ? await planRefund(user, String(body.refundId)) : await planSend(user, body);
-
+    const planned = await payments.plan(user, (request.body ?? {}) as PrepareBody);
     const delegate = await chain.prepare(user.address, account.publicKey, planned.call);
     assertRelayable(delegate, policy);
     const record = await deps.prepares.create({
@@ -240,60 +233,6 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     });
     return { prepareId: record.id, delegate, intent: planned.intent };
   });
-
-  async function planSend(
-    user: User,
-    body: { to?: string; amount?: string; note?: string },
-  ): Promise<{ call: Call; intent: PaymentIntent }> {
-    const to = body.to ? toHandle(body.to, "x") : null;
-    if (!to) throw new Refusal(400, "Add the handle you want to pay.");
-    if (userHandles(user).some((mine) => handleKey(mine) === handleKey(to))) {
-      throw new Refusal(400, "That's you. Pick someone else to pay.");
-    }
-    const units = toPositiveBaseUnits(String(body.amount ?? ""), USDC_DECIMALS);
-    const amount: Money = { amount: fromBaseUnits(units, USDC_DECIMALS), asset: "USDC" };
-    if ((await chain.usdcBalance(user.address)) < units) {
-      throw new Refusal(409, "Your balance is too low. Add money, or send a smaller amount.");
-    }
-    const memo = body.note?.trim().slice(0, NOTE_MAX) || undefined;
-
-    const recipient = await identity.findByHandle("x", to.username);
-    if (recipient) {
-      // Heals an account that somehow missed registration; free when it did not.
-      await chain.registerForUsdc(recipient.address);
-      return {
-        call: directTransfer(config.usdcContract, { to: recipient.address, amount: units.toString(), memo }),
-        intent: { kind: "send", to, amount, recipientAccount: recipient.address, recipientUserId: recipient.id },
-      };
-    }
-    const key = await recipientKeyFor({ username: to.username, xUserId: await xLookup.idOf(to.username) });
-    return {
-      call: holdTransfer(config.usdcContract, config.escrowContract, {
-        amount: units.toString(),
-        recipient: key.key,
-        lifetimeSecs: config.claimLifetimeSecs,
-        memo,
-      }),
-      intent: { kind: "hold", to, amount, recipientKey: key.key, scheme: key.scheme },
-    };
-  }
-
-  async function planRefund(user: User, claimRef: string): Promise<{ call: Call; intent: PaymentIntent }> {
-    if (!/^\d{1,20}$/.test(claimRef)) throw new Refusal(400, "We lost track of that payment.");
-    const entry = await activity.findByClaimRef(user.id, claimRef);
-    const payment = await chain.getPayment(claimRef);
-    if (!entry || !payment || payment.sender !== user.address) {
-      throw new Refusal(409, "That payment was already claimed or returned.");
-    }
-    const expiresMs = Number(BigInt(payment.expiry_ns) / 1_000_000n);
-    if (expiresMs > Date.now()) {
-      throw new Refusal(409, `You can take this back ${inWords(expiresMs - Date.now())}.`);
-    }
-    return {
-      call: refundCall(config.escrowContract, claimRef),
-      intent: { kind: "refund", claimRef, amount: { amount: fromBaseUnits(payment.amount, USDC_DECIMALS), asset: "USDC" } },
-    };
-  }
 
   /**
    * Step two: the signed action comes back. It is relayed only if it is exactly
@@ -314,59 +253,13 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
 
     assertRelayable(record.delegate, policy);
     const signed = await verifySignedDelegate(record.delegate, body.signedDelegate);
+    await payments.stillWanted(record.intent);
     const outcome = await chain.relay(signed);
-    return settle(user, record, outcome, reply);
+    if (outcome.failure) app.log.warn({ tx: outcome.txHash, failure: outcome.failure }, "relayed transaction failed");
+    return payments.settle(user, record.intent, outcome);
   });
 
-  async function settle(user: User, record: PrepareRecord, outcome: TxOutcome, reply: Reply) {
-    const ref = outcome.txHash;
-    const explorer = chain.txUrl(ref);
-    if (outcome.failure) {
-      app.log.warn({ tx: ref, failure: outcome.failure }, "relayed transaction failed");
-      return reply.code(409).send({ error: explainFailure(outcome.failure), ref, explorer });
-    }
-
-    const intent = record.intent;
-    if (intent.kind === "send") {
-      await activity.record(user.id, sendEntry(intent.to, intent.amount, "confirmed", ref));
-      await activity.record(intent.recipientUserId, {
-        kind: "receive",
-        chain: "near",
-        amount: intent.amount,
-        ...counterparty(userHandles(user)[0]),
-        status: "confirmed",
-        ref,
-      });
-      return { status: "confirmed", ref, explorer, waitingToBeClaimed: false, message: `Sent to @${intent.to.username}.` };
-    }
-
-    if (intent.kind === "hold") {
-      const hold = outcome.events.find((event) => event.event === "hold")?.data[0];
-      if (!hold) {
-        // The escrow refused the msg and the token sent the money straight back.
-        return reply.code(409).send({ error: "Nothing moved. The money is still with you. Try again.", ref, explorer });
-      }
-      const claimRef = String(hold.id);
-      const refundableAt = new Date(Number(BigInt(String(hold.expiry_ns)) / 1_000_000n)).toISOString();
-      await activity.record(user.id, { ...sendEntry(intent.to, intent.amount, "pending", ref), claimRef, refundableAt });
-      return {
-        status: "pending",
-        ref,
-        explorer,
-        claimRef,
-        waitingToBeClaimed: true,
-        message: `Sent. It is waiting for @${intent.to.username} to claim.`,
-      };
-    }
-
-    const refunded = outcome.events.some((event) => event.event === "refund");
-    if (!refunded) {
-      return reply.code(409).send({ error: "Nothing moved. Try taking it back again in a moment.", ref, explorer });
-    }
-    const entry = await activity.findByClaimRef(user.id, intent.claimRef);
-    if (entry) await activity.settle(user.id, entry.id, "returned", ref);
-    return { status: "returned", ref, explorer, waitingToBeClaimed: false, message: "It's back in your balance." };
-  }
+  registerNearRequestRoutes(app, { requests, requireUser });
 
   app.get("/activity", async (request, reply) => {
     const user = await requireUser(request, reply);
@@ -382,7 +275,7 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
       console.warn("[auth]", error.message);
       return reply.code(401).send({ error: "We could not verify that sign-in. Sign in again." });
     }
-    if (error instanceof Refusal) return reply.code(error.status).send({ error: error.message });
+    if (error instanceof Refusal) return reply.code(error.status).send({ error: error.message, ...error.extra });
     if (error instanceof NearAccountError) return reply.code(400).send({ error: error.message });
     if (error instanceof AmountError) return reply.code(400).send({ error: "Enter an amount above zero, up to 6 decimal places." });
     if (error instanceof RelayRefusedError) {
@@ -396,33 +289,4 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
   });
 
   return app;
-}
-
-function sendEntry(to: HandleRef, amount: Money, status: "pending" | "confirmed", ref: string) {
-  return { kind: "send" as const, chain: "near", amount, ...counterparty(to), status, ref };
-}
-
-function counterparty(handle: HandleRef | undefined) {
-  return handle ? { counterparty: `@${handle.username}`, counterpartyHandle: handle } : {};
-}
-
-/** What a failed receipt means, in words the person can act on. Unknown stays generic. */
-export function explainFailure(failure: string): string {
-  if (/enough balance|insufficient balance|exceeds balance/i.test(failure)) {
-    return "Your balance is too low. Add money, or send a smaller amount.";
-  }
-  if (/DelegateActionInvalidNonce|InvalidNonce/i.test(failure)) {
-    return "That confirmation was already used. Nothing moved. Start again.";
-  }
-  if (/DelegateActionExpired|Expired/i.test(failure)) return "That took too long to confirm. Nothing moved. Start again.";
-  if (/not registered|storage/i.test(failure)) return "Their account is not ready for USDC yet. Nothing moved. Try again.";
-  return "The network would not accept that. Nothing moved, so it is safe to try again.";
-}
-
-function inWords(ms: number): string {
-  const hours = Math.ceil(ms / 3_600_000);
-  if (hours <= 1) return "in an hour";
-  if (hours < 24) return `in ${hours} hours`;
-  const days = Math.ceil(hours / 24);
-  return days === 1 ? "tomorrow" : `in ${days} days`;
 }

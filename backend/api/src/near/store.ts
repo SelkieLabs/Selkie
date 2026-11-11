@@ -17,10 +17,22 @@ export interface NearAccountStore {
   insert(record: Omit<NearAccountRecord, "createdAt">): Promise<NearAccountRecord>;
 }
 
-/** What a prepared action means to Selkie, so the feed can describe it once it lands. */
+/** One person in a "pay many": paid straight into their account, or held for their key. */
+export interface ManyItem {
+  to: HandleRef;
+  recipientUserId?: string;
+  recipientKey?: string;
+}
+
+/**
+ * What a prepared action means to Selkie, so the feed can describe it once it
+ * lands. `requestId` is set when the payment answers a request.
+ */
 export type PaymentIntent =
-  | { kind: "send"; to: HandleRef; amount: Money; recipientAccount: string; recipientUserId: string }
-  | { kind: "hold"; to: HandleRef; amount: Money; recipientKey: string; scheme: RecipientScheme }
+  | { kind: "send"; to: HandleRef; amount: Money; recipientAccount: string; recipientUserId: string; requestId?: string }
+  | { kind: "hold"; to: HandleRef; amount: Money; recipientKey: string; scheme: RecipientScheme; requestId?: string }
+  | { kind: "transfer"; toAccount: string; amount: Money; purpose: "send" | "cashout"; recipientUserId?: string }
+  | { kind: "many"; amount: Money; items: ManyItem[] }
   | { kind: "refund"; claimRef: string; amount: Money };
 
 export interface PrepareRecord {

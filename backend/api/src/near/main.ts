@@ -4,6 +4,7 @@ import { migrate } from "../db/migrate";
 import { openPool } from "../db/pool";
 import { PostgresUserStore } from "../identity/postgres-store";
 import { PrivyIdentityProvider } from "../identity/privy";
+import { PostgresRequestStore } from "../requests/postgres-store";
 import { buildNearApp } from "./app";
 import { PostgresNearAccountStore, PostgresPrepareStore } from "./postgres-store";
 import { XApiUserLookup, noXLookup } from "./x-lookup";
@@ -35,6 +36,7 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
     accounts: new PostgresNearAccountStore(pool),
     prepares: new PostgresPrepareStore(pool),
     activity: new PostgresActivityStore(pool),
+    requests: new PostgresRequestStore(pool),
     xLookup: env.X_BEARER_TOKEN ? new XApiUserLookup(env.X_BEARER_TOKEN) : noXLookup,
   });
 
