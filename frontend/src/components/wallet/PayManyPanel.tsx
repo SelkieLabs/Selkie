@@ -6,12 +6,18 @@ import { Avatar } from "@/components/Layout";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
+import { MAX_PAY_MANY } from "@selkie/chain-near/browser";
 import { ApiError, api, newIdempotencyKey, type BatchResult } from "@/lib/api";
+import { isNear } from "@/lib/chain";
 import { DOLLAR, cleanAmount, parseHandles, usd } from "@/lib/format";
-import { PLATFORM_LABEL, type Platform } from "@/lib/platform";
+import { useNearPay } from "@/lib/near-wallet";
+import { PLATFORMS, PLATFORM_LABEL, type Platform } from "@/lib/platform";
 
-/** The server refuses more than this in one go; saying so early beats a rejection. */
-const MAX = 100;
+/**
+ * The server refuses more than this in one go; saying so early beats a rejection.
+ * Lower on NEAR, where the whole list is one signed transaction under a gas cap.
+ */
+const MAX = isNear ? MAX_PAY_MANY : 100;
 
 type Step = "compose" | "confirm" | "done";
 
@@ -31,6 +37,7 @@ export function PayManyPanel({
   onSent: () => void;
 }) {
   const toast = useToast();
+  const nearPay = useNearPay();
   const [step, setStep] = useState<Step>("compose");
   const [platform, setPlatform] = useState<Platform>("x");
   const [handles, setHandles] = useState<string[]>([]);
@@ -76,16 +83,22 @@ export function PayManyPanel({
     setSending(true);
     setError(null);
     try {
-      const sent = await api.payMany(
-        {
-          to: handles,
-          amount,
-          asset: DOLLAR,
-          platform,
-          note: note.trim() || undefined,
-        },
-        intent ?? undefined,
-      );
+      const memo = note.trim() || undefined;
+      // On NEAR the whole list is one signature from the user's own key.
+      const sent: BatchResult = isNear
+        ? await nearPay(() => api.near.preparePayMany({ toMany: handles, amount, note: memo })).then(
+            (paid) => ({ status: paid.status, message: paid.message, results: paid.results ?? [] }),
+          )
+        : await api.payMany(
+            {
+              to: handles,
+              amount,
+              asset: DOLLAR,
+              platform,
+              note: memo,
+            },
+            intent ?? undefined,
+          );
       setResult(sent);
       setStep("done");
       onSent();
@@ -227,7 +240,7 @@ export function PayManyPanel({
         blurb="Paste or type handles, pick one amount, and everyone gets the same."
       />
 
-      <p className="label mt-6">Where</p>
+      {PLATFORMS.length > 1 && <p className="label mt-6">Where</p>}
       <PlatformToggle value={platform} onChange={setPlatform} idPrefix="many-platform" />
 
       <label className="label mt-5 block" htmlFor="many-handles">

@@ -11,6 +11,7 @@ import { delegateHash, encodeSigned, fromHex, toBase64, type PreparedDelegate } 
 export type { PreparedCall, PreparedDelegate } from "./delegate";
 export { fromHex, toHex } from "./delegate";
 export { isValidAccountId } from "./names";
+export { MAX_PAY_MANY } from "./escrow";
 
 /** Signs a 32-byte hash with the user's ed25519 key; returns the 64-byte signature. */
 export type SignHash = (hash: Uint8Array) => Promise<Uint8Array>;
