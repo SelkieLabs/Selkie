@@ -46,6 +46,15 @@ NEAR (Stellar stays in the code, hidden from users).
     A hold or hold_many with any item below it is refunded whole, so filling the escrow's
     storage with dust costs real money. Prepare refuses those amounts before signing.
     Stored outside the state struct, so the upgrade needed no migration.
+- **Locking the escrow** (`npm run near:lock-escrow`, dry run by default; `-- --yes` to do it):
+  deletes every key on `escrow.selkiepay.testnet` in one transaction, so its code can never
+  change, not even by Selkie. First it checks the code on chain is this repo's build
+  (sha256 `EUVu26VdNZ6DUBCGt2jGByHJQvQ9Qfh3bnzdxTjXx3we`, matching on 11 Nov), that the
+  contract is initialised, and that it has storage to spare (10.07 NEAR). Owner methods and
+  the contract's own callbacks keep working (no key needed). Delete path checked on a
+  throwaway account: 2 keys to 0 in [ikr4c2k…](https://explorer.testnet.near.org/transactions/ikr4c2k4C4WKi1XCNeJKcQF1BAZhcnFiit13pbhPMTc).
+  **Not run on the escrow yet:** it cannot be undone, and the brief says "once stable", so it
+  runs right after `npm run test:live:near` passes. After it, a fix means a new escrow account.
 
 ## How it runs locally (NEAR mode)
 
@@ -66,7 +75,7 @@ SELKIE_API_ORIGIN=http://localhost:4100 npm run dev:web                       # 
 | --- | --- | --- |
 | [selkiepay.testnet](https://explorer.testnet.near.org/accounts/selkiepay.testnet) | root, faucet-funded (10 NEAR) | full access, setup scripts only |
 | [x.selkiepay.testnet](https://explorer.testnet.near.org/accounts/x.selkiepay.testnet) | 1 NEAR | full access, CreateAccount only |
-| [escrow.selkiepay.testnet](https://explorer.testnet.near.org/accounts/escrow.selkiepay.testnet) | 3 NEAR (pays its own storage) | full access (deploy key; delete or document later) |
+| [escrow.selkiepay.testnet](https://explorer.testnet.near.org/accounts/escrow.selkiepay.testnet) | 3 NEAR (pays its own storage) | full access (deploy key). `npm run near:lock-escrow -- --yes` deletes it; see "Locking the escrow" |
 | [relayer.selkiepay.testnet](https://explorer.testnet.near.org/accounts/relayer.selkiepay.testnet) | 2 NEAR | full access |
 | [oracle-v2.selkiepay.testnet](https://explorer.testnet.near.org/accounts/oracle-v2.selkiepay.testnet) | 2 NEAR | **function-call only**: `escrow.selkiepay.testnet` / `claim`, no allowance cap. The escrow's oracle since 11 Nov |
 | [oracle.selkiepay.testnet](https://explorer.testnet.near.org/accounts/oracle.selkiepay.testnet) | 0.5 NEAR | retired: function-call only, `claim`, 0.25 NEAR allowance |
@@ -216,3 +225,4 @@ unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
 3. README top + `docs/hackathon/SUBMISSION.md`; MIT LICENSE (missing today).
 4. P1-c: one mainnet Intents run for the video (needs your OK and a few dollars).
 5. DAO payout: send test USDC to `selkie-payouts.sputnikv2.testnet`, then propose and approve.
+6. Lock the escrow (`npm run near:lock-escrow -- --yes`) once the live test passes.
