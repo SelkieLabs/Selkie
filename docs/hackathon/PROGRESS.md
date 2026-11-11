@@ -18,6 +18,7 @@ NEAR (Stellar stays in the code, hidden from users).
 | 6.3 Backend NEAR mode | **done**: `SELKIE_CHAIN=near` serves its own Fastify app on its own DB; runs locally on :4100 |
 | 6.4 Frontend NEAR mode | **built** (sign-in opens the account, send, refund, receive, key proof badge); needs the two-browser test with real X logins |
 | Restored on NEAR (human asked) | **done**: Pay many (one signature, `hold_many` for non-users), pay any NEAR account, Cash out to a NEAR account or exchange, Requests. Each goes prepare → sign → relay. 16 app tests (`backend/api/src/near/app.test.ts`) run the real app on a simulated chain with real ed25519 signatures |
+| Money in, live | **done**: the wallet polls every 12 s and on returning to the tab; new money in shows a toast ("@tunde sent you 2.00 USDC."). Deposits that skip Selkie (faucet, exchange, another wallet) now get a feed line "from outside Selkie" (`backend/api/src/near/balance-watch.ts`, migration 003). 6 more app tests (22 total) |
 | Oracle | **rotated** to `oracle-v2.selkiepay.testnet`: claim-only key, no allowance cap (see Setup) |
 | 6.5 Copy | **done**: landing, FAQ, docs, settings, footer all NEAR |
 | Full loop on testnet | **blocked on test USDC**: fund an account from faucet.circle.com (NEAR Testnet) |
@@ -142,6 +143,15 @@ unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
   action on the USDC contract: direct `ft_transfer`s to Selkie users plus one
   `ft_transfer_call` with `hold_many` for everyone else. The relayer caps a delegate's
   total gas at 900 Tgas (testnet allows 1 PGas per transaction).
+- **Money from outside Selkie is written to the feed.** A handle account is a real NEAR
+  account, so anyone can pay it without Selkie. `near_accounts.seen_usdc` is the
+  balance Selkie expects. Every send, claim and refund it records moves that number.
+  Reading the balance (`GET /me`) compares it with the chain. A difference becomes a
+  "receive" (or "send") line with counterparty "outside Selkie", but only after it has
+  held for 10 s with no Selkie payment in flight for that account. That wait absorbs
+  RPC lag and the gap between a transaction landing and Selkie recording it.
+  Accounts opened before this start counting at 0 if their feed is empty (so a faucet
+  balance shows up), otherwise at their current balance.
 - **Cash out on NEAR = a transfer to any NEAR account** (your wallet or an exchange's
   deposit account), shown as "cashout" in the feed. To other chains it needs NEAR Intents
   on mainnet; the screen says so. Bank cash-out stays the pre-existing "almost open" screen.
