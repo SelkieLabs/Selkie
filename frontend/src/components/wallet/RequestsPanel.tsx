@@ -10,6 +10,7 @@ import { ApiError, api, type MoneyRequest } from "@/lib/api";
 import { features, isNear } from "@/lib/chain";
 import { DOLLAR, cleanAmount, money, timeAgo, usd } from "@/lib/format";
 import { useNearPay } from "@/lib/near-wallet";
+import { takePayLink } from "@/lib/pay-link";
 import { PLATFORMS, PLATFORM_FIELD, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
 
 /** How a settled request reads once nobody has to do anything about it. */
@@ -76,9 +77,11 @@ export function RequestsPanel({
   const toast = useToast();
   const nearPay = useNearPay();
   const [platform, setPlatform] = useState<Platform>("x");
-  const [from, setFrom] = useState("");
-  const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
+  // An ask link from the X bot fills the form once; nothing is sent until they confirm.
+  const [prefill] = useState(() => takePayLink("ask"));
+  const [from, setFrom] = useState(prefill?.handle ?? "");
+  const [amount, setAmount] = useState(prefill?.amount ?? "");
+  const [note, setNote] = useState(prefill?.note ?? "");
   const [asking, setAsking] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

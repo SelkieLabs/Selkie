@@ -21,6 +21,7 @@ import { features, isNear } from "@/lib/chain";
 import { DOLLAR, cleanAmount, usd } from "@/lib/format";
 import { useAccountCheck } from "@/lib/near-account";
 import { useNearPay } from "@/lib/near-wallet";
+import { takePayLink } from "@/lib/pay-link";
 import { PLATFORMS, PLATFORM_FIELD, PLATFORM_LABEL, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
 
 type Step = "compose" | "confirm" | "done";
@@ -86,10 +87,12 @@ export function SendPanel({
   const [step, setStep] = useState<Step>("compose");
   const [mode, setMode] = useState<Mode>("handle");
   const [platform, setPlatform] = useState<Platform>("x");
-  const [handle, setHandle] = useState("");
+  // A pay link from the X bot fills the form once; the person still checks and signs.
+  const [prefill] = useState(() => takePayLink("pay"));
+  const [handle, setHandle] = useState(prefill?.handle ?? "");
   const [address, setAddress] = useState("");
-  const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
+  const [amount, setAmount] = useState(prefill?.amount ?? "");
+  const [note, setNote] = useState(prefill?.note ?? "");
   const [recipient, setRecipient] = useState<Recipient | null>(null);
   const [checking, setChecking] = useState(false);
   const [sending, setSending] = useState(false);
