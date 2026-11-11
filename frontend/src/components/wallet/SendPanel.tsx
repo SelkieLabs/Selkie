@@ -15,9 +15,9 @@ import {
   type Recipient,
   type SendResult,
 } from "@/lib/api";
-import { isValidAccountId } from "@selkie/chain-near/browser";
-import { NEAR_NETWORK, features, isNear } from "@/lib/chain";
-import { DOLLAR, cleanAmount, looksLikeAddress, shortAddress, usd } from "@/lib/format";
+import { ADDRESS } from "@/lib/address";
+import { features, isNear } from "@/lib/chain";
+import { DOLLAR, cleanAmount, usd } from "@/lib/format";
 import { useNearPay } from "@/lib/near-wallet";
 import { PLATFORMS, PLATFORM_FIELD, PLATFORM_LABEL, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
 
@@ -33,37 +33,6 @@ type Step = "compose" | "confirm" | "done";
 type Mode = "handle" | "address";
 
 const QUICK = ["5", "10", "25", "50"];
-
-/**
- * What "an address" means on this chain. On Stellar it is a G... key; on NEAR
- * it is an account name (alice.testnet, an exchange's deposit account) or a
- * 64-character implicit account.
- */
-const ADDRESS = isNear
-  ? {
-      tab: "A NEAR account",
-      label: "NEAR account",
-      confirmLabel: "Sending to this NEAR account",
-      placeholder: NEAR_NETWORK === "mainnet" ? "alice.near" : "alice.testnet",
-      capitalize: "none",
-      clean: (raw: string) => raw.trim().toLowerCase(),
-      valid: isValidAccountId,
-      invalid: `That is not a NEAR account name. It looks like ${NEAR_NETWORK === "mainnet" ? "alice.near" : "alice.testnet"}, or 64 letters and numbers.`,
-      blurb: "Straight to any NEAR account: yours, a friend's, or an exchange. Nothing waits and nothing can be taken back, so check it twice.",
-      short: (value: string) => (/^[0-9a-f]{64}$/.test(value) ? shortAddress(value) : value),
-    }
-  : {
-      tab: "An address",
-      label: "Wallet address",
-      confirmLabel: "Sending to this wallet",
-      placeholder: "G…",
-      capitalize: "characters",
-      clean: (raw: string) => raw.trim().toUpperCase(),
-      valid: looksLikeAddress,
-      invalid: "That is not a complete address. It starts with G and is 56 characters long.",
-      blurb: "Straight to a wallet address. Nothing waits and nothing can be taken back, so check it twice.",
-      short: shortAddress,
-    };
 
 interface RecentPerson {
   username: string;

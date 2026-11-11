@@ -184,7 +184,7 @@ export default function WalletTabPage() {
 
               {tab === "receive" && <ReceivePanel handle={handle} />}
 
-              {tab === "cashout" && <CashOutPanel balance={dollars} />}
+              {tab === "cashout" && <CashOutPanel balance={dollars} onSent={afterMoneyMoved} />}
 
               {tab === "requests" && (
                 <RequestsPanel

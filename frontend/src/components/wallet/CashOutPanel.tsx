@@ -7,13 +7,22 @@ import {
   ArrowLeft,
   ArrowRight,
   Building2,
+  Check,
   ChevronDown,
   Clock,
+  ExternalLink,
+  Globe,
+  Loader2,
   Sparkles,
   Wallet,
 } from "lucide-react";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
+import { useToast } from "@/contexts/ToastContext";
+import { ADDRESS } from "@/lib/address";
+import { ApiError, api, type SendResult } from "@/lib/api";
+import { isNear } from "@/lib/chain";
 import { cleanAmount, money, usd } from "@/lib/format";
+import { useNearPay } from "@/lib/near-wallet";
 
 /**
  * Taking money out.
@@ -28,12 +37,15 @@ import { cleanAmount, money, usd } from "@/lib/format";
  * cash out is the one action here that cannot be undone from inside the app, so
  * the numbers are laid out plainly, once, before it happens.
  *
- * Nothing here moves money yet. The screens are real and the button at the end
- * says so, rather than pretending and failing.
+ * On NEAR, "another wallet" is real: any NEAR account or exchange deposit
+ * account, signed by the user's own key and relayed like every other payment.
+ * The bank and other-chain routes are not built yet, and their last screen says
+ * so rather than pretending and failing.
  */
 
-type Destination = "bank" | "wallet";
-type Step = "where" | "details" | "review" | "soon";
+/** "chain" is NEAR Intents: USDC out to another chain. Mainnet only, so not yet. */
+type Destination = "bank" | "wallet" | "chain";
+type Step = "where" | "details" | "review" | "soon" | "done";
 
 /** Where someone's bank is. Shapes the fields, and later the provider. */
 const COUNTRIES = [
@@ -45,7 +57,9 @@ const COUNTRIES = [
   { code: "GB", label: "United Kingdom", currency: "GBP" },
 ] as const;
 
-export function CashOutPanel({ balance }: { balance: string }) {
+export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: () => void }) {
+  const toast = useToast();
+  const nearPay = useNearPay();
   const [step, setStep] = useState<Step>("where");
   const [destination, setDestination] = useState<Destination>("bank");
   const [amount, setAmount] = useState("");
@@ -56,12 +70,17 @@ export function CashOutPanel({ balance }: { balance: string }) {
   const [accountName, setAccountName] = useState("");
 
   const [address, setAddress] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<SendResult | null>(null);
 
   const available = Number(balance);
   const value = Number(amount);
   const tooMuch = value > available;
-  const cleanAddress = address.trim().toUpperCase();
-  const addressValid = /^G[A-Z2-7]{55}$/.test(cleanAddress);
+  const cleanAddress = ADDRESS.clean(address);
+  const addressValid = ADDRESS.valid(cleanAddress);
+  /** Only a NEAR wallet cash out actually moves money today. */
+  const live = isNear && destination === "wallet";
 
   const detailsReady =
     destination === "bank"
@@ -81,9 +100,37 @@ export function CashOutPanel({ balance }: { balance: string }) {
     setAccountNumber("");
     setAccountName("");
     setAddress("");
+    setError(null);
+    setResult(null);
   };
 
-  if (step === "soon") return <NotYet onDone={restart} />;
+  /** The user's own key signs a transfer out; Selkie's relayer pays the gas. */
+  const cashOut = async () => {
+    setSending(true);
+    setError(null);
+    try {
+      const sent = await nearPay(() =>
+        api.near.prepareTransfer({ toAccount: cleanAddress, amount, purpose: "cashout" }),
+      );
+      setResult(sent);
+      setStep("done");
+      toast("success", sent.message);
+      onSent?.();
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "That did not go out. Your money is safe. Try again.";
+      setError(message);
+      toast("error", message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (step === "done" && result) {
+    return <CashedOut amount={amount} to={cleanAddress} result={result} onDone={restart} />;
+  }
+
+  if (step === "soon") return <NotYet destination={destination} onDone={restart} />;
 
   if (step === "review") {
     return (
@@ -96,7 +143,9 @@ export function CashOutPanel({ balance }: { balance: string }) {
         accountName={accountName}
         address={cleanAddress}
         onBack={() => setStep("details")}
-        onConfirm={() => setStep("soon")}
+        onConfirm={live ? () => void cashOut() : () => setStep("soon")}
+        sending={sending}
+        error={error}
       />
     );
   }
@@ -203,7 +252,7 @@ export function CashOutPanel({ balance }: { balance: string }) {
       <PanelHead
         eyebrow="Cash out"
         title="Where should it go?"
-        blurb="Two ways out, and you pick each time. Nothing leaves until you have seen the numbers."
+        blurb={`${isNear ? "A few" : "Two"} ways out, and you pick each time. Nothing leaves until you have seen the numbers.`}
       />
 
       <div className="mt-6 space-y-3">
@@ -216,11 +265,27 @@ export function CashOutPanel({ balance }: { balance: string }) {
         />
         <Choice
           icon={<Wallet size={22} strokeWidth={2.2} />}
-          title="Another wallet"
-          blurb="Any wallet you already have. Straight there, nothing in between."
+          title={isNear ? "A NEAR account or exchange" : "Another wallet"}
+          blurb={
+            isNear
+              ? "Your own NEAR wallet, or an exchange's NEAR deposit account. Straight there, no fee."
+              : "Any wallet you already have. Straight there, nothing in between."
+          }
           meta="Seconds"
           onClick={() => start("wallet")}
         />
+        {isNear && (
+          <Choice
+            icon={<Globe size={22} strokeWidth={2.2} />}
+            title="Another chain"
+            blurb="USDC on Base, USDT on Tron and more, through NEAR Intents."
+            meta="Mainnet"
+            onClick={() => {
+              setDestination("chain");
+              setStep("soon");
+            }}
+          />
+        )}
       </div>
 
       <p className="mt-6 flex items-start gap-2.5 rounded-xl bg-pen/[0.05] p-3.5 text-[14px] leading-relaxed text-pen/70">
@@ -361,28 +426,27 @@ function WalletFields({
   return (
     <>
       <label className="label block" htmlFor="cashout-address">
-        Wallet address
+        {ADDRESS.label}
       </label>
       <textarea
         id="cashout-address"
         className="field mt-2 min-h-[5.25rem] resize-none break-all font-mono text-[13px] leading-relaxed"
-        placeholder="G…"
-        autoCapitalize="characters"
+        placeholder={ADDRESS.placeholder}
+        autoCapitalize={ADDRESS.capitalize}
         autoCorrect="off"
         spellCheck={false}
         value={address}
         onChange={(e) => onAddress(e.target.value)}
       />
       {cleanAddress.length > 0 && !valid && (
-        <p className="mt-2 text-sm font-semibold text-[#a11d34]">
-          That is not a complete address. It starts with G and is 56 characters long.
-        </p>
+        <p className="mt-2 text-sm font-semibold text-[#a11d34]">{ADDRESS.invalid}</p>
       )}
       <p className="mt-3 flex items-start gap-2.5 rounded-xl bg-[#a11d34]/[0.07] p-3.5 text-[14px] leading-relaxed text-pen/75">
         <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[#a11d34]" />
         <span>
-          Only send to a wallet you own, and check every character. Money sent to the wrong address
-          cannot be recovered by anyone.
+          {isNear
+            ? "Only send to an account you own, and check every character. For an exchange, use the NEAR deposit account it shows you and make sure it takes USDC on NEAR. Money sent to the wrong account cannot be recovered by anyone."
+            : "Only send to a wallet you own, and check every character. Money sent to the wrong address cannot be recovered by anyone."}
         </span>
       </p>
     </>
@@ -399,6 +463,8 @@ function Review({
   address,
   onBack,
   onConfirm,
+  sending = false,
+  error = null,
 }: {
   destination: Destination;
   amount: string;
@@ -409,6 +475,8 @@ function Review({
   address: string;
   onBack: () => void;
   onConfirm: () => void;
+  sending?: boolean;
+  error?: string | null;
 }) {
   const toBank = destination === "bank";
 
@@ -456,10 +524,13 @@ function Review({
         </p>
       )}
 
-      <button onClick={onConfirm} className="btn btn-gold mt-7 w-full">
-        {toBank ? "Send to my bank" : "Send to my wallet"}
+      {error && <p className="mt-4 text-center text-sm font-semibold text-[#a11d34]">{error}</p>}
+
+      <button onClick={onConfirm} disabled={sending} className="btn btn-gold mt-7 w-full">
+        {sending ? <Loader2 size={16} className="animate-spin" /> : null}
+        {sending ? "Sending" : toBank ? "Send to my bank" : isNear ? "Send to this account" : "Send to my wallet"}
       </button>
-      <button onClick={onBack} className="btn btn-dim mt-2.5 w-full">
+      <button onClick={onBack} disabled={sending} className="btn btn-dim mt-2.5 w-full">
         Change something
       </button>
     </Panel>
@@ -500,17 +571,21 @@ function Line({
  * the piece that actually moves the money is not, and a fake receipt would be a
  * worse thing to ship than an empty screen.
  */
-function NotYet({ onDone }: { onDone: () => void }) {
+function NotYet({ destination, onDone }: { destination: Destination; onDone: () => void }) {
+  const toChain = destination === "chain";
   return (
     <Panel>
       <div className="flex flex-col items-center py-4 text-center">
         <span className="grid h-16 w-16 place-items-center rounded-full border-2 border-gold bg-gold/15 text-gold-ink">
           <Clock size={26} strokeWidth={2.2} />
         </span>
-        <p className="mt-5 font-display text-2xl font-bold tracking-tight">Almost open</p>
+        <p className="mt-5 font-display text-2xl font-bold tracking-tight">
+          {toChain ? "Opens with mainnet" : "Almost open"}
+        </p>
         <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-pen/65">
-          Cashing out is the last piece we are putting in. Your money is exactly where you left it,
-          and this will start working without you having to do anything.
+          {toChain
+            ? "Cashing out to another chain runs through NEAR Intents, which only works on NEAR mainnet. This test version runs on testnet. Until then, cash out to a NEAR account or exchange."
+            : "Cashing out is the last piece we are putting in. Your money is exactly where you left it, and this will start working without you having to do anything."}
         </p>
         <div className="mt-7 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row">
           <Link href="/wallet/home" className="btn btn-gold sm:px-8">
@@ -518,6 +593,52 @@ function NotYet({ onDone }: { onDone: () => void }) {
           </Link>
           <button onClick={onDone} className="btn btn-dim sm:px-8">
             Have another look
+          </button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+/** Money left, for real: the amount, where it went, and the transaction to check it by. */
+function CashedOut({
+  amount,
+  to,
+  result,
+  onDone,
+}: {
+  amount: string;
+  to: string;
+  result: SendResult;
+  onDone: () => void;
+}) {
+  return (
+    <Panel>
+      <div className="flex flex-col items-center py-4 text-center">
+        <span className="grid h-16 w-16 place-items-center rounded-full border-2 border-[#2f7d3f]/40 bg-[#2f7d3f]/12 text-[#2f7d3f]">
+          <Check size={30} strokeWidth={2.6} />
+        </span>
+        <p className="mt-5 font-display text-[2rem] font-bold leading-none tracking-tight">{usd(amount)}</p>
+        <p className="mt-2 max-w-sm break-all font-mono text-[14px] font-bold text-pen/75">
+          to {ADDRESS.short(to)}
+        </p>
+        <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-pen/65">{result.message}</p>
+        {result.explorer && (
+          <a
+            href={result.explorer}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-bold text-pen/55 transition-colors hover:text-pen"
+          >
+            See it on the NEAR explorer <ExternalLink size={13} />
+          </a>
+        )}
+        <div className="mt-7 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row">
+          <Link href="/wallet/home" className="btn btn-gold sm:px-8">
+            Back to my wallet
+          </Link>
+          <button onClick={onDone} className="btn btn-dim sm:px-8">
+            Cash out more
           </button>
         </div>
       </div>
