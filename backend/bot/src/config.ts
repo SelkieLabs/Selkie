@@ -11,11 +11,17 @@ import type { XCredentials } from "./x/client";
  */
 
 export interface BotConfig {
+  /**
+   * Which Selkie this bot speaks for. On NEAR each person's own key signs every
+   * payment, so the bot never moves money: it answers with a link that opens
+   * Selkie ready to send, and needs no secret to act for anyone.
+   */
+  chain: BotChain;
   /** Selkie's own API. */
   apiUrl: string;
   /** Where people are pointed to open their wallet. */
   webUrl: string;
-  /** Proves to the API which person the bot is acting for. */
+  /** Proves to the API which person the bot is acting for. Empty on NEAR, where it never acts. */
   botSecret: string;
   /** Where the last-handled mention id is kept. */
   statePath: string;
@@ -30,12 +36,17 @@ export interface BotConfig {
   x?: XCredentials & { handle: string; pollMs: number; activeMs: number };
 }
 
+export type BotChain = "stellar" | "near";
+
 export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
-  const botSecret = required(env, "SELKIE_BOT_SECRET");
+  const chain: BotChain = env.SELKIE_CHAIN === "near" ? "near" : "stellar";
+  // A secret that can act as any user is only worth holding where the bot acts.
+  const botSecret = chain === "near" ? "" : required(env, "SELKIE_BOT_SECRET");
   // Fail here rather than on the first payment somebody tries to make.
-  assertUsableBotSecret(botSecret);
+  if (chain === "stellar") assertUsableBotSecret(botSecret);
 
   return {
+    chain,
     apiUrl: env.SELKIE_API_URL ?? "http://127.0.0.1:4000",
     // The live site. The old `selkiepay.vercel.app` is the frozen Canton build,
     // so falling back to it would quietly send people to a different product.

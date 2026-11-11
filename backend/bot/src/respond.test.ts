@@ -268,3 +268,48 @@ describe("how it talks", () => {
     assert.match(text, /USDC and XLM/);
   });
 });
+
+describe("on NEAR, money commands come back as a link", () => {
+  /** A client that fails the test if the bot ever tries to move money itself. */
+  const untouchable = selkie({
+    send: async () => assert.fail("the bot must not send on NEAR"),
+    request: async () => assert.fail("the bot must not request on NEAR"),
+  });
+  const near = (text: string) =>
+    respond(parseCommand(text), AMAKA, untouchable, { webUrl: "https://selkiepay.com", self: "SelkiePay", chain: "near" });
+
+  it("send opens Selkie with the payment filled in, and says nothing has moved", async () => {
+    const text = (await near("@SelkiePay send 5 to @tunde")) ?? "";
+    assert.match(text, /5 USDC to @tunde/);
+    assert.match(text, /selkiepay\.com\/pay\/tunde\?amount=5(\s|$)/);
+    assert.match(text, /Your own key signs it/);
+    assert.doesNotMatch(text, /Sent/);
+  });
+
+  it("carries the note in the link", async () => {
+    const text = (await near("@SelkiePay send 2.50 to @tunde for lunch")) ?? "";
+    assert.match(text, /\/pay\/tunde\?amount=2\.50&note=for\+lunch/);
+  });
+
+  it("request opens the ask, filled in", async () => {
+    const text = (await near("@SelkiePay request 12 from @kemi")) ?? "";
+    assert.match(text, /12 USDC from @kemi/);
+    assert.match(text, /selkiepay\.com\/ask\/kemi\?amount=12/);
+  });
+
+  it("only offers USDC", async () => {
+    assert.match((await near("@SelkiePay send 5 XLM to @tunde")) ?? "", /On Selkie I move USDC/);
+    assert.match((await near("@SelkiePay send 5 SCAMCOIN to @tunde")) ?? "", /On Selkie I move USDC/);
+  });
+
+  it("still catches paying yourself and paying the bot", async () => {
+    assert.match((await near("@SelkiePay send 5 to @amaka")) ?? "", /That is you/);
+    assert.match((await near("@SelkiePay send 5 to @SelkiePay")) ?? "", /That one is me/);
+  });
+
+  it("fits in a tweet, with the longest note the parser keeps", async () => {
+    const note = "x".repeat(80);
+    const text = (await near(`@SelkiePay send 123456.78 to @a_fifteen_chars ${note}`)) ?? "";
+    assert.ok(weigh(text) <= MAX_WEIGHT, `${weigh(text)}: ${text}`);
+  });
+});

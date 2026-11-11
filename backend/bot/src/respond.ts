@@ -1,3 +1,4 @@
+import type { BotChain } from "./config";
 import type { Command } from "./parse";
 import { SelkieApiError } from "./selkie";
 import type { SelkieClient, Sender } from "./selkie";
@@ -35,6 +36,12 @@ export interface RespondOptions {
   /** Where people are sent to open their wallet. */
   webUrl: string;
   /**
+   * On NEAR the person's own key signs every payment and the bot holds no way
+   * to act for them, so "send" and "request" come back as a link that opens
+   * Selkie with the payment filled in. Defaults to Stellar.
+   */
+  chain?: BotChain;
+  /**
    * The bot's own handle, so it can tell somebody they are paying the bot.
    *
    * People try this immediately, and it is the friendliest possible mistake:
@@ -58,6 +65,7 @@ export async function respond(
   if (!command) return null;
 
   const site = new Site(options.webUrl);
+  const near = options.chain === "near";
 
   switch (command.type) {
     case "balance":
@@ -70,7 +78,7 @@ export async function respond(
       return cap(helpText(site));
 
     case "error":
-      return cap(explain(command.reason, site));
+      return cap(explain(command.reason, site, near));
 
     case "send":
       if (isSelf(command.to, options.self)) {
@@ -78,6 +86,7 @@ export async function respond(
           lines("🙂 That one is me!", "", "Name a friend and I will send it to them.", "", `Try: send 5 to @friend`),
         );
       }
+      if (near) return cap(sendLink(command, sender, site));
       return cap(await sendMoney(command, sender, selkie, site, options));
 
     case "request":
@@ -86,8 +95,50 @@ export async function respond(
           lines("🙂 That one is me, and I have nothing of my own.", "", "Ask a friend instead.", "", "Try: request 5 from @friend"),
         );
       }
+      if (near) return cap(askLink(command, sender, site));
       return cap(await askFor(command, sender, selkie, site, options));
   }
+}
+
+/**
+ * NEAR: the payment, filled in, one tap away.
+ *
+ * The bot never signs for anyone on NEAR, so this is the whole job: say what
+ * the link will do, and make clear nothing moves until the person checks it
+ * in Selkie and signs with their own key.
+ */
+function sendLink(command: Extract<Command, { type: "send" }>, sender: Sender, site: Site): string {
+  if (command.to === sender.username) {
+    return lines("🙂 That is you!", "", "Pick someone else and I will set it up.", "", "Try: send 5 to @friend");
+  }
+  if (command.asset !== "USDC") return usdcOnly(site);
+  return lines(
+    "💸 Ready when you are",
+    "",
+    `${command.amount} USDC to @${command.to}`,
+    `👉 Check it and send: ${site.link("pay", command.to, command.amount, command.note)}`,
+    "",
+    "🔐 Your own key signs it. I can't move your money.",
+  );
+}
+
+function askLink(command: Extract<Command, { type: "request" }>, sender: Sender, site: Site): string {
+  if (command.from === sender.username) {
+    return lines("🙂 That is you!", "", "Name someone else and I will set it up.", "", "Try: request 5 from @friend");
+  }
+  if (command.asset !== "USDC") return usdcOnly(site);
+  return lines(
+    "🙋 Ready to ask",
+    "",
+    `${command.amount} USDC from @${command.from}`,
+    `👉 Check it and ask: ${site.link("ask", command.from, command.amount)}`,
+    "",
+    "Nothing moves until they say yes.",
+  );
+}
+
+function usdcOnly(site: Site): string {
+  return lines("🤔 On Selkie I move USDC", "", "Try: send 5 to @friend", "", `📖 ${site.docs}`);
 }
 
 /**
@@ -104,6 +155,13 @@ class Site {
   constructor(webUrl: string) {
     this.home = webUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
     this.docs = `${this.home}/docs`;
+  }
+
+  /** `selkiepay.com/pay/amaka?amount=5`: opens Selkie with the payment filled in. */
+  link(kind: "pay" | "ask", handle: string, amount: string, note?: string): string {
+    const query = new URLSearchParams({ amount });
+    if (note) query.set("note", note);
+    return `${this.home}/${kind}/${encodeURIComponent(handle)}?${query.toString()}`;
   }
 }
 
@@ -291,8 +349,9 @@ function took(ms: number): string {
   return seconds < 10 ? `${seconds.toFixed(1)} seconds` : `${Math.round(seconds)} seconds`;
 }
 
-function explain(reason: string, site: Site): string {
+function explain(reason: string, site: Site, near = false): string {
   if (reason.startsWith("unknown-asset")) {
+    if (near) return usdcOnly(site);
     return lines("🤔 I can move USDC and XLM", "", "Try: send 5 USDC to @friend", "", `📖 ${site.docs}`);
   }
   if (reason === "bad-amount") {

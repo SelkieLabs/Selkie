@@ -43,17 +43,37 @@ X or Telegram. It is a key to other people's money. So it is narrow by design:
 With `SELKIE_BOT_SECRET` unset the provider is not installed and none of this
 exists. A deployment that runs no bot should not be holding one.
 
+## On NEAR: links, never spending
+
+With `SELKIE_CHAIN=near` the bot moves no money at all. On NEAR the only key to
+a person's account is their own (their Privy wallet), and Selkie holds none, so
+there is nothing for a bot to sign with. That is the point, not a gap.
+
+What it does instead: "@SelkiePay send 5 to @amaka" gets a reply with a link,
+`<SELKIE_WEB_URL>/pay/amaka?amount=5`, and "ask @amaka for 5" gets
+`/ask/amaka?amount=5`. The link opens Send (or Requests) with the form filled
+in. The person checks it and signs with their own key, and the relayer pays
+the gas as usual.
+
+- No `SELKIE_BOT_SECRET` is needed or read, because the bot never acts as anyone.
+- Assets other than USDC get a plain "on Selkie I move USDC" reply.
+- The link survives a sign-in: `/pay/<handle>` keeps it in that browser for 30
+  minutes (`frontend/src/lib/pay-link.ts`), and Send picks it up once.
+- Dry run still defaults to on. Turning it off posts to X, which needs the
+  owner's say-so.
+
 ## Running it
 
 ```sh
-npm run dev:bot
+npm run dev:bot                        # Stellar: acts through the API
+SELKIE_CHAIN=near npm run dev:bot      # NEAR: replies with links only
 ```
 
 Reads the repo-root `.env`:
 
 | Variable | Meaning |
 | --- | --- |
-| `SELKIE_BOT_SECRET` | Required. Must match the API's. At least 32 characters. |
+| `SELKIE_BOT_SECRET` | Required on Stellar, unused on NEAR. Must match the API's. At least 32 characters. |
 | `SELKIE_API_URL` | Selkie's API. Defaults to `http://127.0.0.1:4000`. |
 | `SELKIE_WEB_URL` | Where people are pointed to open their wallet. |
 | `SELKIE_BOT_DRY_RUN` | `1` by default. Set `0` to let it post. |

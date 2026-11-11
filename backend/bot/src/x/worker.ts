@@ -1,5 +1,6 @@
 import { parseCommand } from "../parse";
 import { respond } from "../respond";
+import type { BotChain } from "../config";
 import type { SelkieClient } from "../selkie";
 import type { StateStore } from "../state";
 import { XApiError } from "./client";
@@ -42,6 +43,8 @@ export interface XWorkerOptions {
   handle: string;
   /** Where people are pointed to open their wallet. */
   webUrl: string;
+  /** On NEAR, money commands are answered with a link instead of moving money. */
+  chain?: BotChain;
   state: StateStore;
   /** The slowest it will poll, used when X reports no quota to work from. */
   pollMs?: number;
@@ -87,6 +90,7 @@ export class XWorker {
       pollMs: 15_000,
       activeMs: 3_000,
       dryRun: false,
+      chain: "stellar",
       log: console.log,
       sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
       ...options,
@@ -249,6 +253,7 @@ export class XWorker {
       this.#options.selkie,
       {
         webUrl: this.#options.webUrl,
+        chain: this.#options.chain,
         self: this.#options.handle,
         onError: (error) => this.#options.log(`unexpected: ${describe(error)}`),
       },

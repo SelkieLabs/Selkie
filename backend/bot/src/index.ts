@@ -23,6 +23,7 @@ async function main() {
       selkie,
       handle: config.x.handle,
       webUrl: config.webUrl,
+      chain: config.chain,
       state: new FileStateStore(config.statePath),
       pollMs: config.x.pollMs,
       activeMs: config.x.activeMs,
@@ -36,7 +37,11 @@ async function main() {
     throw new Error("No surface is configured. Set the X credentials to run the X worker.");
   }
 
-  console.log(`Selkie bot talking to ${config.apiUrl}`);
+  console.log(
+    config.chain === "near"
+      ? `Selkie bot on NEAR: replies with links to ${config.webUrl}; it never moves money`
+      : `Selkie bot talking to ${config.apiUrl}`,
+  );
   if (config.dryRun) {
     console.log("DRY RUN: replies are worked out and logged, and nothing is posted.");
     console.log("Set SELKIE_BOT_DRY_RUN=0 when you want it to post for real.");

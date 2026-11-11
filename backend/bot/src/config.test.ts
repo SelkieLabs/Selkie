@@ -84,3 +84,20 @@ describe("posting for real", () => {
     assert.equal(load({ SELKIE_BOT_DRY_RUN: "false" }).dryRun, false);
   });
 });
+
+describe("on NEAR", () => {
+  it("needs no bot secret, because it never acts for anyone", () => {
+    const config = loadBotConfig({ ...BASE, SELKIE_CHAIN: "near", SELKIE_BOT_SECRET: undefined });
+    assert.equal(config.chain, "near");
+    assert.equal(config.botSecret, "");
+  });
+
+  it("is Stellar unless told otherwise, and still demands the secret there", () => {
+    assert.equal(load().chain, "stellar");
+    assert.throws(() => loadBotConfig({ ...BASE, SELKIE_CHAIN: "stellar", SELKIE_BOT_SECRET: undefined }));
+  });
+
+  it("stays in dry run on NEAR too", () => {
+    assert.equal(load({ SELKIE_CHAIN: "near" }).dryRun, true);
+  });
+});
