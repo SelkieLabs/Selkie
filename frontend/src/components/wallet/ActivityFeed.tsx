@@ -16,6 +16,8 @@ import { TokenIcon } from "@/components/TokenIcon";
 import { TransactionSheet } from "@/components/wallet/TransactionSheet";
 import { useToast } from "@/contexts/ToastContext";
 import { ApiError, api, type ActivityEntry } from "@/lib/api";
+import { features, isNear } from "@/lib/chain";
+import { useNearPay } from "@/lib/near-wallet";
 import { dayKey, dayLabel, money, timeAgo } from "@/lib/format";
 import { MASK, useAmountsHidden } from "@/lib/privacy";
 
@@ -81,8 +83,8 @@ export function ActivityFeed({
         </span>
         <p className="mt-4 font-display text-lg font-bold tracking-tight">Nothing here yet</p>
         <p className="mx-auto mt-1.5 max-w-xs text-[15px] leading-relaxed text-pen/60">
-          Send a few dollars to any X or Telegram handle. They do not need an account, and it waits
-          for them until they sign in.
+          Send a few dollars to any {features.telegram ? "X or Telegram" : "X"} handle. They do not
+          need an account, and it waits for them until they sign in.
         </p>
       </div>
     );
@@ -149,6 +151,7 @@ export function ActivityFeed({
 
 function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void }) {
   const toast = useToast();
+  const nearPay = useNearPay();
   const hidden = useAmountsHidden();
   const [returning, setReturning] = useState(false);
   const [open, setOpen] = useState(false);
@@ -166,10 +169,14 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
     (!entry.refundableAt || Date.parse(entry.refundableAt) <= Date.now());
 
   const takeBack = async () => {
-    if (!entry.claimRef) return;
+    const claimRef = entry.claimRef;
+    if (!claimRef) return;
     setReturning(true);
     try {
-      const { message } = await api.refund(entry.claimRef);
+      // On NEAR only the sender's own key can take it back; Selkie relays it.
+      const { message } = isNear
+        ? await nearPay(() => api.near.prepareRefund(claimRef))
+        : await api.refund(claimRef);
       toast("success", message);
       setOpen(false);
       onChanged();
