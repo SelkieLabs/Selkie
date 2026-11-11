@@ -7,9 +7,12 @@
  * Every screen that takes a handle takes a platform with it, and they all read
  * the labels from here so the wording never drifts.
  */
+import { features } from "./chain";
+
 export type Platform = "x" | "telegram";
 
-export const PLATFORMS: Platform[] = ["x", "telegram"];
+/** The platforms this build can pay. NEAR accounts are named after X handles only. */
+export const PLATFORMS: Platform[] = features.telegram ? ["x", "telegram"] : ["x"];
 
 export const PLATFORM_LABEL: Record<Platform, string> = {
   x: "X",

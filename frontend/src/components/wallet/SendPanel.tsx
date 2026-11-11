@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, AtSign, Check, Clock, Loader2, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowLeft, AtSign, Check, Clock, ExternalLink, Loader2, Wallet } from "lucide-react";
 import { Avatar } from "@/components/Layout";
 import { PlatformLogo } from "@/components/Mark";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
@@ -15,8 +15,10 @@ import {
   type Recipient,
   type SendResult,
 } from "@/lib/api";
+import { features, isNear } from "@/lib/chain";
 import { DOLLAR, cleanAmount, looksLikeAddress, shortAddress, usd } from "@/lib/format";
-import { PLATFORM_FIELD, PLATFORM_LABEL, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
+import { useNearPay } from "@/lib/near-wallet";
+import { PLATFORMS, PLATFORM_FIELD, PLATFORM_LABEL, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
 
 type Step = "compose" | "confirm" | "done";
 
@@ -76,6 +78,7 @@ export function SendPanel({
   onSent: () => void;
 }) {
   const toast = useToast();
+  const nearPay = useNearPay();
   const [step, setStep] = useState<Step>("compose");
   const [mode, setMode] = useState<Mode>("handle");
   const [platform, setPlatform] = useState<Platform>("x");
@@ -144,16 +147,19 @@ export function SendPanel({
     setSending(true);
     setError(null);
     try {
-      const sent = await api.send(
-        {
-          to: mode === "address" ? cleanAddress : cleanHandle,
-          amount,
-          asset: DOLLAR,
-          ...(mode === "handle" ? { platform } : {}),
-          note: note.trim() || undefined,
-        },
-        intent ?? undefined,
-      );
+      // On NEAR the user's own key signs; Selkie only prepares and relays.
+      const sent = isNear
+        ? await nearPay(() => api.near.prepareSend({ to: cleanHandle, amount, note: note.trim() || undefined }))
+        : await api.send(
+            {
+              to: mode === "address" ? cleanAddress : cleanHandle,
+              amount,
+              asset: DOLLAR,
+              ...(mode === "handle" ? { platform } : {}),
+              note: note.trim() || undefined,
+            },
+            intent ?? undefined,
+          );
       setResult(sent);
       setStep("done");
       toast("success", sent.message ?? "Sent.");
@@ -194,6 +200,16 @@ export function SendPanel({
           <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-pen/65">
             {result.message}
           </p>
+          {result.explorer && (
+            <a
+              href={result.explorer}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-bold text-pen/55 transition-colors hover:text-pen"
+            >
+              See it on the NEAR explorer <ExternalLink size={13} />
+            </a>
+          )}
           <button onClick={reset} className="btn btn-gold mt-7 w-full sm:w-auto sm:px-10">
             Send someone else
           </button>
@@ -292,7 +308,13 @@ export function SendPanel({
             </p>
           ) : recipient.onSelkie ? (
             <p className="mt-5 text-[15px] leading-relaxed text-pen/65">
-              They already use Selkie, so this lands straight away.
+              They already use Selkie, so this lands straight away
+              {recipient.nearAccount && (
+                <>
+                  {" "}in <span className="font-mono text-[13px] text-pen/80">{recipient.nearAccount}</span>
+                </>
+              )}
+              .
             </p>
           ) : (
             <p className="mt-5 flex max-w-md items-start gap-2.5 rounded-xl bg-pen/[0.05] p-3.5 text-left text-[14px] leading-relaxed text-pen/70">
@@ -332,22 +354,24 @@ export function SendPanel({
         }
       />
 
-      <div className="seg mt-5">
-        <button
-          type="button"
-          onClick={() => setMode("handle")}
-          className={`seg-btn ${mode === "handle" ? "seg-on" : ""}`}
-        >
-          <AtSign size={14} strokeWidth={2.5} /> A handle
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("address")}
-          className={`seg-btn ${mode === "address" ? "seg-on" : ""}`}
-        >
-          <Wallet size={14} strokeWidth={2.5} /> An address
-        </button>
-      </div>
+      {features.payToAddress && (
+        <div className="seg mt-5">
+          <button
+            type="button"
+            onClick={() => setMode("handle")}
+            className={`seg-btn ${mode === "handle" ? "seg-on" : ""}`}
+          >
+            <AtSign size={14} strokeWidth={2.5} /> A handle
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("address")}
+            className={`seg-btn ${mode === "address" ? "seg-on" : ""}`}
+          >
+            <Wallet size={14} strokeWidth={2.5} /> An address
+          </button>
+        </div>
+      )}
 
       {mode === "address" && (
         <>
@@ -399,7 +423,7 @@ export function SendPanel({
 
       {mode === "handle" && (
         <>
-          <p className="label mt-6">Where</p>
+          {PLATFORMS.length > 1 && <p className="label mt-6">Where</p>}
           <PlatformToggle value={platform} onChange={setPlatform} idPrefix="send-platform" />
 
           <label className="label mt-5 block" htmlFor="send-handle">

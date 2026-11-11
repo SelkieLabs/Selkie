@@ -21,6 +21,8 @@ export function PlatformToggle({
   /** Distinguishes the radio group when two of these share a page. */
   idPrefix: string;
 }) {
+  // One platform is not a choice. Asking anyway is a question with one answer.
+  if (PLATFORMS.length < 2) return null;
   return (
     <div
       role="radiogroup"

@@ -28,4 +28,6 @@ export const features = {
   payMany: !isNear,
   /** Cash out to a bank or another chain. */
   cashOut: !isNear,
+  /** Send to a raw Stellar address. On NEAR, people are paid by handle. */
+  payToAddress: !isNear,
 } as const;
