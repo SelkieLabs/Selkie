@@ -1,12 +1,14 @@
 "use client";
 
-import { Loader2, Merge, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Bell, Loader2, Merge, Sparkles, X } from "lucide-react";
 import { TelegramLogo, XLogo } from "@/components/Mark";
 import { Sheet } from "@/components/Sheet";
 import { useAuth } from "@/contexts/useAuth";
 import type { ClaimOutcome } from "@/lib/api";
 import { features, isNear } from "@/lib/chain";
 import { DOLLAR, money, usd } from "@/lib/format";
+import { usePush } from "@/lib/push";
 
 /**
  * The one question asked before an account exists.
@@ -168,6 +170,59 @@ export function LinkHandleBanner() {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+const NUDGE_DISMISSED = "selkie.push-nudge-dismissed";
+
+function nudgeDismissed(): boolean {
+  try {
+    return localStorage.getItem(NUDGE_DISMISSED) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * One quiet offer, on the home tab, to be told when money comes in.
+ *
+ * Asked from a button, never on load: a browser's permission prompt that
+ * appears unasked mostly gets "Block", and that answer is permanent. Shown
+ * only while the answer could still be yes, and gone for good once dismissed.
+ */
+export function NotifyNudge() {
+  const { state, busy, error, turnOn } = usePush();
+  const [dismissed, setDismissed] = useState(nudgeDismissed);
+  if (!features.push || dismissed || (state !== "off" && !(busy || error))) return null;
+
+  const dismiss = () => {
+    setDismissed(true);
+    try {
+      localStorage.setItem(NUDGE_DISMISSED, "1");
+    } catch {
+      // Private mode: it comes back next visit, which is fine.
+    }
+  };
+
+  return (
+    <div className="chunk relative flex flex-col gap-4 p-5 pr-12 sm:flex-row sm:items-center">
+      <button
+        onClick={dismiss}
+        aria-label="Not now"
+        className="absolute right-3 top-3 rounded-full p-1.5 text-pen/40 transition hover:bg-pen/[0.06] hover:text-pen/70"
+      >
+        <X size={16} strokeWidth={2.4} />
+      </button>
+      <div className="flex-1">
+        <p className="font-display text-[17px] font-bold tracking-tight">Know the moment you are paid</p>
+        <p className="mt-1 text-[14px] leading-relaxed text-pen/70">
+          {error ?? "Get a notification on this device when money comes in, even with Selkie closed."}
+        </p>
+      </div>
+      <button onClick={() => void turnOn()} disabled={busy} className="btn btn-dark btn-sm shrink-0">
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} strokeWidth={2.4} />} Turn on
+      </button>
     </div>
   );
 }

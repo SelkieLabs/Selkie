@@ -30,4 +30,6 @@ export const features = {
   cashOut: true,
   /** Send to an address instead of a handle: a Stellar G... key, or a NEAR account name. */
   payToAddress: true,
+  /** Notifications when money comes in, with Selkie closed (Web Push). Served by the NEAR API. */
+  push: isNear,
 } as const;

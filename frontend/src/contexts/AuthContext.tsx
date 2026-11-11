@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 import { isNear } from "@/lib/chain";
 import { useNearWallet } from "@/lib/near-wallet";
+import { stopPushHere } from "@/lib/push";
 
 /**
  * Signing in, in one place.
@@ -284,6 +285,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signOut: async () => {
         try {
+          // Before the session ends: unsubscribing needs it.
+          await stopPushHere();
           await privy.logout();
         } catch (error) {
           // Signing out has to work even when the round trip does not. Leaving

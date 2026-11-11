@@ -14,6 +14,7 @@ import {
   CreateAccountGate,
   LinkHandleBanner,
   MergePrompt,
+  NotifyNudge,
 } from "@/components/wallet/Prompts";
 import { Rail } from "@/components/wallet/Rail";
 import { ReceivePanel } from "@/components/wallet/ReceivePanel";
@@ -177,6 +178,7 @@ export default function WalletTabPage() {
 
               {tab === "home" && (
                 <div className="space-y-6">
+                  <NotifyNudge />
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
                     <ActivityFeed
                       entries={entries}

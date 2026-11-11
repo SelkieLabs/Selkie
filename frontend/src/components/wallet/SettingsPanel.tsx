@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, ExternalLink, LogOut, MessageCircle, Plus, ShieldCheck } from "lucide-react";
+import { Bell, BellRing, Check, Copy, ExternalLink, Loader2, LogOut, MessageCircle, Plus, ShieldCheck } from "lucide-react";
 import { SignOutModal } from "@/components/SignOutModal";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { useToast } from "@/contexts/ToastContext";
@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/useAuth";
 import type { Handle, Identity, User } from "@/lib/api";
 import { features, isNear } from "@/lib/chain";
 import { explorer } from "@/lib/explorer";
+import { usePush, type PushState } from "@/lib/push";
 
 /** What each login is called in the interface, and what it can do. */
 const PROVIDERS: Record<string, { label: string; payable: boolean }> = {
@@ -96,6 +97,8 @@ export function SettingsPanel({ user }: { user: User }) {
         <AddressRow address={user.address} />
       </Panel>
 
+      {features.push && <NotificationsPanel />}
+
       <Panel>
         <PanelHead eyebrow="Account" title="Leave" />
         <p className="mt-1 text-[15px] leading-relaxed text-pen/60">
@@ -115,6 +118,52 @@ export function SettingsPanel({ user }: { user: User }) {
         />
       )}
     </div>
+  );
+}
+
+/** Why notifications cannot be switched on here, in words a person can act on. */
+const PUSH_BLOCKERS: Partial<Record<PushState, string>> = {
+  "install-first":
+    "On iPhone and iPad, add Selkie to your Home Screen first: tap Share, then Add to Home Screen. Open Selkie from there and turn this on.",
+  blocked: "Notifications are blocked for Selkie in this browser. Allow them in the browser's site settings, then come back here.",
+  unsupported: "This browser cannot show notifications. Selkie still tells you when money comes in while it is open.",
+  unavailable: "Notifications are not switched on for this server yet.",
+};
+
+/** Push is per device, so this says "this device" every time it can. */
+function NotificationsPanel() {
+  const { state, busy, error, turnOn, turnOff } = usePush();
+  if (state === "checking") return null;
+  const blocker = PUSH_BLOCKERS[state];
+
+  return (
+    <Panel>
+      <PanelHead
+        eyebrow="Notifications"
+        title="When money comes in"
+        blurb="A notification on this device the moment someone pays you, even with Selkie closed."
+      />
+      <div className="mt-5">
+        {blocker ? (
+          <p className="text-[15px] leading-relaxed text-pen/60">{blocker}</p>
+        ) : state === "on" ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-2 text-[15px] font-semibold text-[#2f7d3f]">
+              <BellRing size={16} strokeWidth={2.4} /> On for this device
+            </span>
+            <button onClick={() => void turnOff()} disabled={busy} className="btn btn-dim btn-sm">
+              {busy && <Loader2 size={14} className="animate-spin" />} Turn off
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => void turnOn()} disabled={busy} className="btn btn-dark btn-sm">
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} strokeWidth={2.4} />} Turn on
+            notifications
+          </button>
+        )}
+        {error && <p className="mt-3 text-[14px] font-medium text-[#b91c34]">{error}</p>}
+      </div>
+    </Panel>
   );
 }
 

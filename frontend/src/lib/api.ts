@@ -403,6 +403,19 @@ export const api = {
     return entries;
   },
 
+  /** Notifications when money comes in (Web Push). See lib/push.ts. */
+  push: {
+    async key(): Promise<{ publicKey: string | null }> {
+      return request("/push/key");
+    },
+    async subscribe(subscription: PushSubscriptionJSON): Promise<{ subscribed: true }> {
+      return request("/push/subscribe", json(subscription));
+    },
+    async unsubscribe(endpoint: string): Promise<{ subscribed: false }> {
+      return request("/push/unsubscribe", json({ endpoint }));
+    },
+  },
+
   /**
    * NEAR mode. Money moves in three steps: the backend prepares the exact
    * action, the user's own key signs it in the browser, and Selkie's relayer

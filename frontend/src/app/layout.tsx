@@ -10,7 +10,7 @@ export const metadata: Metadata = isNear
       title: "Selkie: send money to any X handle, on NEAR",
       description:
         "Send USDC to any X handle on NEAR. The person you pay needs no app, no wallet and no gas. If they have not joined yet, it waits until they sign in with X.",
-      icons: { icon: "/mark.svg" },
+      icons: { icon: "/mark.svg", apple: "/apple-touch-icon.png" },
       openGraph: {
         type: "website",
         title: "Selkie on NEAR",
@@ -21,7 +21,7 @@ export const metadata: Metadata = isNear
       title: "Selkie: send money to anyone with a handle",
       description:
         "Send money to any X handle. The person receiving it needs no app, no wallet and no seed phrase. If they have not joined yet, it waits for them.",
-      icons: { icon: "/mark.svg" },
+      icons: { icon: "/mark.svg", apple: "/apple-touch-icon.png" },
       openGraph: {
         type: "website",
         title: "Selkie",
