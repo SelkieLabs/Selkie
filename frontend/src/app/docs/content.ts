@@ -5,12 +5,14 @@ import {
   CircleHelp,
   Hourglass,
   Inbox,
+  KeyRound,
   LogIn,
   Send,
   ShieldCheck,
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
+import { NEAR_NETWORK, isNear } from "@/lib/chain";
 
 /**
  * Everything the documentation says, as data.
@@ -47,7 +49,217 @@ export interface Section {
   blocks: Block[];
 }
 
-export const SECTIONS: Section[] = [
+/** The suffix every handle account sits under on this network. */
+const HANDLE_SUFFIX = `x.selkiepay.${NEAR_NETWORK === "mainnet" ? "near" : "testnet"}`;
+
+/**
+ * The NEAR build. Requests, Pay many, Cash out and the X bot are not part of
+ * it yet, so their sections are left out rather than promised; the account and
+ * its single key get a section of their own, because that is the claim a reader
+ * can go and check.
+ */
+const NEAR_SECTIONS: Section[] = [
+  {
+    id: "what-it-is",
+    icon: Sparkles,
+    title: "What Selkie is",
+    lead: "Money that finds people by the name you already know them by.",
+    blocks: [
+      {
+        p: "Selkie lets you send USDC to anyone using their X handle. You do not need their bank details, their phone number, or a long string of characters you have to copy correctly. You need the name you already call them.",
+      },
+      {
+        p: "The person receiving it does not need to have heard of us. If they have not joined yet, the money waits for their X account, and it is theirs the moment they sign in. There is nothing for them to install and nothing for them to set up first.",
+      },
+      {
+        note: `Selkie runs on NEAR ${NEAR_NETWORK}. Your money sits in your own NEAR account, and you never pay gas.`,
+      },
+    ],
+  },
+  {
+    id: "getting-started",
+    icon: LogIn,
+    title: "Getting started",
+    lead: "One tap. There is no form.",
+    blocks: [
+      {
+        steps: [
+          "Open Selkie and choose Continue with X.",
+          `Selkie makes you a NEAR account named after your handle, like amaka.${HANDLE_SUFFIX}.`,
+          "That is it. Anything already waiting for your handle lands straight away.",
+        ],
+      },
+      {
+        p: "You are not asked to write anything down, and there is no password to lose. Signing in with the same X account on a new phone gets you back to the same account and the same money.",
+      },
+    ],
+  },
+  {
+    id: "your-account",
+    icon: KeyRound,
+    title: "Your NEAR account",
+    lead: "Named after you, and only you hold its key.",
+    blocks: [
+      {
+        p: `Your account is a real NEAR account with a name people can read: your X handle, then .${HANDLE_SUFFIX}. The name stays yours even if you later rename yourself on X.`,
+      },
+      {
+        list: [
+          "Its only key is yours, made for you when you first signed in.",
+          "Selkie holds no key to it, so Selkie cannot move what is in it.",
+          "You can check this yourself: open your account on the explorer and look at its keys. There is one.",
+        ],
+      },
+      {
+        note: "Your key is kept by Privy, the sign-in service Selkie uses, alongside your login. Selkie never sees it.",
+      },
+    ],
+  },
+  {
+    id: "sending",
+    icon: Send,
+    title: "Sending money",
+    lead: "A name and an amount.",
+    blocks: [
+      {
+        steps: [
+          "Go to Send.",
+          "Type the X handle you are paying. It does not matter whether they have an account.",
+          "Type the amount, and add a note if you want them to know what it is for.",
+          "Send it. You approve the payment with your key, and that is all.",
+        ],
+      },
+      {
+        p: "If they already have a Selkie account, it goes straight into their NEAR account in seconds. If they do not, see the next section.",
+      },
+      {
+        note: "There is no gas to pay and no fee. You approve the payment, and Selkie pays the network cost of sending it. Selkie can pay for what you approved, but it cannot change it.",
+      },
+    ],
+  },
+  {
+    id: "waiting",
+    icon: Hourglass,
+    title: "When they have not joined yet",
+    lead: "The money waits, and it stays yours until they take it.",
+    blocks: [
+      {
+        p: "Sending to someone who has never used Selkie works exactly the same way. You do not have to check first, and you do not have to invite them.",
+      },
+      {
+        p: "The money waits in Selkie's escrow contract on NEAR, set aside for that X account. When they sign in with X, it is released into their own NEAR account.",
+      },
+      {
+        list: [
+          "Only the person who signs in with that X account can receive it.",
+          "When Selkie can look the X account up, the money waits for the account itself, not just the username, so a renamed handle does not lose it.",
+          "If nobody claims it before its waiting period ends, you can take it back.",
+        ],
+      },
+      {
+        note: "Selkie can do one thing with money that is waiting: release it to whoever signs in with that X account. It cannot take it, change the amount, or stop your refund.",
+      },
+    ],
+  },
+  {
+    id: "receiving",
+    icon: Inbox,
+    title: "Receiving money",
+    lead: "There is nothing to do.",
+    blocks: [
+      {
+        p: "People pay you at your X handle. When something arrives it is in your NEAR account and in your activity, and you do not have to accept anything.",
+      },
+      {
+        p: "If money was sent to you before you joined, it lands when you first sign in with X. You do not need a link, a code, or anything from the person who sent it.",
+      },
+    ],
+  },
+  {
+    id: "adding-money",
+    icon: ArrowDownToLine,
+    title: "Adding money",
+    lead: "Test USDC, for now.",
+    blocks: [
+      {
+        p: `Selkie on NEAR runs on ${NEAR_NETWORK}, so the money in it is test USDC with no real value. Receive shows your account name and a QR code: anyone can send USDC on NEAR ${NEAR_NETWORK} to it.`,
+      },
+      {
+        p: "To get some test USDC, use Circle's USDC faucet and pick NEAR testnet. Selkie shows USDC only, so send nothing else to your account.",
+      },
+      {
+        note: "Adding money from other chains, through NEAR Intents, is coming soon.",
+      },
+    ],
+  },
+  {
+    id: "safety",
+    icon: ShieldCheck,
+    title: "Safety",
+    lead: "What Selkie can and cannot do.",
+    blocks: [
+      {
+        list: [
+          "Nobody can move your money by messaging you, replying to you, or asking you for it.",
+          "Selkie never asks you for a password, a code, or anything to write down, because there is nothing of that kind to give.",
+          "Your account's only key is yours. Selkie holds none, so money in your account is out of its reach.",
+          "Money waiting for an X account is released only to whoever signs in with it.",
+        ],
+      },
+      {
+        p: "Two things you do rely on. Privy keeps your key, the same way it keeps your sign-in. And Selkie's release service is what confirms an X sign-in before waiting money moves, so if it were ever compromised it could send waiting money to the wrong account. Money already in your account is not affected.",
+      },
+      {
+        p: "What Selkie cannot do is undo a payment that has already landed. Sending money to the wrong handle is like handing cash to the wrong person: read the name before you send. Money still waiting to be claimed is the exception, and you can take that back.",
+      },
+    ],
+  },
+  {
+    id: "questions",
+    icon: CircleHelp,
+    title: "Common questions",
+    blocks: [
+      {
+        qa: [
+          {
+            q: "Does the person I am paying need an account?",
+            a: "No. If they have not joined, the money waits for their X account until they sign in, then lands in their own NEAR account.",
+          },
+          {
+            q: "What does it cost?",
+            a: "Nothing to send and nothing to receive. Selkie pays the gas, so you never need NEAR in your account.",
+          },
+          {
+            q: "How long does it take?",
+            a: "Seconds, if they already have an account. If they do not, it lands the moment they sign in.",
+          },
+          {
+            q: "What if I send to the wrong handle?",
+            a: "If they have an account it is gone, the same as handing cash to the wrong person. If they do not, it is still waiting and you can take it back once its waiting period ends.",
+          },
+          {
+            q: "Can I sign in another way?",
+            a: "Not on NEAR. Your account is named after your X handle, so X is how you sign in.",
+          },
+          {
+            q: "Is my balance public?",
+            a: "Selkie never posts it. But your account is a public NEAR account, so anyone who looks it up on the explorer can see what it holds, as with any account on a blockchain.",
+          },
+          {
+            q: "Is this real money?",
+            a: `Not yet. Selkie on NEAR was built at NEAR HACKATHON and runs on ${NEAR_NETWORK}, so balances are test USDC with no real value.`,
+          },
+          {
+            q: "Do I need to know anything about crypto?",
+            a: "No. You will never be asked for a seed phrase or to buy gas. If you want to look under the hood, your account is an ordinary NEAR account you can open on the explorer.",
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const STELLAR_SECTIONS: Section[] = [
   {
     id: "what-it-is",
     icon: Sparkles,
@@ -275,3 +487,5 @@ export const SECTIONS: Section[] = [
     ],
   },
 ];
+
+export const SECTIONS: Section[] = isNear ? NEAR_SECTIONS : STELLAR_SECTIONS;

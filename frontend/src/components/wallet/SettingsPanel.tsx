@@ -7,6 +7,7 @@ import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { useToast } from "@/contexts/ToastContext";
 import { useAuth } from "@/contexts/useAuth";
 import type { Handle, Identity, User } from "@/lib/api";
+import { features, isNear } from "@/lib/chain";
 import { explorer } from "@/lib/explorer";
 
 /** What each login is called in the interface, and what it can do. */
@@ -57,7 +58,7 @@ export function SettingsPanel({ user }: { user: User }) {
               <Plus size={14} strokeWidth={2.6} /> Add X
             </button>
           )}
-          {!linked.has("telegram") && (
+          {features.telegram && !linked.has("telegram") && (
             <button onClick={() => void linkTelegram()} className="btn btn-dark btn-sm">
               <MessageCircle size={14} strokeWidth={2.4} /> Add Telegram
             </button>
@@ -69,7 +70,11 @@ export function SettingsPanel({ user }: { user: User }) {
         <PanelHead
           eyebrow="Sign in"
           title="Logins on this account"
-          blurb="Any one of these opens the same wallet."
+          blurb={
+            isNear
+              ? "Signing in with X opens your NEAR account, on any device."
+              : "Any one of these opens the same wallet."
+          }
         />
         <ul className="mt-5 space-y-2.5">
           {user.identities.map((identity) => (
@@ -80,9 +85,13 @@ export function SettingsPanel({ user }: { user: User }) {
 
       <Panel>
         <PanelHead
-          eyebrow="Wallet"
+          eyebrow={isNear ? "Account" : "Wallet"}
           title="Where your money lives"
-          blurb="Your own address on Stellar. Share it to receive, and check it whenever you want to see the money for yourself."
+          blurb={
+            isNear
+              ? "Your own NEAR account, named after your X handle. Its only key is yours; Selkie holds none. Share it to receive, and check it on the explorer whenever you like."
+              : "Your own address on Stellar. Share it to receive, and check it whenever you want to see the money for yourself."
+          }
         />
         <AddressRow address={user.address} />
       </Panel>
@@ -90,8 +99,9 @@ export function SettingsPanel({ user }: { user: User }) {
       <Panel>
         <PanelHead eyebrow="Account" title="Leave" />
         <p className="mt-1 text-[15px] leading-relaxed text-pen/60">
-          Signing out does not touch your money. Sign back in with any login above and everything is
-          where you left it.
+          {isNear
+            ? "Signing out does not touch your money. Sign back in with X and everything is where you left it."
+            : "Signing out does not touch your money. Sign back in with any login above and everything is where you left it."}
         </p>
         <button onClick={() => setLeaving(true)} className="btn btn-danger btn-sm mt-5">
           <LogOut size={14} /> Sign out
@@ -164,10 +174,15 @@ function AddressRow({ address }: { address: string }) {
     try {
       await navigator.clipboard.writeText(address);
       setCopied(true);
-      toast("success", "Address copied.");
+      toast("success", isNear ? "Account name copied." : "Address copied.");
       setTimeout(() => setCopied(false), 1800);
     } catch {
-      toast("error", "Could not copy. Select the address and copy it by hand.");
+      toast(
+        "error",
+        isNear
+          ? "Could not copy. Select the account name and copy it by hand."
+          : "Could not copy. Select the address and copy it by hand.",
+      );
     }
   };
 
@@ -179,7 +194,7 @@ function AddressRow({ address }: { address: string }) {
       <div className="mt-3 flex flex-wrap gap-2.5">
         <button onClick={() => void copy()} className="btn btn-dim btn-sm">
           {copied ? <Check size={14} strokeWidth={2.8} /> : <Copy size={14} strokeWidth={2.5} />}
-          {copied ? "Copied" : "Copy address"}
+          {copied ? "Copied" : isNear ? "Copy account name" : "Copy address"}
         </button>
         <a
           href={explorer.account(address)}

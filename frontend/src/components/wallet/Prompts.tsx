@@ -5,6 +5,7 @@ import { TelegramLogo, XLogo } from "@/components/Mark";
 import { Sheet } from "@/components/Sheet";
 import { useAuth } from "@/contexts/useAuth";
 import type { ClaimOutcome } from "@/lib/api";
+import { features, isNear } from "@/lib/chain";
 import { DOLLAR, money, usd } from "@/lib/format";
 
 /**
@@ -24,11 +25,12 @@ export function CreateAccountGate() {
           <Sparkles size={24} strokeWidth={2.2} />
         </span>
         <h1 className="mt-5 font-display text-[1.7rem] font-bold leading-tight tracking-tight">
-          One tap and your wallet is ready
+          {isNear ? "One tap and your NEAR account is ready" : "One tap and your wallet is ready"}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-pen/65">
-          No seed phrase, no app to install, nothing to write down. Selkie looks after the boring
-          part so you can just send money.
+          {isNear
+            ? "Your own NEAR account, named after your X handle. Its only key is yours and Selkie never sees it. No seed phrase, nothing to write down."
+            : "No seed phrase, no app to install, nothing to write down. Selkie looks after the boring part so you can just send money."}
         </p>
 
         <button
@@ -37,7 +39,7 @@ export function CreateAccountGate() {
           className="btn btn-gold mt-7 w-full"
         >
           {busy ? <Loader2 size={16} className="animate-spin" /> : null}
-          {busy ? "Setting up" : "Create my wallet"}
+          {busy ? "Setting up" : isNear ? "Create my account" : "Create my wallet"}
         </button>
 
         <p className="mt-4 text-[13px] leading-relaxed text-pen/45">
@@ -87,10 +89,11 @@ export function ClaimCelebration({ claimed }: { claimed: ClaimOutcome[] }) {
         <p className="mt-3 text-[15px] leading-relaxed text-pen/65">
           {handle ? (
             <>
-              Someone sent this to <b>@{handle}</b> before you joined. It is in your wallet now.
+              Someone sent this to <b>@{handle}</b> before you joined. It is in your{" "}
+              {isNear ? "NEAR account" : "wallet"} now.
             </>
           ) : (
-            <>This was waiting for you. It is in your wallet now.</>
+            <>This was waiting for you. It is in your {isNear ? "NEAR account" : "wallet"} now.</>
           )}
         </p>
         <button onClick={dismissClaimed} className="btn btn-gold mt-7 w-full">
@@ -147,19 +150,23 @@ export function LinkHandleBanner() {
     <div className="chunk-gold mt-6 flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
       <div className="flex-1">
         <p className="font-display text-[17px] font-bold tracking-tight">
-          Add a handle so people can pay you
+          {isNear ? "Add your X handle so people can pay you" : "Add a handle so people can pay you"}
         </p>
         <p className="mt-1 text-[14px] leading-relaxed text-pen/70">
-          Anything already waiting for your handle lands the moment you do. Either one works.
+          {isNear
+            ? "Your NEAR account is named after it, and anything already waiting for it lands the moment you do."
+            : "Anything already waiting for your handle lands the moment you do. Either one works."}
         </p>
       </div>
       <div className="flex shrink-0 gap-2">
         <button onClick={() => void linkX()} className="btn btn-dark btn-sm">
           <XLogo size={13} /> Add X
         </button>
-        <button onClick={() => void linkTelegram()} className="btn btn-dark btn-sm">
-          <TelegramLogo size={14} /> Add Telegram
-        </button>
+        {features.telegram && (
+          <button onClick={() => void linkTelegram()} className="btn btn-dark btn-sm">
+            <TelegramLogo size={14} /> Add Telegram
+          </button>
+        )}
       </div>
     </div>
   );

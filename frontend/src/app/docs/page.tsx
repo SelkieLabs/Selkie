@@ -5,6 +5,7 @@ import { ArrowRight, ArrowUp, Check, Copy, Lightbulb } from "lucide-react";
 import { Footer, Header, Shell } from "@/components/Layout";
 import { Reveal } from "@/components/Reveal";
 import { useAuth } from "@/contexts/useAuth";
+import { isNear } from "@/lib/chain";
 import { SECTIONS, type Block, type Section } from "./content";
 
 /**
@@ -87,7 +88,11 @@ export default function Docs() {
  * read any of this will see it.
  */
 function Shortcuts() {
-  const picks = ["getting-started", "on-x", "questions"] as const;
+  // The NEAR build has no X bot section yet; its account section is the one
+  // most worth a visit instead.
+  const picks = isNear
+    ? (["getting-started", "your-account", "questions"] as const)
+    : (["getting-started", "on-x", "questions"] as const);
 
   return (
     <div className="mt-9 grid gap-3.5 sm:grid-cols-3">

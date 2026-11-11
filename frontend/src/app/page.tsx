@@ -10,8 +10,11 @@ import {
   ClipboardX,
   Clock,
   Coins,
+  Fuel,
+  KeyRound,
   Undo2,
   UserPlus,
+  UserRound,
   Users,
   Zap,
 } from "lucide-react";
@@ -22,14 +25,23 @@ import { SiteFooter } from "@/components/landing/SiteFooter";
 import { Redirect } from "@/components/Redirect";
 import { Reveal } from "@/components/Reveal";
 import { useAuth } from "@/contexts/useAuth";
+import { NEAR_NETWORK, isNear } from "@/lib/chain";
 
 /** The numbers that are actually true today. No invented user counts. */
-const PROOF = [
-  { figure: "Seconds", caption: "for money to land" },
-  { figure: "$0", caption: "for the person you pay" },
-  { figure: "One tap", caption: "to open your account" },
-  { figure: "Nothing", caption: "for them to install" },
-];
+const PROOF = isNear
+  ? [
+      { figure: "Seconds", caption: "for money to land" },
+      { figure: "$0", caption: "in gas, for either of you" },
+      // The NEAR pitch in one figure: the account's only key is the user's.
+      { figure: "0", caption: "keys Selkie holds to your account" },
+      { figure: "Nothing", caption: "for them to install" },
+    ]
+  : [
+      { figure: "Seconds", caption: "for money to land" },
+      { figure: "$0", caption: "for the person you pay" },
+      { figure: "One tap", caption: "to open your account" },
+      { figure: "Nothing", caption: "for them to install" },
+    ];
 
 const PAINS: { icon: LucideIcon; title: string; body: string }[] = [
   {
@@ -49,22 +61,77 @@ const PAINS: { icon: LucideIcon; title: string; body: string }[] = [
   },
 ];
 
-const STEPS = [
+const STEPS = isNear
+  ? [
+      {
+        title: "Type a handle",
+        body: "Any X handle. You do not need their address, their number, or their permission.",
+      },
+      {
+        title: "Send the money",
+        body: "It goes straight away if they are here. If they are not, it waits for their X account, and nobody else can touch it.",
+      },
+      {
+        title: "They sign in with X",
+        body: "It lands in their own NEAR account, named after their handle. Nothing to download, nothing to write down, no gas.",
+      },
+    ]
+  : [
+      {
+        title: "Type a handle",
+        body: "Any X handle. You do not need their address, their number, or their permission.",
+      },
+      {
+        title: "Send the money",
+        body: "It goes straight away if they are here. If they are not, it waits, and nobody else can touch it.",
+      },
+      {
+        title: "They sign in",
+        body: "One tap and it is theirs. No app to download, nothing to write down, nothing to set up.",
+      },
+    ];
+
+type Feature = { icon: LucideIcon; title: string; body: string; span: string };
+
+/**
+ * On NEAR, Pay many and Cash out are not built yet, so their cards give way to
+ * the three things NEAR adds: a named account, a key only the owner holds, and
+ * no gas. Refunds fold into "Money that waits" to keep the grid at 4+2 / 2+2+2.
+ */
+const NEAR_FEATURES: Feature[] = [
   {
-    title: "Type a handle",
-    body: "Any X handle. You do not need their address, their number, or their permission.",
+    icon: AtSign,
+    title: "Pay a name, not a code",
+    body: "Type the handle you already know them by. Nothing to copy, nothing to paste wrong, nothing to check twice before you press send.",
+    span: "lg:col-span-4",
   },
   {
-    title: "Send the money",
-    body: "It goes straight away if they are here. If they are not, it waits, and nobody else can touch it.",
+    icon: Clock,
+    title: "Money that waits",
+    body: "Paying someone who has never heard of us works the same. It waits for their X account, and comes back to you if they never claim it.",
+    span: "lg:col-span-2",
   },
   {
-    title: "They sign in",
-    body: "One tap and it is theirs. No app to download, nothing to write down, nothing to set up.",
+    icon: UserRound,
+    title: "An account with your name on it",
+    body: `Sign in as @amaka and your NEAR account is amaka.x.selkiepay.${NEAR_NETWORK === "mainnet" ? "near" : "testnet"}.`,
+    span: "lg:col-span-2",
+  },
+  {
+    icon: KeyRound,
+    title: "One key, and it is yours",
+    body: "Your account's only key is made when you sign in. Selkie holds none. Check it on the explorer.",
+    span: "lg:col-span-2",
+  },
+  {
+    icon: Fuel,
+    title: "Nobody pays gas",
+    body: "You approve each payment. Selkie pays the network fee, so a small amount stays small.",
+    span: "lg:col-span-2",
   },
 ];
 
-const FEATURES: { icon: LucideIcon; title: string; body: string; span: string }[] = [
+const STELLAR_FEATURES: Feature[] = [
   {
     icon: AtSign,
     title: "Pay a name, not a code",
@@ -97,16 +164,25 @@ const FEATURES: { icon: LucideIcon; title: string; body: string; span: string }[
   },
 ];
 
+const FEATURES = isNear ? NEAR_FEATURES : STELLAR_FEATURES;
+
 const SIDES = [
   {
     eyebrow: "If you are sending",
     title: "You need one thing: their handle",
-    points: [
-      "No address to ask them for",
-      "No waiting for them to sign up",
-      "Take it back if they never claim it",
-      "See exactly where every payment got to",
-    ],
+    points: isNear
+      ? [
+          "No address to ask them for",
+          "No waiting for them to sign up",
+          "No gas to pay, ever",
+          "Take it back if they never claim it",
+        ]
+      : [
+          "No address to ask them for",
+          "No waiting for them to sign up",
+          "Take it back if they never claim it",
+          "See exactly where every payment got to",
+        ],
   },
   {
     eyebrow: "If you are getting paid",
@@ -114,7 +190,7 @@ const SIDES = [
     points: [
       "Nothing to download",
       "Nothing to write down or keep safe",
-      "Sign in the way you always do",
+      isNear ? "Sign in with X, the way you always do" : "Sign in the way you always do",
       "Anything sent before you joined is already there",
     ],
   },
@@ -155,9 +231,19 @@ export default function Landing() {
                   </h1>
 
                   <p className="lp-lead text-balance mt-6 max-w-xl">
-                    Type their handle, pick an amount, send. There is nothing for them to download
-                    and nothing for you to set up. If they have not joined yet, the money simply
-                    waits until they do.
+                    {isNear ? (
+                      <>
+                        Type their X handle, pick an amount, send. There is nothing for them to
+                        download and no gas for anyone to pay. If they have not joined yet, the
+                        money waits until they sign in, then lands in their own NEAR account.
+                      </>
+                    ) : (
+                      <>
+                        Type their handle, pick an amount, send. There is nothing for them to
+                        download and nothing for you to set up. If they have not joined yet, the
+                        money simply waits until they do.
+                      </>
+                    )}
                   </p>
                 </Reveal>
 
@@ -177,7 +263,9 @@ export default function Landing() {
 
                   <p className="mt-5 flex items-center gap-2 text-[14px] font-medium text-ivory/45">
                     <Zap size={14} strokeWidth={2.4} className="text-gold/70" />
-                    Continue with Google or X. Free to open, takes one tap.
+                    {isNear
+                      ? "Continue with X. Your own NEAR account, free, in one tap."
+                      : "Continue with Google or X. Free to open, takes one tap."}
                   </p>
 
                   {problem && (
@@ -386,7 +474,9 @@ export default function Landing() {
                   </button>
                 </div>
                 <p className="mt-5 text-[13.5px] font-semibold text-pen/55">
-                  Free to open. One tap with Google or X.
+                  {isNear
+                    ? `Free to open. One tap with X. Runs on NEAR ${NEAR_NETWORK}.`
+                    : "Free to open. One tap with Google or X."}
                 </p>
               </div>
             </Reveal>

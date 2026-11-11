@@ -2,8 +2,55 @@
 
 import { useState } from "react";
 import { Plus } from "lucide-react";
+import { isNear } from "@/lib/chain";
 
-const QUESTIONS: { q: string; a: string }[] = [
+type Question = { q: string; a: string };
+
+/**
+ * The NEAR answers. Two of them are fixed wording from the hackathon brief
+ * (where the money is kept, and what Selkie can do with money that is waiting)
+ * because they are the trust claims a reader can check on the explorer.
+ */
+const NEAR_QUESTIONS: Question[] = [
+  {
+    q: "Does the person I am paying need an account?",
+    a: "No. That is the whole point. You send to their X handle and the money waits for that X account. When they sign in with X for the first time, it lands in their own NEAR account. If they never turn up, you take it back.",
+  },
+  {
+    q: "What does it cost?",
+    a: "Nothing. Opening your account is free, and nobody pays gas to send or receive. You approve each payment and Selkie pays the network fee, so a small amount stays a small amount.",
+  },
+  {
+    q: "How long does it take to arrive?",
+    a: "Seconds. If the person you paid has already signed in once, it is in their balance before you have closed the tab.",
+  },
+  {
+    q: "What if I send to the wrong handle?",
+    a: "If they have not claimed it yet, it is still waiting, and you can take it back from your activity list once its waiting period ends. Once someone has claimed a payment it belongs to them, the same as cash.",
+  },
+  {
+    q: "Is there anything to write down or keep safe?",
+    a: "Nothing. No long code, no twelve words, no file to back up. You sign in with X and your money is there, on any device.",
+  },
+  {
+    q: "Can I get the money out?",
+    a: "You can send it on to anyone with an X handle, whenever you like. Moving it out to other chains, through NEAR Intents, is coming soon.",
+  },
+  {
+    q: "Where is my money actually kept?",
+    a: "In your own NEAR account, named after your X handle. Its only key is yours, created when you signed in. Selkie holds no key to it. Check it yourself on the explorer.",
+  },
+  {
+    q: "What can Selkie do with money waiting for me?",
+    a: "Only one thing: release it to the account of the person who signs in with that X account. It can't take it, change the amount, or stop the sender's refund.",
+  },
+  {
+    q: "Is this real money?",
+    a: "Not yet. Selkie on NEAR runs on testnet, so balances are test USDC with no real value.",
+  },
+];
+
+const STELLAR_QUESTIONS: Question[] = [
   {
     q: "Does the person I am paying need an account?",
     a: "No. That is the whole point. You send to their handle and the money is held for them. When they sign in for the first time, with one tap, it is already there. If they never turn up, you take it back.",
@@ -33,6 +80,8 @@ const QUESTIONS: { q: string; a: string }[] = [
     a: "In an account that belongs to you and nobody else, with its own address you can look up at any time. We cannot spend it and we cannot freeze it.",
   },
 ];
+
+const QUESTIONS = isNear ? NEAR_QUESTIONS : STELLAR_QUESTIONS;
 
 /**
  * The questions people ask before they will put money into something.

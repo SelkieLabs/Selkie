@@ -3,6 +3,7 @@
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { Mark, XLogo } from "@/components/Mark";
+import { NEAR_NETWORK, isNear } from "@/lib/chain";
 
 const COLUMNS: { title: string; links: { label: string; href: string; external?: boolean }[] }[] = [
   {
@@ -95,7 +96,11 @@ export function SiteFooter() {
 
         <div className="mt-16 flex flex-col items-center justify-between gap-3 border-t border-ivory/[0.08] pt-7 text-[13.5px] text-ivory/40 sm:flex-row">
           <span>© {new Date().getFullYear()} Selkie Labs</span>
-          <span>Send money to anyone with a handle</span>
+          <span>
+            {isNear
+              ? `Built at NEAR HACKATHON. Runs on NEAR ${NEAR_NETWORK}.`
+              : "Send money to anyone with a handle"}
+          </span>
         </div>
       </div>
     </footer>

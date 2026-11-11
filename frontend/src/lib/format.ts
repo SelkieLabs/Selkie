@@ -1,5 +1,10 @@
-export const ASSETS = ["USDC", "XLM"] as const;
-export type Asset = (typeof ASSETS)[number];
+import { isNear } from "./chain";
+
+const ALL_ASSETS = ["USDC", "XLM"] as const;
+export type Asset = (typeof ALL_ASSETS)[number];
+
+/** What this chain holds. Selkie on NEAR is USDC only; XLM is Stellar's own coin. */
+export const ASSETS: readonly Asset[] = isNear ? ["USDC"] : ALL_ASSETS;
 
 /** What each asset is called in the interface. */
 export const ASSET_LABEL: Record<string, string> = {
