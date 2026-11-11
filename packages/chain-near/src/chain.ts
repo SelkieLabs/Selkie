@@ -14,13 +14,8 @@
 import { Account, JsonRpcProvider, KeyPair, PublicKey, actions, type SignedDelegate } from "near-api-js";
 import type { NearServerConfig } from "./config";
 import type { PreparedDelegate } from "./delegate";
+import { listAccessKeys, type AccessKeySummary } from "./keys";
 import { GAS, escrowEvents, firstFailure, type Call, type EscrowEvent, type OutcomeLike, type PaymentView } from "./escrow";
-
-export interface AccessKeySummary {
-  publicKey: string;
-  /** "full" or the contract + methods a function-call key is limited to. */
-  permission: "full" | { receiverId: string; methodNames: string[] };
-}
 
 export interface TxOutcome {
   txHash: string;
@@ -69,17 +64,7 @@ export class NearChain {
   }
 
   async listKeys(accountId: string): Promise<AccessKeySummary[]> {
-    const list = await this.provider.viewAccessKeyList({ accountId, finalityQuery: { finality: "final" } });
-    return list.keys.map((key) => ({
-      publicKey: key.public_key,
-      permission:
-        key.access_key.permission === "FullAccess" || !("FunctionCall" in key.access_key.permission)
-          ? "full"
-          : {
-              receiverId: key.access_key.permission.FunctionCall.receiver_id,
-              methodNames: key.access_key.permission.FunctionCall.method_names,
-            },
-    }));
+    return listAccessKeys(this.provider, accountId);
   }
 
   async usdcBalance(accountId: string): Promise<bigint> {

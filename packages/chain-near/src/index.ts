@@ -9,6 +9,7 @@ export * from "./chain";
 export * from "./config";
 export * from "./delegate";
 export * from "./escrow";
+export * from "./keys";
 export * from "./names";
 export * from "./recipient";
 export * from "./relayer";
