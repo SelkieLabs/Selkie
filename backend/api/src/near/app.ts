@@ -25,7 +25,10 @@ import type { User } from "../identity/types";
 import { userHandles } from "../identity/types";
 import { BalanceWatch } from "./balance-watch";
 import { NearAccountError, NearIdentityChain } from "./identity-chain";
-import { notifyingActivity, type PushNotifier } from "../push/notifier";
+import { registerEmailRoutes } from "../email/routes";
+import type { EmailService } from "../email/service";
+import { notifyingActivity, type Notifier } from "../notify/arrival";
+import type { PushNotifier } from "../push/notifier";
 import { registerPushRoutes } from "../push/routes";
 import { InMemoryPushStore, type PushStore } from "../push/store";
 import { InMemoryRequestStore, type RequestStore } from "../requests/store";
@@ -47,6 +50,8 @@ export interface NearAppDeps {
   limits?: Partial<Record<keyof typeof LIMITS, number>> | false;
   /** Web Push. Without it, money-in notices only show in an open tab. */
   push?: { store: PushStore; notifier: PushNotifier; publicKey: string };
+  /** Email notices. Without it, Settings says email is not available. */
+  email?: EmailService;
   /** Tests shorten how long outside money must hold before it is written down. */
   watch?: { settleAfterMs?: number; now?: () => number };
 }
@@ -87,7 +92,8 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
   const config = chain.config;
   const feed = deps.activity ?? new InMemoryActivityStore();
   // Every line of money in also goes to the person's phone, when they asked.
-  const activity = deps.push ? notifyingActivity(feed, deps.push.notifier) : feed;
+  const notifiers: Notifier[] = [deps.push?.notifier, deps.email].filter((notifier) => notifier !== undefined);
+  const activity = notifiers.length > 0 ? notifyingActivity(feed, notifiers) : feed;
   const watch = new BalanceWatch({ accounts: deps.accounts, activity, ...deps.watch });
   const near = new NearIdentityChain({ chain, accounts: deps.accounts, watch });
   const identity = new IdentityService({
@@ -285,8 +291,11 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     publicKey: deps.push?.publicKey ?? null,
     requireUser,
   });
-  // Let notifications already on their way finish before the process exits.
-  app.addHook("onClose", async () => deps.push?.notifier.settled());
+  registerEmailRoutes(app, { service: deps.email ?? null, requireUser, limited: capped("auth") });
+  // Let notices already on their way finish before the process exits.
+  app.addHook("onClose", async () => {
+    await Promise.all(notifiers.map((notifier) => notifier.settled()));
+  });
 
   app.get("/activity", async (request, reply) => {
     const user = await requireUser(request, reply);

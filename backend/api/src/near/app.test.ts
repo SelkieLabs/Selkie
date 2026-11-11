@@ -18,6 +18,8 @@ import { InMemoryUserStore } from "../identity/store";
 import { InMemoryRequestStore } from "../requests/store";
 import { buildNearApp } from "./app";
 import { OUTSIDE } from "./balance-watch";
+import { EmailService, type OutgoingEmail } from "../email/service";
+import { InMemoryEmailStore } from "../email/store";
 import { PushNotifier } from "../push/notifier";
 import { InMemoryPushStore } from "../push/store";
 import { SimulatedNearChain } from "./simulated-chain";
@@ -65,6 +67,9 @@ let chain: SimulatedNearChain;
 let requests: InMemoryRequestStore;
 let accounts: InMemoryNearAccountStore;
 let notifier: PushNotifier;
+let emails: EmailService;
+/** Everything handed to the email provider. */
+let mails: OutgoingEmail[];
 /** What reached each browser's push service: endpoint -> notification bodies. */
 let pushed: Map<string, string[]>;
 /** The balance watch's clock, moved by hand. */
@@ -77,6 +82,13 @@ beforeEach(async () => {
   accounts = new InMemoryNearAccountStore();
   clock = 0;
   pushed = new Map();
+  mails = [];
+  emails = new EmailService({
+    store: new InMemoryEmailStore(),
+    send: async (mail) => void mails.push(mail),
+    webUrl: "https://selkie.test",
+    linkSecret: "test-secret",
+  });
   const pushStore = new InMemoryPushStore();
   notifier = new PushNotifier({
     store: pushStore,
@@ -86,6 +98,7 @@ beforeEach(async () => {
   });
   app = await buildNearApp({
     push: { store: pushStore, notifier, publicKey: "BPublicKeyForTests" },
+    email: emails,
     users: new InMemoryUserStore(),
     provider: new WalletProvider(),
     chain: chain as unknown as NearChain,
@@ -607,6 +620,65 @@ describe("NEAR app", () => {
       chain.fund(tunde.account!, 5n * DOLLAR);
       assert.equal((await pay(tunde, { to: "@amaka", amount: "1" })).statusCode, 200);
       assert.deepEqual(await delivered(amaka), []);
+    });
+  });
+
+  describe("email notices", () => {
+    const post = (who: Person, url: string, payload: object) => app.inject({ method: "POST", url, headers: auth(who), payload });
+
+    async function provenEmail(who: Person, address: string) {
+      const started = await post(who, "/email", { email: address });
+      assert.equal(started.statusCode, 200, started.body);
+      assert.deepEqual(started.json(), { available: true, email: address, verified: false, pending: true });
+      const code = /\b(\d{6})\b/.exec(mails.at(-1)!.text)![1];
+      const verified = await post(who, "/email/verify", { code });
+      assert.equal(verified.statusCode, 200, verified.body);
+      assert.equal(verified.json().verified, true);
+    }
+
+    test("prove an address, get paid, get an email; the email's own link stops them", async () => {
+      const tunde = person("2001", "tunde");
+      const amaka = person("1001", "amaka");
+      await signIn(tunde);
+      await signIn(amaka);
+      const before = await app.inject({ method: "GET", url: "/email", headers: auth(amaka) });
+      assert.deepEqual(before.json(), { available: true, email: null, verified: false, pending: false });
+      await provenEmail(amaka, "amaka@example.com");
+
+      chain.fund(tunde.account!, 5n * DOLLAR);
+      assert.equal((await pay(tunde, { to: "@amaka", amount: "2" })).statusCode, 200);
+      await emails.settled();
+      const mail = mails.at(-1)!;
+      assert.equal(mail.to, "amaka@example.com");
+      assert.equal(mail.subject, "@tunde sent you 2.00 USDC");
+
+      // A mail app's one-click unsubscribe: a form POST, no sign-in.
+      const oneClick = new URL(mail.headers!["List-Unsubscribe"]!.slice(1, -1));
+      const stopped = await app.inject({
+        method: "POST",
+        url: `/email/unsubscribe${oneClick.search}`,
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        payload: "List-Unsubscribe=One-Click",
+      });
+      assert.equal(stopped.statusCode, 200, stopped.body);
+      assert.equal((await app.inject({ method: "GET", url: "/email", headers: auth(amaka) })).json().email, null);
+
+      assert.equal((await pay(tunde, { to: "@amaka", amount: "1" })).statusCode, 200);
+      await emails.settled();
+      assert.equal(mails.at(-1), mail, "no more emails");
+    });
+
+    test("a wrong code is refused with words, and a forged link stops nothing", async () => {
+      const amaka = person("1001", "amaka");
+      await signIn(amaka);
+      await post(amaka, "/email", { email: "amaka@example.com" });
+      const wrong = await post(amaka, "/email/verify", { code: "12345" });
+      assert.equal(wrong.statusCode, 400);
+      assert.match(wrong.json().error, /not right/);
+
+      const forged = await app.inject({ method: "POST", url: "/email/unsubscribe?u=not-a-uuid&t=x" });
+      assert.equal(forged.statusCode, 400);
+      assert.equal((await app.inject({ method: "POST", url: "/email/verify" })).statusCode, 401);
     });
   });
 });

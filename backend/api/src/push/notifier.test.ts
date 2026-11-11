@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { InMemoryActivityStore } from "../activity/store";
-import { PushNotifier, arrivalMessage, displayAmount, notifyingActivity } from "./notifier";
+import { arrivalNotice as arrivalMessage, displayAmount, notifyingActivity } from "../notify/arrival";
+import { PushNotifier } from "./notifier";
 import { isPushEndpoint } from "./routes";
 import { InMemoryPushStore, MAX_SUBSCRIPTIONS_PER_USER } from "./store";
 
@@ -85,7 +86,7 @@ describe("PushNotifier", () => {
     await store.save(sub("https://fcm.googleapis.com/fcm/send/phone"));
     const bodies: string[] = [];
     const notifier = new PushNotifier({ store, send: async (_target, payload) => void bodies.push(JSON.parse(payload).body) });
-    const feed = notifyingActivity(new InMemoryActivityStore(), notifier);
+    const feed = notifyingActivity(new InMemoryActivityStore(), [notifier]);
 
     await feed.record("u1", { kind: "send", chain: "near", amount: usdc("1"), counterparty: "@amaka", status: "confirmed" });
     await feed.record("u1", { kind: "receive", chain: "near", amount: usdc("3"), counterparty: "@amaka", status: "confirmed" });

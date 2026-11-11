@@ -3,6 +3,9 @@ import { PostgresActivityStore } from "../activity/postgres-store";
 import { migrate } from "../db/migrate";
 import { openPool } from "../db/pool";
 import { PostgresUserStore } from "../identity/postgres-store";
+import { createHmac } from "node:crypto";
+import { PostgresEmailStore } from "../email/postgres-store";
+import { EmailService, logSender, resendSender } from "../email/service";
 import { PrivyIdentityProvider } from "../identity/privy";
 import { PushNotifier, webPushSender } from "../push/notifier";
 import { PostgresPushStore } from "../push/postgres-store";
@@ -52,6 +55,27 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
         }
       : undefined;
 
+  // Email is optional too. Resend in production; locally, EMAIL_DEV_LOG=1
+  // prints each email to this console so the code can be read without a provider.
+  const sendEmail =
+    env.RESEND_API_KEY && env.EMAIL_FROM
+      ? resendSender({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM })
+      : env.EMAIL_DEV_LOG === "1"
+        ? logSender
+        : null;
+  const email = sendEmail
+    ? new EmailService({
+        store: new PostgresEmailStore(pool),
+        send: sendEmail,
+        webUrl: (env.EMAIL_LINK_BASE_URL || env.SELKIE_WEB_URL || "http://localhost:3000").replace(/\/$/, ""),
+        // Its own secret if given; otherwise one derived from the Privy secret,
+        // which every NEAR deploy already has and which this cannot reveal.
+        linkSecret:
+          env.EMAIL_LINK_SECRET || createHmac("sha256", privy.appSecret).update("selkie email unsubscribe links").digest("hex"),
+        onError: (error) => console.warn("[email]", error instanceof Error ? error.message : error),
+      })
+    : undefined;
+
   const app = await buildNearApp({
     users: new PostgresUserStore(pool),
     // The user's key is their Privy embedded NEAR wallet; nothing else is.
@@ -63,6 +87,7 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
     requests: new PostgresRequestStore(pool),
     xLookup: env.X_BEARER_TOKEN ? new XApiUserLookup(env.X_BEARER_TOKEN) : noXLookup,
     push,
+    email,
   });
 
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
@@ -82,4 +107,11 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
   console.log(`accounts under ${config.handleParent}; relayer ${config.relayerAccount}; oracle ${config.oracleAccount}`);
   console.log(env.X_BEARER_TOKEN ? "X user-id recipient keys on" : "X user-id lookup off (username keys only)");
   console.log(push ? "push notifications on" : "push notifications off (npm run push:keys, then restart)");
+  console.log(
+    !email
+      ? "email notices off (set RESEND_API_KEY and EMAIL_FROM, or EMAIL_DEV_LOG=1)"
+      : env.RESEND_API_KEY
+        ? "email notices on (Resend)"
+        : "email notices on, printed here instead of sent (EMAIL_DEV_LOG=1)",
+  );
 }
