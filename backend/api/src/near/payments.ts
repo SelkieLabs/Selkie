@@ -10,6 +10,7 @@ import type { HandleRef, Money } from "@selkie/core";
 import { handleKey } from "@selkie/core";
 import {
   MAX_PAY_MANY,
+  MIN_HOLD_UNITS,
   USDC_DECIMALS,
   directTransfer,
   fromBaseUnits,
@@ -39,6 +40,11 @@ import type { XUserLookup } from "./x-lookup";
 const NOTE_MAX = 120;
 
 export const NOT_AN_ACCOUNT = "That is not a NEAR account name. It looks like alice.near, or 64 letters and numbers.";
+
+/** Said when a payment that would wait in the escrow is under its floor. */
+export const BELOW_MIN_HOLD =
+  "The smallest amount that can wait for someone who hasn't joined yet is $" +
+  `${fromBaseUnits(MIN_HOLD_UNITS, USDC_DECIMALS)}.`;
 
 /** Said before paying an account that runs code. */
 export const CONTRACT_WARNING = (accountId: string) =>
@@ -138,6 +144,7 @@ export class NearPayments {
         intent: { kind: "send", to, amount, recipientAccount: recipient.address, recipientUserId: recipient.id, requestId },
       };
     }
+    if (units < MIN_HOLD_UNITS) throw new Refusal(400, BELOW_MIN_HOLD);
     const key = await this.recipientKey(to);
     return {
       call: holdTransfer(this.config.usdcContract, this.config.escrowContract, {
@@ -227,6 +234,7 @@ export class NearPayments {
         items.push({ to, recipientKey: key.key });
       }
     }
+    if (holds.length > 0 && each < MIN_HOLD_UNITS) throw new Refusal(400, BELOW_MIN_HOLD);
     return {
       call: payManyCall(this.config.usdcContract, this.config.escrowContract, {
         direct,

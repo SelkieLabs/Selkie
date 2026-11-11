@@ -36,7 +36,7 @@ use near_sdk::json_types::{U64, U128};
 use near_sdk::store::{IterableSet, LookupMap};
 use near_sdk::{
     AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, PromiseError,
-    PromiseOrValue, env, ext_contract, near, require,
+    PromiseOrValue, assert_one_yocto, env, ext_contract, near, require,
 };
 use std::collections::BTreeMap;
 
@@ -65,6 +65,8 @@ pub const STORAGE_RESERVE: NearToken = NearToken::from_millinear(500);
 
 const ONE_YOCTO: NearToken = NearToken::from_yoctonear(1);
 const NS_PER_SEC: u64 = 1_000_000_000;
+/// Storage key prefix for each token's smallest payment (see `min_hold`).
+const MIN_HOLD_PREFIX: &[u8] = b"min_hold:";
 
 /// Prefixes for the persistent collections. Append only: reordering or
 /// deleting a variant would point a deployed contract at the wrong data.
@@ -108,6 +110,8 @@ pub struct ConfigView {
     pub oracle: AccountId,
     pub tokens: Vec<AccountId>,
     pub max_lifetime_secs: u64,
+    /// Smallest payment held, per allowed token, in its base units.
+    pub min_hold: BTreeMap<AccountId, U128>,
 }
 
 /// The payments of one token taken out by a claim, carried to the callback so
@@ -193,6 +197,13 @@ impl HandleEscrow {
             Ok(hold) => hold,
             Err(why) => return refuse(amount, why),
         };
+        // Every payment costs this contract storage until it is claimed or
+        // refunded. A floor makes filling it with dust cost the spammer real
+        // money for as long as the dust sits here.
+        let floor = min_hold(&token);
+        if hold.items.iter().any(|(_, item)| *item < floor) {
+            return refuse(amount, "a payment is below the minimum hold");
+        }
         let Some(expiry_ns) = hold
             .lifetime_secs
             .checked_mul(NS_PER_SEC)
@@ -427,18 +438,29 @@ impl HandleEscrow {
             oracle: self.oracle.clone(),
             tokens: self.tokens.iter().cloned().collect(),
             max_lifetime_secs: self.max_lifetime_secs,
+            min_hold: self
+                .tokens
+                .iter()
+                .map(|token| (token.clone(), U128(min_hold(token))))
+                .collect(),
         }
     }
 
     // ---- owner -----------------------------------------------------------
+    //
+    // Each owner method wants exactly 1 yoctoNEAR attached. Only a full-access
+    // key can attach a deposit, so a function-call key the owner hands out (to
+    // a wallet, a dapp) can never rotate the oracle or change what is held.
 
     /// Rotate the backend account that attests logins.
+    #[payable]
     pub fn set_oracle(&mut self, oracle: AccountId) {
         self.assert_owner();
         env::log_str(&format!("oracle changed from {} to {oracle}", self.oracle));
         self.oracle = oracle;
     }
 
+    #[payable]
     pub fn add_token(&mut self, token: AccountId) {
         self.assert_owner();
         self.tokens.insert(token);
@@ -446,9 +468,19 @@ impl HandleEscrow {
 
     /// Stops new holds in `token`. Payments already held in it stay claimable
     /// and refundable: payouts never consult the allowlist.
+    #[payable]
     pub fn remove_token(&mut self, token: AccountId) {
         self.assert_owner();
         self.tokens.remove(&token);
+    }
+
+    /// The smallest single payment held in `token`, in its base units (USDC:
+    /// 10000 = 0.01). Applies to new holds only; 0 turns the floor off.
+    #[payable]
+    pub fn set_min_hold(&mut self, token: AccountId, amount: U128) {
+        self.assert_owner();
+        env::log_str(&format!("min hold for {token} set to {}", amount.0));
+        env::storage_write(&min_hold_key(&token), &amount.0.to_le_bytes());
     }
 }
 
@@ -460,6 +492,7 @@ impl HandleEscrow {
             env::predecessor_account_id() == self.owner,
             "only the owner can do this"
         );
+        assert_one_yocto();
     }
 
     /// Add `id` to a recipient's index, keeping it sorted and free of
@@ -563,6 +596,20 @@ fn transfer_succeeded(index: u64) -> bool {
         env::promise_result_checked(index, 0),
         Err(PromiseError::Failed)
     )
+}
+
+/// Each token's minimum lives under its own storage key rather than in the
+/// state struct, so contracts deployed before it existed upgrade in place:
+/// their stored state still reads, and an unset token simply has no floor.
+fn min_hold_key(token: &AccountId) -> Vec<u8> {
+    [MIN_HOLD_PREFIX, token.as_bytes()].concat()
+}
+
+fn min_hold(token: &AccountId) -> u128 {
+    env::storage_read(&min_hold_key(token))
+        .and_then(|bytes| <[u8; 16]>::try_from(bytes).ok())
+        .map(u128::from_le_bytes)
+        .unwrap_or(0)
 }
 
 /// NEAR this account holds beyond what its current storage locks up.

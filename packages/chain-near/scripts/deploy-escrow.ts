@@ -19,6 +19,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Account, JsonRpcProvider, KeyPair, actions, nearToYocto, type KeyPairString } from "near-api-js";
 import { nearConfigFromEnv } from "../src/config";
+import { MIN_HOLD_UNITS } from "../src/escrow";
 
 const WASM = resolve(import.meta.dirname, "../../../contracts-near/target/wasm32-unknown-unknown/release/selkie_handle_escrow.wasm");
 const FAUCET_URL = "https://helper.nearprotocol.com/account";
@@ -69,6 +70,30 @@ async function topUp(): Promise<void> {
   }
 }
 
+/**
+ * The smallest payment the escrow will hold in USDC, the same floor prepare
+ * checks. Signed by the owner with a full-access key: owner methods want
+ * exactly 1 yoctoNEAR, which a function-call key cannot attach.
+ */
+async function setMinHold() {
+  const current = (await provider.callFunction({ contractId: escrow.accountId, method: "get_config", args: {} })) as {
+    min_hold?: Record<string, string>;
+  };
+  const want = MIN_HOLD_UNITS.toString();
+  if (current.min_hold?.[config.usdcContract] === want) return;
+  const rootKey = process.env.NEAR_ROOT_KEY as KeyPairString | undefined;
+  if (!rootKey) throw new Error("NEAR_ROOT_KEY missing from .env: the owner signs set_min_hold");
+  const ownerAccount = new Account(owner!, provider, rootKey);
+  const set = await ownerAccount.callFunctionRaw({
+    contractId: escrow.accountId,
+    methodName: "set_min_hold",
+    args: { token: config.usdcContract, amount: want },
+    deposit: 1n,
+    gas: 30_000_000_000_000n,
+  });
+  console.log(`min hold ${want} for ${config.usdcContract}: ${tx(set.transaction.hash)}`);
+}
+
 async function main() {
   await topUp();
   const code = readFileSync(WASM);
@@ -87,6 +112,7 @@ async function main() {
     });
     console.log(`initialised: ${tx(init.transaction.hash)}`);
   }
+  await setMinHold();
   const view = await provider.callFunction({ contractId: escrow.accountId, method: "get_config", args: {} });
   console.log("config", JSON.stringify(view));
   console.log(`balance ${(Number((await balance(escrow.accountId)) / 10n ** 20n) / 10_000).toFixed(4)} NEAR`);

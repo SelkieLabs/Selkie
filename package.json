@@ -27,6 +27,7 @@
     "near:deploy-escrow": "tsx --env-file-if-exists=.env packages/chain-near/scripts/deploy-escrow.ts",
     "push:keys": "tsx backend/api/scripts/push-keys.ts",
     "near:rotate-oracle": "tsx --env-file-if-exists=.env packages/chain-near/scripts/rotate-oracle.ts",
+    "build:contracts:near": "RUSTFLAGS='-C link-arg=-s --cfg near' cargo build --manifest-path contracts-near/Cargo.toml -p selkie-handle-escrow --target wasm32-unknown-unknown --release",
     "test:contracts:near": "cargo test --manifest-path contracts-near/Cargo.toml",
     "prove:keys": "tsx packages/chain-near/scripts/prove-keys.ts",
     "test:live:near": "tsx --env-file-if-exists=.env packages/chain-near/scripts/live.ts"

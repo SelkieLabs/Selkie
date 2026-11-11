@@ -128,6 +128,8 @@ async function main() {
       contractId: escrowId!,
       methodName: "set_oracle",
       args: { oracle: oracleId },
+      // Owner methods want exactly 1 yoctoNEAR: proof a full-access key signed.
+      deposit: 1n,
       gas: 30_000_000_000_000n,
     });
     console.log(`escrow   oracle ${config.oracle} -> ${oracleId}`);

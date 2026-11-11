@@ -57,6 +57,24 @@ fn ctx(predecessor: AccountId, now: u64) {
     );
 }
 
+/// Make the next call come from `predecessor` with `deposit` attached, the way
+/// a wallet signs an owner method.
+fn ctx_paying(predecessor: AccountId, deposit: NearToken) {
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id(escrow())
+            .predecessor_account_id(predecessor)
+            .block_timestamp(T0)
+            .attached_deposit(deposit)
+            .build()
+    );
+}
+
+/// An owner call, with the 1 yoctoNEAR every owner method wants.
+fn as_owner() {
+    ctx_paying(owner(), NearToken::from_yoctonear(1));
+}
+
 /// Make the next call a callback seeing `results` from the promises before it.
 fn callback_ctx(results: Vec<PromiseResult>) {
     let context = VMContextBuilder::new()
@@ -551,7 +569,7 @@ fn restored_payments_merge_with_holds_made_meanwhile() {
 #[test]
 fn claim_with_two_tokens_restores_only_the_failed_one() {
     let mut c = setup();
-    ctx(owner(), T0);
+    as_owner();
     c.add_token(eurc());
     hold(&mut c, alice(), 100, KEY_A, 60);
     let msg = json!({"kind": "hold", "recipient": KEY_A, "lifetime_secs": 60});
@@ -793,6 +811,7 @@ fn config_and_views_use_string_numbers() {
             "oracle": "oracle.testnet",
             "tokens": ["usdc.testnet"],
             "max_lifetime_secs": MAX_LIFETIME,
+            "min_hold": {"usdc.testnet": "0"},
         })
     );
     hold(&mut c, alice(), 7, KEY_A, 60);
@@ -808,7 +827,7 @@ fn owner_rotates_the_oracle_and_edits_tokens() {
     let mut c = setup();
     hold(&mut c, alice(), 100, KEY_A, 60);
 
-    ctx(owner(), T0);
+    as_owner();
     c.set_oracle(acc("oracle2.testnet"));
     c.remove_token(usdc());
     assert_eq!(c.get_config().oracle, acc("oracle2.testnet"));
@@ -826,7 +845,7 @@ fn owner_rotates_the_oracle_and_edits_tokens() {
 #[should_panic(expected = "only the owner can do this")]
 fn non_owner_cannot_set_the_oracle() {
     let mut c = setup();
-    ctx(oracle(), T0);
+    ctx_paying(oracle(), NearToken::from_yoctonear(1));
     c.set_oracle(alice());
 }
 
@@ -834,8 +853,75 @@ fn non_owner_cannot_set_the_oracle() {
 #[should_panic(expected = "only the owner can do this")]
 fn non_owner_cannot_add_a_token() {
     let mut c = setup();
-    ctx(alice(), T0);
+    ctx_paying(alice(), NearToken::from_yoctonear(1));
     c.add_token(acc("fake-usdc.testnet"));
+}
+
+#[test]
+#[should_panic(expected = "Requires attached deposit of exactly 1 yoctoNEAR")]
+fn owner_methods_need_one_yocto_so_a_limited_key_cannot_call_them() {
+    // A function-call key cannot attach a deposit; this is what it would send.
+    let mut c = setup();
+    ctx(owner(), T0);
+    c.set_oracle(alice());
+}
+
+#[test]
+#[should_panic(expected = "Requires attached deposit of exactly 1 yoctoNEAR")]
+fn owner_methods_refuse_more_than_one_yocto() {
+    let mut c = setup();
+    ctx_paying(owner(), NearToken::from_yoctonear(2));
+    c.add_token(eurc());
+}
+
+#[test]
+#[should_panic(expected = "only the owner can do this")]
+fn non_owner_cannot_set_the_minimum() {
+    let mut c = setup();
+    ctx_paying(alice(), NearToken::from_yoctonear(1));
+    c.set_min_hold(usdc(), U128(0));
+}
+
+#[test]
+fn holds_below_the_minimum_are_refunded_whole() {
+    let mut c = setup();
+    as_owner();
+    c.set_min_hold(usdc(), U128(10_000));
+    assert_eq!(c.get_config().min_hold[&usdc()], U128(10_000));
+
+    // A single hold under the floor bounces, in full.
+    assert_eq!(hold(&mut c, alice(), 9_999, KEY_A, 60), 9_999);
+    assert!(c.pending(KEY_A.into()).is_empty());
+    assert!(get_logs().iter().any(|l| l.contains("below the minimum hold")));
+
+    // One small item sinks a hold_many: nothing is created, all of it goes back.
+    let msg = json!({"kind": "hold_many", "lifetime_secs": 60, "items": [
+        {"recipient": KEY_A, "amount": "50000"},
+        {"recipient": KEY_B, "amount": "5"},
+    ]});
+    assert_eq!(send(&mut c, usdc(), alice(), 50_005, msg), 50_005);
+    assert!(c.pending(KEY_A.into()).is_empty());
+    assert!(c.pending(KEY_B.into()).is_empty());
+
+    // At the floor is fine.
+    assert_eq!(hold(&mut c, alice(), 10_000, KEY_A, 60), 0);
+    assert_eq!(pending_ids(&c, KEY_A), vec![0]);
+}
+
+#[test]
+fn the_minimum_is_per_token_and_can_be_turned_off() {
+    let mut c = setup();
+    as_owner();
+    c.add_token(eurc());
+    c.set_min_hold(usdc(), U128(10_000));
+
+    // EURC has no floor of its own.
+    let msg = json!({"kind": "hold", "recipient": KEY_A, "lifetime_secs": 60});
+    assert_eq!(send(&mut c, eurc(), bob(), 1, msg), 0);
+
+    as_owner();
+    c.set_min_hold(usdc(), U128(0));
+    assert_eq!(hold(&mut c, alice(), 1, KEY_B, 60), 0);
 }
 
 #[test]

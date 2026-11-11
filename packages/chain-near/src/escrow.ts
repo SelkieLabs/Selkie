@@ -48,6 +48,15 @@ export const MAX_HOLD_MANY_ITEMS = 40;
 /** One claim releases at most this many payments; the oracle calls again while it returns this. */
 export const MAX_CLAIM_BATCH = 50;
 
+/**
+ * Smallest single payment the escrow holds, in USDC base units: 0.01 USDC.
+ * Each held payment costs the escrow storage until it is claimed, so a floor
+ * makes filling it with dust cost money. `near:deploy-escrow` sets the
+ * contract to this, and prepare refuses smaller holds before anyone signs one
+ * the escrow would bounce.
+ */
+export const MIN_HOLD_UNITS = 10_000n;
+
 export interface PaymentView {
   id: string;
   sender: string;

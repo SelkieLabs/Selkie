@@ -341,6 +341,27 @@ describe("NEAR app", () => {
     });
   });
 
+  describe("the escrow's smallest payment", () => {
+    test("under a cent cannot wait for someone, but can still go to a Selkie user", async () => {
+      const tunde = person("2001", "tunde");
+      const amaka = person("1001", "amaka");
+      await signIn(tunde);
+      await signIn(amaka);
+      chain.fund(tunde.account!, 5n * DOLLAR);
+
+      const hold = await prepare(tunde, { to: "@newcomer", amount: "0.009" });
+      assert.equal(hold.statusCode, 400, hold.body);
+      assert.match(hold.json().error, /smallest amount that can wait .* is \$0\.01/);
+
+      const many = await prepare(tunde, { toMany: ["@amaka", "@newcomer"], amount: "0.005" });
+      assert.equal(many.statusCode, 400, many.body);
+
+      assert.equal((await pay(tunde, { to: "@amaka", amount: "0.005" })).statusCode, 200);
+      assert.equal((await pay(tunde, { toMany: ["@amaka"], amount: "0.005" })).statusCode, 200);
+      assert.equal((await pay(tunde, { to: "@newcomer", amount: "0.01" })).statusCode, 200);
+    });
+  });
+
   describe("pay many", () => {
     test("Selkie users are paid now and everyone else waits, in one signature", async () => {
       const tunde = person("2001", "tunde");

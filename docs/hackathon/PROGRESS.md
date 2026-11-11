@@ -21,6 +21,7 @@ NEAR (Stellar stays in the code, hidden from users).
 | Money in, live | **done**: the wallet polls every 12 s and on returning to the tab; new money in shows a toast ("@tunde sent you 2.00 USDC."). Deposits that skip Selkie (faucet, exchange, another wallet) now get a feed line "from outside Selkie" (`backend/api/src/near/balance-watch.ts`, migration 003). 6 more app tests (22 total) |
 | Push notifications | **built**: Settings → "When money comes in" (and a one-time offer on Home) subscribes the browser to Web Push. Every money-in feed line also goes to the person's devices, even with Selkie closed. Server side tested with a fake push service (13 tests); **real delivery still to be checked in a browser**. iPhone needs Selkie added to the Home Screen first |
 | Email notices | **built**: Settings → Notifications → By email. The address is proven with a 6-digit code, then every money-in line also sends an email (Resend), with a signed one-click unsubscribe. Locally `EMAIL_DEV_LOG=1` prints emails in the API console. **Local: Resend key set; mail goes out as "Selkie" from a domain already verified on the Resend account, so it reaches any inbox.** Later: verify selkiepay.com in Resend, set `EMAIL_FROM=Selkie <notify@selkiepay.com>`, and add both to the hosted API's env (human) |
+| Contract-account warning | **done**: paying a NEAR account that runs a contract (a staking pool, a DAO) shows a warning with a box to tick; prepare refuses it with 409 unless the sender said yes. Live check: `stakely_v2.pool.f863973.m0` reads as a contract, `relayer.selkiepay.testnet` as a wallet |
 | Oracle | **rotated** to `oracle-v2.selkiepay.testnet`: claim-only key, no allowance cap (see Setup) |
 | 6.5 Copy | **done**: landing, FAQ, docs, settings, footer all NEAR |
 | Full loop on testnet | **blocked on test USDC**: fund an account from faucet.circle.com (NEAR Testnet) |
@@ -32,7 +33,16 @@ NEAR (Stellar stays in the code, hidden from users).
   - Deploy: [CtYc7ZZ…](https://explorer.testnet.near.org/transactions/CtYc7ZZuJgCW8PqnTP5s7mN5zVGDopeVTVqx6pESzZhz)
   - Init (`new`, `#[private]`, signed by the escrow itself): [9R3PA5L…](https://explorer.testnet.near.org/transactions/9R3PA5LWGuTfkW2xWRXtfHPiK6Udbqo4MXxq8tVaFLzM)
 - Owner `selkiepay.testnet`, oracle `oracle.selkiepay.testnet`, token allowlist = Circle testnet USDC, max lifetime 365 days.
-- Redeploy: `npm run near:deploy-escrow`. Tests: `npm run test:contracts:near`.
+- Build: `npm run build:contracts:near`. Redeploy: `npm run near:deploy-escrow`. Tests: `npm run test:contracts:near`.
+- **Hardened 11 Nov** (redeploy [CUmdfux…](https://explorer.testnet.near.org/transactions/CUmdfuxxvkb3ayVYECdmSR2uoFKTYzEX5UUaRLF6iAtb), state kept):
+  - Owner methods (`set_oracle`, `add_token`, `remove_token`, `set_min_hold`) want exactly
+    1 yoctoNEAR, so only a full-access key can call them. Checked live: the owner calling
+    `set_oracle` with no deposit is refused ("Requires attached deposit of exactly 1 yoctoNEAR").
+  - Smallest held payment per token, `min_hold` (USDC: 0.01, set in
+    [HpP9EFt…](https://explorer.testnet.near.org/transactions/HpP9EFtdX1YHE4Fn4zJtpSBv2cSEamq7nTEAnN77PmEf)).
+    A hold or hold_many with any item below it is refunded whole, so filling the escrow's
+    storage with dust costs real money. Prepare refuses those amounts before signing.
+    Stored outside the state struct, so the upgrade needed no migration.
 
 ## How it runs locally (NEAR mode)
 
@@ -189,9 +199,6 @@ unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
 ## Cut / deferred
 
 - Nothing from P0 cut.
-- Escrow audit notes not yet fixed: owner methods (`set_oracle`, `add_token`,
-  `remove_token`) do not require 1 yocto; dust holds can spam storage (contract stops
-  taking holds below 0.5 NEAR spare, so it fails safe, not open).
 
 ## Next
 
