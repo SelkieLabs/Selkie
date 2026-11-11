@@ -1,0 +1,96 @@
+# NEAR HACKATHON progress
+
+The running log the human reads between sessions: what works, what is cut, what
+is next. Newest first within each section. Brief: [CLAUDE.md](../../CLAUDE.md).
+
+## Status — Wed 11 Nov, 17:00 Lagos
+
+| Step | State |
+| --- | --- |
+| 3. Setup | done (see "Setup" below) |
+| 4. Spike A — Privy NEAR wallet signs a delegate action | **server half passed**; browser half built, waiting on a human sign-in |
+| 4. Spike B — escrow skeleton receives an FT transfer | contract + script ready; waiting on testnet USDC from the Circle faucet |
+| 6.x product work | not started: waiting for the human's OK after the spikes |
+
+## Setup (section 3)
+
+- Tag `pre-hackathon` → `839acbb` (local only, not pushed). Branch `near` (local only).
+- NEAR agent skills installed in `.claude/skills/` (gitignored; `skills-lock.json` records them).
+- `packages/chain-near` created with `near-api-js@7.4.0` (pinned: 7.5.x shipped four releases on 11 Nov).
+- `contracts-near/` is its own Cargo workspace (`resolver = "3"`, cargo-near template's release profile).
+- Testnet accounts, created by `npm run near:setup` (idempotent; keys appended to `.env`, never printed):
+
+| Account | Holds | Key Selkie holds |
+| --- | --- | --- |
+| [selkiepay.testnet](https://explorer.testnet.near.org/accounts/selkiepay.testnet) | root, faucet-funded (10 NEAR) | full access, setup scripts only |
+| [x.selkiepay.testnet](https://explorer.testnet.near.org/accounts/x.selkiepay.testnet) | 1 NEAR | full access, CreateAccount only |
+| [escrow.selkiepay.testnet](https://explorer.testnet.near.org/accounts/escrow.selkiepay.testnet) | 3 NEAR (pays its own storage) | full access (deploy key; delete or document later) |
+| [relayer.selkiepay.testnet](https://explorer.testnet.near.org/accounts/relayer.selkiepay.testnet) | 2 NEAR | full access |
+| [oracle.selkiepay.testnet](https://explorer.testnet.near.org/accounts/oracle.selkiepay.testnet) | 0.5 NEAR | **function-call only**: `escrow.selkiepay.testnet` / `claim`, 0.25 NEAR allowance |
+
+- `selkiepay.testnet` and `escrow.selkiepay.testnet` are registered (storage_deposit) on testnet USDC.
+
+### Deviations from the brief, and why
+
+- **Setup script lives at `packages/chain-near/scripts/setup-testnet.ts`** (run with
+  `npm run near:setup`), not `scripts/near/`. Section 1.3 says only `packages/chain-near`
+  imports NEAR SDKs, and `chain-stellar` already keeps its scripts the same way.
+- **No cargo-near.** Its installer (`curl | sh`) was blocked by the agent's sandbox, and
+  `cargo install cargo-near` needs rustc 1.95; installing 1.95 over this connection
+  (~40 KB/s) was going to take over an hour. Contracts build with plain cargo using
+  exactly the flags cargo-near uses (`-C link-arg=-s --cfg near`, wasm32-unknown-unknown,
+  release). Verified in cargo-near's source that nearcore accepts rustc ≥ 1.87 output
+  from protocol 84 (testnet is on 88). No wasm-opt pass yet: the WASM is a bit larger.
+- **near-sdk 5.29.1, not 5.30.** 5.30 needs rustc 1.95; 5.29 needs 1.93.
+- **No `test-usdc` contract.** Real Circle USDC exists on NEAR testnet, so per 6.1 we use it.
+
+## Verified facts (section 10)
+
+| Question | Answer | Source |
+| --- | --- | --- |
+| Privy extended-chains import | `@privy-io/react-auth/extended-chains` → `useCreateWallet`, `useSignRawHash`, `useExportWallet` | installed 3.36.1 `dist/dts/extended-chains.d.mts` |
+| Privy NEAR `chainType` | `'near'` (in `CurveSigningChainType`) | `@privy-io/api-types` 0.18.0 |
+| Raw-sign format | `signRawHash({ address, chainType: 'near', hash: '0x…' })` → `{ signature: '0x…' }` (64-byte ed25519) | types + spike A |
+| Privy NEAR wallet address | the **implicit account id** = hex of the ed25519 public key; REST `public_key` = `00` + that hex | spike A (server) |
+| Server reads a user's NEAR key | `linked_accounts[]` entry with `type: 'wallet'`, `chain_type: 'near'`, `address` (hex key) | Privy user object; backend already parses `chain_type` |
+| near-api-js version | 7.4.0 pinned (7.5.3 latest, released the same day) | npm |
+| Delegate-action helpers | `Account.createSignedMetaTransaction({ receiverId, actions, blockHeightTtl })` → `{ delegateHash, signedDelegate }`; `Signer.signDelegateAction` hashes `sha256(NEP-461 prefix ++ borsh(DelegateAction))` and passes the 32-byte hash to `signBytes`; `encodeSignedDelegate` / borsh `SCHEMA.SignedDelegate`; `relayer.relayMetaTransaction(signedDelegate)` | near-api-js 7.4.0 source |
+| near-sdk | 5.29.1 (5.30.1 is latest but needs rustc 1.95) | crates.io index |
+| Testnet RPC | `https://test.rpc.fastnear.com` (protocol 88, nearcore 2.14.0-rc.5 on 11 Nov) | docs.near.org RPC providers + live `status` |
+| Testnet explorer | `https://explorer.testnet.near.org/accounts/<id>`, `/transactions/<hash>` (nearblocks returns 403 to scripts) | near-cli-rs config + live check |
+| Testnet faucet | `POST https://helper.nearprotocol.com/account { newAccountId, newAccountPublicKey }` | near-cli-rs source |
+| Testnet USDC | `3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af` (Circle; symbol USDC, 6 decimals) | developers.circle.com + live `ft_metadata` |
+| Mainnet USDC | `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1` per Circle — **re-check against 1Click `/v0/tokens` before use** | developers.circle.com |
+| USDC `storage_balance_bounds` | min = max = `1250000000000000000000` yocto (0.00125 NEAR) | live call |
+| Hackathon rules | re-read live 11 Nov: tags `pre-hackathon` + `hackathon-submission` (or a branch) + README diff link; hosted demo up through 18 Nov, ideally 25 Nov; 1Click JWT optional (0.2% fee without) | nearhackathon.com/HACKATHON.md |
+
+Still to verify: account-id regex + creation cost (6.2), 1Click fields/statuses (7.1),
+Sputnik testnet factory (7.2), X API v2 user lookup (5.3).
+
+## Spike A — Privy NEAR wallet signs a NEP-366 delegate action
+
+**Part 1, server (PASSED).** `packages/chain-near/spikes/spike-a-server.ts`
+
+1. Privy REST created a NEAR wallet (`chain_type: near`); address `aac8a5ec…a207` (implicit), key `ed25519:CVfmFEtx…g74S`.
+2. Root created [spike-a.selkiepay.testnet](https://explorer.testnet.near.org/accounts/spike-a.selkiepay.testnet) with that key as its **only** key ([tx](https://explorer.testnet.near.org/transactions/Fig1eSveEtrVKKEJpMXsUWSUpyPvw3L9bZso84Uedbyz)).
+3. near-api-js built the DelegateAction (USDC `ft_balance_of`), hashed it, and Privy `raw_sign` signed the hash. Signature verified locally against the Privy key.
+4. Relayer submitted it: [tx 4Y1jvph…](https://explorer.testnet.near.org/transactions/4Y1jvphjESXyAPpXkSCHeNYysTnTGUA74xJq6fjcjswN). Outer signer `relayer.selkiepay.testnet`; inner receipt executed by `spike-a.selkiepay.testnet` on the USDC contract; `SuccessValue`.
+
+**Part 2, browser (BUILT, waiting on a sign-in).** `frontend/src/app/spike/near/page.tsx` + local relay `packages/chain-near/spikes/spike-a-relay.ts`.
+Same flow with a user-owned embedded wallet and `useSignRawHash`, building the delegate
+action in the browser. Relay path tested headlessly ([tx 7HoAf64…](https://explorer.testnet.near.org/transactions/7HoAf64UvaZWaJRAt5eoUvjyV7aVcMZELiChyedY51Sp)); page compiles under Turbopack with near-api-js in the client bundle.
+
+## Spike B — escrow skeleton receives an FT transfer
+
+`contracts-near/handle-escrow` (skeleton: owner/oracle/token allowlist; `ft_on_transfer`
+parses `{"kind":"hold",...}`, emits a NEP-297 `hold` event, refunds on a bad msg or
+unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
+`ft_transfer_call`, print logs). Waiting on USDC in `selkiepay.testnet`.
+
+## Cut / deferred
+
+Nothing cut yet.
+
+## Next
+
+After the human's OK: 6.1 escrow (full), 6.2 chain-near, 6.3 backend, 6.4 frontend, 6.5 copy.
