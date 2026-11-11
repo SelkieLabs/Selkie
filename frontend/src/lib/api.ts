@@ -94,6 +94,57 @@ export interface SendResult {
   claimRef?: string;
   /** NEAR pay many: how each person came out. */
   results?: BatchResult["results"];
+  /** NEAR cash-out to another chain: follow it with `api.near.intents.status`. */
+  intents?: { depositAddress: string };
+}
+
+/** A stablecoin on another chain that NEAR Intents can bring in or take out. */
+export interface ChainAsset {
+  assetId: string;
+  symbol: string;
+  /** 1Click's chain name: "base", "tron", ... */
+  blockchain: string;
+  /** For people: "Base", "Tron", ... */
+  chainName: string;
+  decimals: number;
+}
+
+/** A NEAR Intents price. Amounts are already formatted for people. */
+export interface IntentsQuote {
+  direction: "in" | "out";
+  /** Testnet: a real price, but nothing can be deposited. */
+  preview: boolean;
+  asset: ChainAsset;
+  amountIn: string;
+  amountInFormatted: string;
+  amountOutFormatted: string;
+  minAmountOutFormatted?: string;
+  /** Seconds. */
+  timeEstimate?: number;
+  /** Money in, on mainnet: where to send it from the other chain. */
+  depositAddress?: string;
+  deadline?: string;
+}
+
+export type IntentsStatusName =
+  | "PENDING_DEPOSIT"
+  | "KNOWN_DEPOSIT_TX"
+  | "PROCESSING"
+  | "SUCCESS"
+  | "INCOMPLETE_DEPOSIT"
+  | "REFUNDED"
+  | "FAILED";
+
+export interface IntentsStatus {
+  status: IntentsStatusName;
+  /** Nothing more will happen: it arrived, came back, or failed. */
+  done: boolean;
+  amountInFormatted?: string;
+  amountOutFormatted?: string;
+  refundReason?: string;
+  /** Explorer links on each side. */
+  originTxs: string[];
+  destinationTxs: string[];
 }
 
 export interface Quote {
@@ -514,6 +565,40 @@ export const api = {
     /** What a NEAR account name points at, before paying it. */
     async account(accountId: string): Promise<AccountLookup> {
       return request(`/near/accounts/${encodeURIComponent(accountId)}`);
+    },
+
+    /**
+     * USDC out to another chain. The server quotes it at this moment and
+     * prepares a transfer to that quote's deposit address; the browser only
+     * says which coin, how much and where. Mainnet only.
+     */
+    async prepareChainCashOut(input: {
+      amount: string;
+      toChain: { assetId: string; address: string };
+    }): Promise<PreparedPayment> {
+      return request("/near/payments/prepare", json(input));
+    },
+
+    /** NEAR Intents (1Click): other chains in and out. The API key stays on the server. */
+    intents: {
+      /** `live` is false on testnet, where every quote is a preview. */
+      async assets(): Promise<{ live: boolean; assets: ChainAsset[] }> {
+        return request("/near/intents/tokens");
+      },
+      /** A price. `commit` (money in, mainnet) also returns the address to send to. */
+      async quote(input: {
+        direction: "in" | "out";
+        assetId: string;
+        amount: string;
+        /** On the other chain: where money out lands, or where failed money in is refunded. */
+        address: string;
+        commit?: boolean;
+      }): Promise<IntentsQuote> {
+        return request("/near/intents/quote", json(input));
+      },
+      async status(depositAddress: string): Promise<IntentsStatus> {
+        return request(`/near/intents/status?depositAddress=${encodeURIComponent(depositAddress)}`);
+      },
     },
   },
 };

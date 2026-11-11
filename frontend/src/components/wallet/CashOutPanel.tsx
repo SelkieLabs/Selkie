@@ -17,12 +17,21 @@ import {
   Wallet,
 } from "lucide-react";
 import { ContractWarning } from "@/components/wallet/ContractWarning";
+import { AssetSelect, IntentsProgress, PreviewNote } from "@/components/wallet/OtherChain";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { useToast } from "@/contexts/ToastContext";
 import { ADDRESS } from "@/lib/address";
-import { ApiError, api, type SendResult } from "@/lib/api";
-import { isNear } from "@/lib/chain";
+import { ApiError, api, type ChainAsset, type IntentsQuote, type SendResult } from "@/lib/api";
+import { NEAR_NETWORK, isNear } from "@/lib/chain";
 import { cleanAmount, money, usd } from "@/lib/format";
+import {
+  addressPlaceholder,
+  assetName,
+  chainAddressProblem,
+  inAbout,
+  shortChainAddress,
+  useChainAssets,
+} from "@/lib/other-chain";
 import { useAccountCheck } from "@/lib/near-account";
 import { useNearPay } from "@/lib/near-wallet";
 
@@ -41,11 +50,14 @@ import { useNearPay } from "@/lib/near-wallet";
  *
  * On NEAR, "another wallet" is real: any NEAR account or exchange deposit
  * account, signed by the user's own key and relayed like every other payment.
- * The bank and other-chain routes are not built yet, and their last screen says
- * so rather than pretending and failing.
+ * "Another chain" goes through NEAR Intents: the server quotes it and prepares
+ * a transfer to the quote's deposit address, the user signs that, and the
+ * swap lands on the chain they picked. NEAR Intents is mainnet only, so on
+ * testnet the review shows a real price marked as a preview. The bank route is
+ * not built, and its last screen says so rather than pretending and failing.
  */
 
-/** "chain" is NEAR Intents: USDC out to another chain. Mainnet only, so not yet. */
+/** "chain" is NEAR Intents: USDC out to another chain. */
 type Destination = "bank" | "wallet" | "chain";
 type Step = "where" | "details" | "review" | "soon" | "done";
 
@@ -73,6 +85,11 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
   const [accountName, setAccountName] = useState("");
 
   const [address, setAddress] = useState("");
+  const chains = useChainAssets(destination === "chain");
+  const [pickedAsset, setPickedAsset] = useState<ChainAsset | null>(null);
+  const chainAsset = pickedAsset ?? chains.assets?.[0] ?? null;
+  const [chainQuote, setChainQuote] = useState<IntentsQuote | null>(null);
+  const [quoting, setQuoting] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SendResult | null>(null);
@@ -82,13 +99,18 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
   const tooMuch = value > available;
   const cleanAddress = ADDRESS.clean(address);
   const addressValid = ADDRESS.valid(cleanAddress);
-  /** Only a NEAR wallet cash out actually moves money today. */
+  /** A NEAR account cash out moves money; so does another chain, where NEAR Intents is live. */
   const live = isNear && destination === "wallet";
+  const toChain = isNear && destination === "chain";
+  const chainAddress = address.trim();
+  const chainProblem = chainAsset ? chainAddressProblem(chainAsset, chainAddress) : null;
 
   const detailsReady =
     destination === "bank"
       ? bank.trim().length > 0 && accountNumber.trim().length > 0 && accountName.trim().length > 0
-      : addressValid;
+      : toChain
+        ? chainAsset !== null && chainAddress.length > 0 && !chainProblem
+        : addressValid;
   const canReview = value > 0 && !tooMuch && detailsReady;
 
   const start = (to: Destination) => {
@@ -105,18 +127,59 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
     setAddress("");
     setError(null);
     setResult(null);
+    setChainQuote(null);
     target.reset();
   };
 
   /** On NEAR, look the account up first: say now if it is free or a contract. */
   const toReview = async () => {
     setError(null);
+    if (toChain) return void (await priceChainCashOut());
     const problem = live ? await target.check(cleanAddress) : null;
     if (problem) {
       setError(problem);
       return;
     }
     setStep("review");
+  };
+
+  /** Another chain: a price first. The one that is signed is made again on the server at confirm. */
+  const priceChainCashOut = async () => {
+    if (!chainAsset) return;
+    setQuoting(true);
+    try {
+      setChainQuote(
+        await api.near.intents.quote({ direction: "out", assetId: chainAsset.assetId, amount, address: chainAddress }),
+      );
+      setStep("review");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not get a price just now. Try again.");
+    } finally {
+      setQuoting(false);
+    }
+  };
+
+  /** The user's own key signs a transfer to NEAR Intents' deposit address; the swap does the rest. */
+  const cashOutToChain = async () => {
+    if (!chainAsset) return;
+    setSending(true);
+    setError(null);
+    try {
+      const sent = await nearPay(() =>
+        api.near.prepareChainCashOut({ amount, toChain: { assetId: chainAsset.assetId, address: chainAddress } }),
+      );
+      setResult(sent);
+      setStep("done");
+      toast("success", sent.message);
+      onSent?.();
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "That did not go out. Your money is safe. Try again.";
+      setError(message);
+      toast("error", message);
+    } finally {
+      setSending(false);
+    }
   };
 
   /** The user's own key signs a transfer out; Selkie's relayer pays the gas. */
@@ -143,10 +206,31 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
   };
 
   if (step === "done" && result) {
-    return <CashedOut amount={amount} to={cleanAddress} result={result} onDone={restart} />;
+    return (
+      <CashedOut
+        amount={amount}
+        to={toChain && chainAsset ? `${shortChainAddress(chainAddress)} on ${chainAsset.chainName}` : ADDRESS.short(cleanAddress)}
+        result={result}
+        onDone={restart}
+        chainName={toChain ? chainAsset?.chainName : undefined}
+      />
+    );
   }
 
-  if (step === "soon") return <NotYet destination={destination} onDone={restart} />;
+  if (step === "review" && toChain && chainQuote) {
+    return (
+      <ChainReview
+        quote={chainQuote}
+        address={chainAddress}
+        onBack={() => setStep("details")}
+        onConfirm={() => void cashOutToChain()}
+        sending={sending}
+        error={error}
+      />
+    );
+  }
+
+  if (step === "soon") return <NotYet onDone={restart} />;
 
   if (step === "review") {
     return (
@@ -181,7 +265,9 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
           blurb={
             destination === "bank"
               ? "We only ask for this once. Next time it is two taps."
-              : "Money sent to a wallet cannot be called back, so this is worth reading twice."
+              : toChain
+                ? "NEAR Intents swaps your USDC and sends it to the chain you pick. You see the price before anything moves."
+                : "Money sent to a wallet cannot be called back, so this is worth reading twice."
           }
         />
 
@@ -245,6 +331,23 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
             accountName={accountName}
             onAccountName={setAccountName}
           />
+        ) : toChain ? (
+          chains.error ? (
+            <p className="text-sm font-semibold text-[#a11d34]">{chains.error}</p>
+          ) : !chains.assets || !chainAsset ? (
+            <p className="flex items-center gap-2 text-[14px] font-semibold text-pen/55">
+              <Loader2 size={16} className="animate-spin" /> Asking NEAR Intents which chains are open
+            </p>
+          ) : (
+            <ChainFields
+              assets={chains.assets}
+              asset={chainAsset}
+              onAsset={setPickedAsset}
+              address={address}
+              onAddress={setAddress}
+              problem={chainProblem}
+            />
+          )
         ) : (
           <WalletFields
             address={address}
@@ -258,12 +361,12 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
 
         <button
           onClick={() => void toReview()}
-          disabled={!canReview || target.checking}
+          disabled={!canReview || target.checking || quoting}
           className="btn btn-gold mt-7 w-full"
         >
-          {target.checking ? (
+          {target.checking || quoting ? (
             <>
-              <Loader2 size={16} className="animate-spin" /> Checking
+              <Loader2 size={16} className="animate-spin" /> {quoting ? "Getting a price" : "Checking"}
             </>
           ) : (
             <>
@@ -308,11 +411,8 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
             icon={<Globe size={22} strokeWidth={2.2} />}
             title="Another chain"
             blurb="USDC on Base, USDT on Tron and more, through NEAR Intents."
-            meta="Mainnet"
-            onClick={() => {
-              setDestination("chain");
-              setStep("soon");
-            }}
+            meta={NEAR_NETWORK === "mainnet" ? "A few minutes" : "Preview on testnet"}
+            onClick={() => start("chain")}
           />
         )}
       </div>
@@ -482,6 +582,111 @@ function WalletFields({
   );
 }
 
+function ChainFields({
+  assets,
+  asset,
+  onAsset,
+  address,
+  onAddress,
+  problem,
+}: {
+  assets: ChainAsset[];
+  asset: ChainAsset;
+  onAsset: (asset: ChainAsset) => void;
+  address: string;
+  onAddress: (value: string) => void;
+  problem: string | null;
+}) {
+  return (
+    <>
+      <label className="label block" htmlFor="cashout-asset">
+        What it arrives as
+      </label>
+      <AssetSelect id="cashout-asset" assets={assets} value={asset.assetId} onChange={onAsset} />
+
+      <label className="label mt-5 block" htmlFor="cashout-chain-address">
+        Your address on {asset.chainName}
+      </label>
+      <textarea
+        id="cashout-chain-address"
+        className="field mt-2 min-h-[4.5rem] resize-none break-all font-mono text-[13px] leading-relaxed"
+        placeholder={addressPlaceholder(asset)}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        value={address}
+        onChange={(e) => onAddress(e.target.value)}
+      />
+      {problem && <p className="mt-2 text-sm font-semibold text-[#a11d34]">{problem}</p>}
+      <p className="mt-3 flex items-start gap-2.5 rounded-xl bg-[#a11d34]/[0.07] p-3.5 text-[14px] leading-relaxed text-pen/75">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[#a11d34]" />
+        <span>
+          Only an address you own on {asset.chainName} that takes {asset.symbol}, and check every character. If the
+          swap fails, the USDC comes back to your Selkie account; sent to the wrong address, nobody can recover it.
+        </span>
+      </p>
+    </>
+  );
+}
+
+/** The last look before USDC leaves for another chain: what goes, what arrives, where. */
+function ChainReview({
+  quote,
+  address,
+  onBack,
+  onConfirm,
+  sending,
+  error,
+}: {
+  quote: IntentsQuote;
+  address: string;
+  onBack: () => void;
+  onConfirm: () => void;
+  sending: boolean;
+  error: string | null;
+}) {
+  return (
+    <Panel>
+      <Back onClick={onBack} />
+      <Steps at={3} />
+
+      <div className="mt-1 flex flex-col items-center text-center">
+        <span className="grid h-14 w-14 place-items-center rounded-2xl border-2 border-pen/20 bg-pen/[0.06] text-pen/70">
+          <Globe size={24} strokeWidth={2.2} />
+        </span>
+        <p className="mt-5 eyebrow">Taking out</p>
+        <p className="mt-1.5 font-display text-[3rem] font-bold leading-none tracking-tight">
+          {money(quote.amountInFormatted)}
+        </p>
+        <p className="mt-2 text-[15px] font-semibold text-pen/55">USDC</p>
+      </div>
+
+      <div className="mt-7 overflow-hidden rounded-2xl border-2 border-pen/15 bg-card-bright">
+        <Line label="To" value={address} mono wrap />
+        <Line label="Arrives as" value={assetName(quote.asset)} />
+        <Line label="You get about" value={`${quote.amountOutFormatted} ${quote.asset.symbol}`} />
+        {quote.minAmountOutFormatted && (
+          <Line label="At least" value={`${quote.minAmountOutFormatted} ${quote.asset.symbol}`} />
+        )}
+        <Line label="Fee" value="In the price. Gas is on us." />
+        <Line label="Arrives" value={inAbout(quote.timeEstimate)} />
+      </div>
+
+      {quote.preview && <PreviewNote what="nothing leaves your account from here. Cash out to a NEAR account in the meantime." />}
+
+      {error && <p className="mt-4 text-center text-sm font-semibold text-[#a11d34]">{error}</p>}
+
+      <button onClick={onConfirm} disabled={sending || quote.preview} className="btn btn-gold mt-7 w-full">
+        {sending ? <Loader2 size={16} className="animate-spin" /> : null}
+        {sending ? "Sending" : quote.preview ? "Sending works on mainnet" : `Send to ${quote.asset.chainName}`}
+      </button>
+      <button onClick={onBack} disabled={sending} className="btn btn-dim mt-2.5 w-full">
+        Change something
+      </button>
+    </Panel>
+  );
+}
+
 function Review({
   destination,
   amount,
@@ -609,8 +814,7 @@ function Line({
  * the piece that actually moves the money is not, and a fake receipt would be a
  * worse thing to ship than an empty screen.
  */
-function NotYet({ destination, onDone }: { destination: Destination; onDone: () => void }) {
-  const toChain = destination === "chain";
+function NotYet({ onDone }: { onDone: () => void }) {
   return (
     <Panel>
       <div className="flex flex-col items-center py-4 text-center">
@@ -618,12 +822,11 @@ function NotYet({ destination, onDone }: { destination: Destination; onDone: () 
           <Clock size={26} strokeWidth={2.2} />
         </span>
         <p className="mt-5 font-display text-2xl font-bold tracking-tight">
-          {toChain ? "Opens with mainnet" : "Almost open"}
+          Almost open
         </p>
         <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-pen/65">
-          {toChain
-            ? "Cashing out to another chain runs through NEAR Intents, which only works on NEAR mainnet. This test version runs on testnet. Until then, cash out to a NEAR account or exchange."
-            : "Cashing out is the last piece we are putting in. Your money is exactly where you left it, and this will start working without you having to do anything."}
+          Cashing out to a bank is the last piece we are putting in. Your money is exactly where you left it,
+          and this will start working without you having to do anything.
         </p>
         <div className="mt-7 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row">
           <Link href="/wallet/home" className="btn btn-gold sm:px-8">
@@ -644,11 +847,15 @@ function CashedOut({
   to,
   result,
   onDone,
+  chainName,
 }: {
   amount: string;
+  /** Already shortened for reading. */
   to: string;
   result: SendResult;
   onDone: () => void;
+  /** Set for a cash-out to another chain, to follow the swap. */
+  chainName?: string;
 }) {
   return (
     <Panel>
@@ -658,7 +865,7 @@ function CashedOut({
         </span>
         <p className="mt-5 font-display text-[2rem] font-bold leading-none tracking-tight">{usd(amount)}</p>
         <p className="mt-2 max-w-sm break-all font-mono text-[14px] font-bold text-pen/75">
-          to {ADDRESS.short(to)}
+          to {to}
         </p>
         <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-pen/65">{result.message}</p>
         {result.explorer && (
@@ -670,6 +877,9 @@ function CashedOut({
           >
             See it on the NEAR explorer <ExternalLink size={13} />
           </a>
+        )}
+        {result.intents && chainName && (
+          <IntentsProgress depositAddress={result.intents.depositAddress} direction="out" chainName={chainName} />
         )}
         <div className="mt-7 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row">
           <Link href="/wallet/home" className="btn btn-gold sm:px-8">

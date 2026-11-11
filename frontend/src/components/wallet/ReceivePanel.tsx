@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Check, Copy, Droplets, ExternalLink, Loader2, QrCode } from "lucide-react";
+import { AlertTriangle, Droplets, ExternalLink, Loader2 } from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
+import { AddressCode, CopyButton } from "@/components/wallet/AddressBits";
+import { AddFromChain } from "@/components/wallet/OtherChain";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
-import { useToast } from "@/contexts/ToastContext";
 import { ApiError, api, type ReceiveDetails } from "@/lib/api";
 import { NEAR_NETWORK, isNear } from "@/lib/chain";
 import { ASSET_LABEL } from "@/lib/format";
@@ -21,7 +22,7 @@ const COPY = isNear
       copyLabel: "your account name",
       takes: "This account takes",
       warning:
-        "Send only USDC, and only on NEAR. Money sent from another chain straight to this name will not arrive.",
+        "Send only USDC, and only on NEAR. Money sent from another chain straight to this name will not arrive: for that, use \"Add money from another chain\" below.",
     }
   : {
       blurb: "Scan this or paste the address into the app you are sending from. It arrives in this wallet.",
@@ -37,74 +38,6 @@ const COPY = isNear
 
 /** Circle's faucet hands out test USDC on NEAR testnet. Mainnet has no faucet. */
 const TEST_USDC_FAUCET = isNear && NEAR_NETWORK === "testnet" ? "https://faucet.circle.com" : null;
-
-/** Copy that says it worked, because a silent copy is indistinguishable from a broken one. */
-function CopyButton({
-  value,
-  label,
-  className = "btn btn-dim btn-sm",
-}: {
-  value: string;
-  label: string;
-  className?: string;
-}) {
-  const toast = useToast();
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      toast("success", `${label[0]!.toUpperCase()}${label.slice(1)} copied.`);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      toast(
-        "error",
-        `Your browser would not let us copy that. Press and hold ${label} to copy it by hand.`,
-      );
-    }
-  };
-
-  return (
-    <button onClick={() => void copy()} className={className} aria-label={`Copy ${label}`}>
-      {copied ? <Check size={15} strokeWidth={2.8} /> : <Copy size={15} strokeWidth={2.4} />}
-      {copied ? "Copied" : "Copy"}
-    </button>
-  );
-}
-
-/** The address as a square you can point a phone at. Drawn in the app's own ink. */
-function AddressCode({ address }: { address: string }) {
-  const [src, setSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    void import("qrcode")
-      .then((qrcode) =>
-        qrcode.toDataURL(address, {
-          margin: 1,
-          width: 460,
-          errorCorrectionLevel: "M",
-          color: { dark: "#131a21", light: "#fffdf4" },
-        }),
-      )
-      .then((url) => live && setSrc(url))
-      .catch(() => live && setSrc(null));
-    return () => {
-      live = false;
-    };
-  }, [address]);
-
-  return (
-    <div className="grid h-[164px] w-[164px] shrink-0 place-items-center overflow-hidden rounded-2xl border-2 border-pen bg-card-bright p-2">
-      {src ? (
-        <img src={src} alt="Your wallet address as a scannable code" className="h-full w-full" />
-      ) : (
-        <QrCode size={34} className="animate-pulse text-pen/25" strokeWidth={1.6} />
-      )}
-    </div>
-  );
-}
 
 /**
  * Getting money in.
@@ -236,6 +169,8 @@ export function ReceivePanel({ handle }: { handle: string | null }) {
           </>
         )}
       </Panel>
+
+      {isNear && <AddFromChain />}
     </div>
   );
 }

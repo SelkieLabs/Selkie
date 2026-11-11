@@ -24,6 +24,7 @@ NEAR (Stellar stays in the code, hidden from users).
 | Contract-account warning | **done**: paying a NEAR account that runs a contract (a staking pool, a DAO) shows a warning with a box to tick; prepare refuses it with 409 unless the sender said yes. Live check: `stakely_v2.pool.f863973.m0` reads as a contract, `relayer.selkiepay.testnet` as a wallet |
 | 7.3 X bot on NEAR (P2-a, safe version) | **done**: with `SELKIE_CHAIN=near` the bot never moves money and needs no bot secret. "send 5 to @amaka" is answered with `selkiepay.com/pay/amaka?amount=5`, "request 2.50 from @tunde" with `/ask/tunde?amount=2.50`; other assets get "On Selkie I move USDC". The link pages keep it across the X sign-in (30 min, this browser only) and fill Send or Requests once. Dry run still on by default. Checked: 124 bot tests, three replies run against an API stub that throws if called. Bot pocket (spending without a signature) not built |
 | 7.2 DAO payout (P1-b) | **built, execution not yet run**: `npm run near:dao -- propose <dao> <file.csv>` turns `@handle,amount` lines into one Sputnik proposal (USDC `ft_transfer_call` to the escrow, `hold_many` msg); `create <name>` makes a test DAO, `approve <dao> <id>` votes yes (with one council member that executes it). Factory `sputnikv2.testnet`, checked live (answers `get_daos`, deploys DAO code 2.3.1). Test DAO [`selkie-payouts.sputnikv2.testnet`](https://explorer.testnet.near.org/accounts/selkie-payouts.sputnikv2.testnet), council `selkiepay.testnet`, registered on USDC. Proposal #0 [accepted](https://explorer.testnet.near.org/transactions/8sppv6nPNZMSCQihSf6KpFNYeyE86eJHejXrL6jKmoBw) then [voted down](https://explorer.testnet.near.org/transactions/4n5AB1vWbed9jD57PyFc6qLyYJttwgdKFjT8RGQSaZLq) on purpose (it named placeholder handles). **To finish:** send test USDC to the DAO, propose with real test handles, approve, sign in as one of them |
+| 7.1 NEAR Intents (P1-a) | **built; testnet shows previews, mainnet run not done (needs OK)**. Receive has "Add money from another chain": pick USDC/USDT on one of 10 chains (16 coins, from 1Click `/v0/tokens`), amount, refund address, then a live price. Cash out has "Another chain": coin + address, live price on review, then the user signs a USDC `ft_transfer` to the 1Click deposit address, relayed like any payment, and the screen follows `/v0/status`. The server makes the cash-out quote at prepare time, so the browser never supplies the deposit address; the relay only accepts that exact transfer. Testnet: every quote is `dry` against a stand-in mainnet account (`intents.near`, since 1Click answers 500 for `.testnet`), labelled "Preview only", and the send buttons say "works on mainnet". Checked: 6 client tests, 11 app tests (preview, refusals, status, mainnet cash-out with a fake 1Click), live dry quotes through the API (Base USDC out 5 -> 4.99659; Tron USDT in 120 -> 119.89; bad address refused in words), screenshots of both screens on testnet and mainnet settings. **P1-c mainnet clip needs your OK and a few dollars.** |
 | Oracle | **rotated** to `oracle-v2.selkiepay.testnet`: claim-only key, no allowance cap (see Setup) |
 | 6.5 Copy | **done**: landing, FAQ, docs, settings, footer all NEAR |
 | Full loop on testnet | **blocked on test USDC**: fund an account from faucet.circle.com (NEAR Testnet) |
@@ -114,8 +115,13 @@ SELKIE_API_ORIGIN=http://localhost:4100 npm run dev:web                       # 
 | USDC `storage_balance_bounds` | min = max = `1250000000000000000000` yocto (0.00125 NEAR) | live call |
 | Hackathon rules | re-read live 11 Nov: tags `pre-hackathon` + `hackathon-submission` (or a branch) + README diff link; hosted demo up through 18 Nov, ideally 25 Nov; 1Click JWT optional (0.2% fee without) | nearhackathon.com/HACKATHON.md |
 
-Still to verify: 1Click fields/statuses (7.1), Sputnik testnet factory (7.2),
-X API v2 user lookup (5.3; the code calls `GET https://api.x.com/2/users/by/username/:u`
+1Click (checked live 11 Nov): `GET /v0/tokens`, `POST /v0/quote`, `GET /v0/status?depositAddress=`,
+`POST /v0/deposit/submit`; statuses PENDING_DEPOSIT, KNOWN_DEPOSIT_TX, PROCESSING, SUCCESS,
+INCOMPLETE_DEPOSIT, REFUNDED, FAILED; no JWT needed (0.25% extra without one); `.testnet`
+recipients answer 500; mainnet NEAR USDC is `nep141:17208628…6133a1`, matching Circle.
+Sputnik testnet factory `sputnikv2.testnet` (7.2) checked live.
+
+Still to verify: X API v2 user lookup (5.3; the code calls `GET https://api.x.com/2/users/by/username/:u`
 only when `X_BEARER_TOKEN` is set, unverified).
 
 ## Spike A — Privy NEAR wallet signs a NEP-366 delegate action
@@ -195,8 +201,8 @@ unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
   linked account, so NEAR users looked one identity short. Now only sign-in methods
   count, and NEAR never attaches.
 - **Cash out on NEAR = a transfer to any NEAR account** (your wallet or an exchange's
-  deposit account), shown as "cashout" in the feed. To other chains it needs NEAR Intents
-  on mainnet; the screen says so. Bank cash-out stays the pre-existing "almost open" screen.
+  deposit account), shown as "cashout" in the feed. To other chains through NEAR Intents
+  (7.1): a live price on testnet, the real thing on mainnet. Bank cash-out stays the pre-existing "almost open" screen.
 
 ## Cut / deferred
 
@@ -208,4 +214,5 @@ unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
    run the two-browser loop (6.4 acceptance) and try Pay many, Requests and Cash out.
 2. `npm run test:live:near` once `selkiepay.testnet` has 0.02 USDC.
 3. README top + `docs/hackathon/SUBMISSION.md`; MIT LICENSE (missing today).
-4. P1: Intents add-money / cash-out (mainnet, needs OK); DAO payout script.
+4. P1-c: one mainnet Intents run for the video (needs your OK and a few dollars).
+5. DAO payout: send test USDC to `selkie-payouts.sputnikv2.testnet`, then propose and approve.
