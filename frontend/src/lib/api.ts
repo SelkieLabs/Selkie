@@ -192,6 +192,15 @@ export interface AccountKeys {
   selkieHoldsKey: boolean;
 }
 
+export interface EmailStatus {
+  /** False when the server has no way to send email. */
+  available: boolean;
+  email: string | null;
+  verified: boolean;
+  /** A code was sent and has not come back yet. */
+  pending: boolean;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -401,6 +410,30 @@ export const api = {
   async activity(limit = 50): Promise<ActivityEntry[]> {
     const { entries } = await request<{ entries: ActivityEntry[] }>(`/activity?limit=${limit}`);
     return entries;
+  },
+
+  /**
+   * Email notices when money comes in. The address is proven with a six-digit
+   * code before anything else is sent to it.
+   */
+  email: {
+    async status(): Promise<EmailStatus> {
+      return request("/email");
+    },
+    async start(email: string): Promise<EmailStatus> {
+      return request("/email", json({ email }));
+    },
+    async verify(code: string): Promise<EmailStatus> {
+      return request("/email/verify", json({ code }));
+    },
+    async remove(): Promise<EmailStatus> {
+      return request("/email/remove", { method: "POST" });
+    },
+    /** From the link in an email: no sign-in, the signed link is the proof. */
+    async unsubscribe(userId: string, token: string): Promise<{ stopped: true }> {
+      const query = new URLSearchParams({ u: userId, t: token });
+      return request(`/email/unsubscribe?${query}`, { method: "POST" });
+    },
   },
 
   /** Notifications when money comes in (Web Push). See lib/push.ts. */

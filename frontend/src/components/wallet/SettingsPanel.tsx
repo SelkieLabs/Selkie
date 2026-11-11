@@ -1,12 +1,25 @@
 "use client";
 
-import { useState } from "react";
-import { Bell, BellRing, Check, Copy, ExternalLink, Loader2, LogOut, MessageCircle, Plus, ShieldCheck } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import {
+  Bell,
+  BellRing,
+  Check,
+  Copy,
+  ExternalLink,
+  Loader2,
+  LogOut,
+  Mail,
+  MailCheck,
+  MessageCircle,
+  Plus,
+  ShieldCheck,
+} from "lucide-react";
 import { SignOutModal } from "@/components/SignOutModal";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { useToast } from "@/contexts/ToastContext";
 import { useAuth } from "@/contexts/useAuth";
-import type { Handle, Identity, User } from "@/lib/api";
+import { ApiError, api, type EmailStatus, type Handle, type Identity, type User } from "@/lib/api";
 import { features, isNear } from "@/lib/chain";
 import { explorer } from "@/lib/explorer";
 import { usePush, type PushState } from "@/lib/push";
@@ -130,20 +143,42 @@ const PUSH_BLOCKERS: Partial<Record<PushState, string>> = {
   unavailable: "Notifications are not switched on for this server yet.",
 };
 
-/** Push is per device, so this says "this device" every time it can. */
+/** Two ways to hear about money in: this device (push), and email. */
 function NotificationsPanel() {
-  const { state, busy, error, turnOn, turnOff } = usePush();
-  if (state === "checking") return null;
-  const blocker = PUSH_BLOCKERS[state];
-
   return (
     <Panel>
       <PanelHead
         eyebrow="Notifications"
         title="When money comes in"
-        blurb="A notification on this device the moment someone pays you, even with Selkie closed."
+        blurb="Hear about it the moment someone pays you, even with Selkie closed."
       />
-      <div className="mt-5">
+      <div className="mt-5 space-y-6">
+        <section>
+          <h3 className="text-[13px] font-bold uppercase tracking-[0.08em] text-pen/45">On this device</h3>
+          <div className="mt-2.5">
+            <PushNotices />
+          </div>
+        </section>
+        <section>
+          <h3 className="text-[13px] font-bold uppercase tracking-[0.08em] text-pen/45">By email</h3>
+          <div className="mt-2.5">
+            <EmailNotices />
+          </div>
+        </section>
+      </div>
+    </Panel>
+  );
+}
+
+/** Push is per device, so this says "this device" every time it can. */
+function PushNotices() {
+  const { state, busy, error, turnOn, turnOff } = usePush();
+  if (state === "checking") return <Loader2 size={16} className="animate-spin text-pen/40" />;
+  const blocker = PUSH_BLOCKERS[state];
+
+  return (
+    <>
+      <div>
         {blocker ? (
           <p className="text-[15px] leading-relaxed text-pen/60">{blocker}</p>
         ) : state === "on" ? (
@@ -163,7 +198,141 @@ function NotificationsPanel() {
         )}
         {error && <p className="mt-3 text-[14px] font-medium text-[#b91c34]">{error}</p>}
       </div>
-    </Panel>
+    </>
+  );
+}
+
+/**
+ * Email: type an address, get a code there, type the code back. Until the
+ * code comes back nothing else is sent to it, so nobody can sign someone
+ * else's inbox up for Selkie's mail.
+ */
+function EmailNotices() {
+  const toast = useToast();
+  const [status, setStatus] = useState<EmailStatus | null>(null);
+  const [address, setAddress] = useState("");
+  const [code, setCode] = useState("");
+  const [changing, setChanging] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api.email
+      .status()
+      .then((found) => live && setStatus(found))
+      .catch(() => live && setStatus({ available: false, email: null, verified: false, pending: false }));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const run = async (step: () => Promise<EmailStatus>, done?: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await step();
+      setStatus(next);
+      setChanging(false);
+      setCode("");
+      if (done) toast("success", done);
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : "That did not work. Try again in a moment.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!status) return <Loader2 size={16} className="animate-spin text-pen/40" />;
+  if (!status.available) {
+    return <p className="text-[15px] leading-relaxed text-pen/60">Email notices are not switched on for this server yet.</p>;
+  }
+
+  const sendCode = (event: FormEvent) => {
+    event.preventDefault();
+    void run(() => api.email.start(address.trim()));
+  };
+  const confirm = (event: FormEvent) => {
+    event.preventDefault();
+    void run(() => api.email.verify(code), "Done. You will get an email when money comes in.");
+  };
+  const failed = error && <p className="mt-3 text-[14px] font-medium text-[#b91c34]">{error}</p>;
+
+  if (status.verified && status.email && !changing) {
+    return (
+      <div>
+        <p className="inline-flex flex-wrap items-center gap-2 text-[15px] font-semibold text-[#2f7d3f]">
+          <MailCheck size={16} strokeWidth={2.4} /> Emails go to <span className="break-all text-pen">{status.email}</span>
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2.5">
+          <button onClick={() => setChanging(true)} disabled={busy} className="btn btn-dim btn-sm">
+            Change address
+          </button>
+          <button onClick={() => void run(() => api.email.remove(), "Emails stopped.")} disabled={busy} className="btn btn-dim btn-sm">
+            {busy && <Loader2 size={14} className="animate-spin" />} Stop emails
+          </button>
+        </div>
+        {failed}
+      </div>
+    );
+  }
+
+  if (status.pending && status.email && !changing) {
+    return (
+      <form onSubmit={confirm}>
+        <p className="text-[15px] leading-relaxed text-pen/70">
+          We sent a 6-digit code to <span className="break-all font-semibold text-pen">{status.email}</span>. Enter it here.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2.5">
+          <input
+            value={code}
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="123456"
+            aria-label="Code from the email"
+            className="field w-36 font-display font-bold tracking-[0.2em]"
+          />
+          <button type="submit" disabled={busy || code.length !== 6} className="btn btn-dark btn-sm">
+            {busy && <Loader2 size={14} className="animate-spin" />} Confirm
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[14px] font-semibold text-pen/55">
+          <button type="button" onClick={() => void run(() => api.email.start(status.email!))} disabled={busy} className="underline-offset-2 hover:underline">
+            Send it again
+          </button>
+          <button type="button" onClick={() => setChanging(true)} disabled={busy} className="underline-offset-2 hover:underline">
+            Use a different address
+          </button>
+        </div>
+        {failed}
+      </form>
+    );
+  }
+
+  return (
+    <form onSubmit={sendCode}>
+      <div className="flex flex-wrap gap-2.5">
+        <input
+          type="email"
+          value={address}
+          onChange={(event) => setAddress(event.target.value)}
+          autoComplete="email"
+          placeholder="you@example.com"
+          aria-label="Email address"
+          className="field min-w-0 flex-1 basis-56"
+        />
+        <button type="submit" disabled={busy || !address.trim()} className="btn btn-dark btn-sm">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} strokeWidth={2.4} />} Send code
+        </button>
+      </div>
+      {changing && (
+        <button type="button" onClick={() => setChanging(false)} className="mt-3 text-[14px] font-semibold text-pen/55 underline-offset-2 hover:underline">
+          Keep the current address
+        </button>
+      )}
+      {failed}
+    </form>
   );
 }
 
