@@ -17,6 +17,8 @@ NEAR (Stellar stays in the code, hidden from users).
 | 6.2 `packages/chain-near` | **done** (config, amounts, names, recipient keys, escrow calls, delegate build/sign/verify, relay policy, NearChain); 16 unit tests |
 | 6.3 Backend NEAR mode | **done**: `SELKIE_CHAIN=near` serves its own Fastify app on its own DB; runs locally on :4100 |
 | 6.4 Frontend NEAR mode | **built** (sign-in opens the account, send, refund, receive, key proof badge); needs the two-browser test with real X logins |
+| Restored on NEAR (human asked) | **done**: Pay many (one signature, `hold_many` for non-users), pay any NEAR account, Cash out to a NEAR account or exchange, Requests. Each goes prepare → sign → relay. 16 app tests (`backend/api/src/near/app.test.ts`) run the real app on a simulated chain with real ed25519 signatures |
+| Oracle | **rotated** to `oracle-v2.selkiepay.testnet`: claim-only key, no allowance cap (see Setup) |
 | 6.5 Copy | **done**: landing, FAQ, docs, settings, footer all NEAR |
 | Full loop on testnet | **blocked on test USDC**: fund an account from faucet.circle.com (NEAR Testnet) |
 
@@ -50,7 +52,16 @@ SELKIE_API_ORIGIN=http://localhost:4100 npm run dev:web                       # 
 | [x.selkiepay.testnet](https://explorer.testnet.near.org/accounts/x.selkiepay.testnet) | 1 NEAR | full access, CreateAccount only |
 | [escrow.selkiepay.testnet](https://explorer.testnet.near.org/accounts/escrow.selkiepay.testnet) | 3 NEAR (pays its own storage) | full access (deploy key; delete or document later) |
 | [relayer.selkiepay.testnet](https://explorer.testnet.near.org/accounts/relayer.selkiepay.testnet) | 2 NEAR | full access |
-| [oracle.selkiepay.testnet](https://explorer.testnet.near.org/accounts/oracle.selkiepay.testnet) | 0.5 NEAR | **function-call only**: `escrow.selkiepay.testnet` / `claim`, 0.25 NEAR allowance |
+| [oracle-v2.selkiepay.testnet](https://explorer.testnet.near.org/accounts/oracle-v2.selkiepay.testnet) | 2 NEAR | **function-call only**: `escrow.selkiepay.testnet` / `claim`, no allowance cap. The escrow's oracle since 11 Nov |
+| [oracle.selkiepay.testnet](https://explorer.testnet.near.org/accounts/oracle.selkiepay.testnet) | 0.5 NEAR | retired: function-call only, `claim`, 0.25 NEAR allowance |
+
+- **Why the oracle moved.** A function-call key's allowance only shrinks: each claim
+  reserves 300 Tgas (~0.03 NEAR) against it and unused gas goes back to the balance,
+  not the allowance. 0.25 NEAR was about eight claims, and the oracle has no full key to
+  add a bigger one (by design). `npm run near:rotate-oracle -- oracle-v2` created the new
+  account, called `escrow.set_oracle` as owner, and updated `.env`. Fresh setups now get
+  the uncapped key directly. `prove:keys` reads the current oracle from the escrow's
+  `get_config`, so it covers both.
 
 - `selkiepay.testnet` and `escrow.selkiepay.testnet` are registered (storage_deposit) on testnet USDC.
 
@@ -125,7 +136,15 @@ unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
   adapter satisfies unchanged, and `NearIdentityChain` for NEAR.
 - **NEAR is the web app's default chain** on this branch (`NEXT_PUBLIC_SELKIE_CHAIN=stellar`
   brings Stellar back). Hidden on NEAR via `frontend/src/lib/chain.ts` `features`:
-  Convert, Requests, Telegram, Google sign-in, Pay many, Cash out, pay-to-address.
+  Convert, Telegram, Google sign-in, airtime/bills. Pay many, Cash out, pay-to-address
+  and Requests were hidden at first and are back (the human asked), all on NEAR.
+- **Pay many is capped at 20 people on NEAR** (`MAX_PAY_MANY`). The list is one delegate
+  action on the USDC contract: direct `ft_transfer`s to Selkie users plus one
+  `ft_transfer_call` with `hold_many` for everyone else. The relayer caps a delegate's
+  total gas at 900 Tgas (testnet allows 1 PGas per transaction).
+- **Cash out on NEAR = a transfer to any NEAR account** (your wallet or an exchange's
+  deposit account), shown as "cashout" in the feed. To other chains it needs NEAR Intents
+  on mainnet; the screen says so. Bank cash-out stays the pre-existing "almost open" screen.
 
 ## Cut / deferred
 
@@ -137,9 +156,7 @@ unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
 ## Next
 
 1. Human: get test USDC from faucet.circle.com (NEAR Testnet) into your account, then
-   run the two-browser loop (6.4 acceptance).
-2. Watch the oracle's 0.25 NEAR function-call allowance after the first claims; if it
-   runs low, add a bigger key and `set_oracle`.
-3. `.env.example` NEAR block, `npm run prove:keys`, `npm run test:live:near`.
-4. README top + `docs/hackathon/SUBMISSION.md`; MIT LICENSE (missing today).
-5. P1: Intents add-money / cash-out (mainnet, needs OK), Pay many with `hold_many`.
+   run the two-browser loop (6.4 acceptance) and try Pay many, Requests and Cash out.
+2. `npm run test:live:near` once `selkiepay.testnet` has 0.02 USDC.
+3. README top + `docs/hackathon/SUBMISSION.md`; MIT LICENSE (missing today).
+4. P1: Intents add-money / cash-out (mainnet, needs OK); DAO payout script.
