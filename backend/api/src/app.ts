@@ -74,7 +74,7 @@ const MAX_BATCH = 100;
  * it. Moving money is capped because every call costs the sponsor a fee, and
  * nobody sends thirty payments a minute by hand.
  */
-const LIMITS = {
+export const LIMITS = {
   global: 300,
   auth: 30,
   handles: 60,
@@ -85,7 +85,7 @@ const LIMITS = {
  * A request body big enough for a hundred handles and nothing like big enough
  * to be worth sending as an attack.
  */
-const BODY_LIMIT = 128 * 1024;
+export const BODY_LIMIT = 128 * 1024;
 
 /**
  * The HTTP surface. Thin on purpose: routes parse input, call a service, and
@@ -989,7 +989,7 @@ export function mergeActivity(
  * Read a handle out of user input. Returns null rather than throwing, because
  * someone typing "@" is a question to answer, not a server error.
  */
-function toHandle(input: string, platform: "x" | "telegram"): HandleRef | null {
+export function toHandle(input: string, platform: "x" | "telegram"): HandleRef | null {
   const cleaned = input.trim().replace(/^@+/, "");
   return cleaned ? parseHandle(cleaned, platform) : null;
 }
@@ -1010,7 +1010,7 @@ function accountOf(user: User) {
 }
 
 /** What the client is allowed to see. No provider subjects, no internals. */
-function publicUser(user: User) {
+export function publicUser(user: User) {
   return {
     id: user.id,
     address: user.address,

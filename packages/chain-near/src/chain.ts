@@ -11,7 +11,7 @@
  *
  * None of them can move money that already sits in a user's account.
  */
-import { Account, JsonRpcProvider, PublicKey, actions, type SignedDelegate } from "near-api-js";
+import { Account, JsonRpcProvider, KeyPair, PublicKey, actions, type SignedDelegate } from "near-api-js";
 import type { NearServerConfig } from "./config";
 import type { PreparedDelegate } from "./delegate";
 import { GAS, escrowEvents, firstFailure, type Call, type EscrowEvent, type OutcomeLike, type PaymentView } from "./escrow";
@@ -43,6 +43,17 @@ export class NearChain {
     this.#creator = new Account(config.handleParent, this.provider, config.handleParentKey);
     this.#relayer = new Account(config.relayerAccount, this.provider, config.relayerKey);
     this.#oracle = new Account(config.oracleAccount, this.provider, config.oracleKey);
+  }
+
+  /**
+   * The public halves of every key Selkie holds. A handle account showing any of
+   * these would break the promise on the balance card, so the proof screen and
+   * `prove:keys` check against this list rather than against a hope.
+   */
+  selkieKeys(): string[] {
+    return [this.config.handleParentKey, this.config.relayerKey, this.config.oracleKey].map((secret) =>
+      KeyPair.fromString(secret).getPublicKey().toString(),
+    );
   }
 
   // ---- reads ---------------------------------------------------------------

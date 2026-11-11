@@ -116,7 +116,11 @@ async function main() {
   console.log(config.botSecret ? "bot surface enabled" : "bot surface off (no SELKIE_BOT_SECRET)");
 }
 
-main().catch((error) => {
+// NEAR mode is a separate wiring with its own database; the Stellar path below
+// is untouched when SELKIE_CHAIN is unset or "stellar".
+const run = process.env.SELKIE_CHAIN === "near" ? () => import("./near/main").then((near) => near.mainNear()) : main;
+
+run().catch((error) => {
   console.error(error);
   process.exit(1);
 });

@@ -15,14 +15,25 @@ export const GAS = {
   // ft_transfer_call runs the escrow's ft_on_transfer and the token's resolve
   // step on the same budget; 100 Tgas leaves both comfortable headroom.
   ftTransferCall: 100n * TGAS,
-  // refund = remove + ft_transfer (15) + callback (15) on the escrow's side.
-  refund: 60n * TGAS,
-  claim: 100n * TGAS,
+  // hold_many emits one event per item and writes one record each; the escrow
+  // caps it at 40 items, which fits comfortably in a full 300 Tgas.
+  holdMany: 300n * TGAS,
+  // refund = remove + ft_transfer (15) + callback (15) + its own work (~31 total).
+  refund: 100n * TGAS,
+  // claim reserves 15 per token transfer plus 15 + 1 per payment for its
+  // callback, and fails early without it; the escrow's notes say attach 300.
+  claim: 300n * TGAS,
   storageDeposit: 30n * TGAS,
 } as const;
 
-/** Nothing a user signs through the relayer may ask for more than this. */
-export const MAX_RELAYED_GAS = 150n * TGAS;
+/** Nothing a user signs through the relayer may ask for more than this (one transaction's maximum). */
+export const MAX_RELAYED_GAS = 300n * TGAS;
+
+/** The escrow refunds a hold_many with more items than this (NEAR's 16 KB log limit per receipt). */
+export const MAX_HOLD_MANY_ITEMS = 40;
+
+/** One claim releases at most this many payments; the oracle calls again while it returns this. */
+export const MAX_CLAIM_BATCH = 50;
 
 export interface PaymentView {
   id: string;
@@ -80,7 +91,7 @@ export function holdManyTransfer(
 ): Call {
   const total = input.items.reduce((sum, item) => sum + BigInt(item.amount), 0n);
   const msg = JSON.stringify({ kind: "hold_many", lifetime_secs: input.lifetimeSecs, items: input.items });
-  return transferCall(usdc, escrow, total.toString(), msg, input.memo);
+  return transferCall(usdc, escrow, total.toString(), msg, input.memo, GAS.holdMany);
 }
 
 /** Take back a payment nobody claimed. Only its sender, only after expiry. */
@@ -88,14 +99,21 @@ export function refundCall(escrow: string, id: string): Call {
   return { receiverId: escrow, calls: [preparedCall("refund", { id }, GAS.refund, 0n)] };
 }
 
-function transferCall(usdc: string, escrow: string, amount: string, msg: string, memo?: string): Call {
+function transferCall(
+  usdc: string,
+  escrow: string,
+  amount: string,
+  msg: string,
+  memo?: string,
+  gas: bigint = GAS.ftTransferCall,
+): Call {
   return {
     receiverId: usdc,
     calls: [
       preparedCall(
         "ft_transfer_call",
         { receiver_id: escrow, amount, ...(memo ? { memo } : {}), msg },
-        GAS.ftTransferCall,
+        gas,
         ONE_YOCTO,
       ),
     ],

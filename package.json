@@ -23,7 +23,9 @@
     "test:contracts": "cargo test --manifest-path contracts/Cargo.toml",
     "test:live": "tsx packages/chain-stellar/scripts/live-testnet.ts",
     "prove:restart": "tsx --env-file-if-exists=.env backend/api/scripts/prove-restart.ts",
-    "near:setup": "tsx --env-file-if-exists=.env packages/chain-near/scripts/setup-testnet.ts"
+    "near:setup": "tsx --env-file-if-exists=.env packages/chain-near/scripts/setup-testnet.ts",
+    "near:deploy-escrow": "tsx --env-file-if-exists=.env packages/chain-near/scripts/deploy-escrow.ts",
+    "test:contracts:near": "cargo test --manifest-path contracts-near/Cargo.toml"
   },
   "license": "MIT",
   "devDependencies": {

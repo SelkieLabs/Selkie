@@ -12,3 +12,4 @@ export * from "./escrow";
 export * from "./names";
 export * from "./recipient";
 export * from "./relayer";
+export { publicKeyFromImplicit } from "./browser";

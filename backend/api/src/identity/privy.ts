@@ -43,6 +43,12 @@ export interface PrivyConfig {
    * when not supplied, which keeps it in exactly one place: their dashboard.
    */
   verificationKey?: string;
+  /**
+   * Which of the user's Privy wallets is "their wallet". Stellar by default; the
+   * NEAR build reads the embedded NEAR wallet, whose address is the hex of the
+   * user's ed25519 public key.
+   */
+  walletChainType?: "stellar" | "near";
 }
 
 interface PrivyLinkedAccount {
@@ -129,7 +135,8 @@ export class PrivyIdentityProvider implements IdentityProvider {
   async walletAddress(token: string): Promise<string | null> {
     const user = await this.#fetchUser(token);
     const wallet = (user.linked_accounts ?? []).find(
-      (account) => account.type === "wallet" && account.chain_type === "stellar",
+      (account) =>
+        account.type === "wallet" && account.chain_type === (this.config.walletChainType ?? "stellar"),
     );
     return wallet?.address ?? null;
   }

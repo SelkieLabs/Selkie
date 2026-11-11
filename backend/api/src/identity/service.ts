@@ -1,5 +1,5 @@
 import type { HandleRef, Money } from "@selkie/core";
-import type { StellarAdapter } from "@selkie/chain-stellar";
+import type { IdentityChain } from "./chain";
 import { IdentityVerificationError } from "./provider";
 import type { IdentityProvider } from "./provider";
 import type { UserStore } from "./store";
@@ -54,7 +54,7 @@ export class IdentityService {
     private readonly deps: {
       users: UserStore;
       provider: IdentityProvider;
-      adapter: StellarAdapter;
+      adapter: IdentityChain;
       /** Where a swallowed fault goes, so best-effort work is not silent work. */
       onError?: (error: unknown) => void;
     },
@@ -205,13 +205,13 @@ export class IdentityService {
   async claimWaitingMoney(user: User): Promise<ClaimOutcome[]> {
     const outcomes: ClaimOutcome[] = [];
     for (const handle of userHandles(user)) {
-      const pending = await this.deps.adapter.pendingClaims(handle);
+      const pending = await this.deps.adapter.pendingClaims(handle, user);
       if (pending.length === 0) continue;
 
       // Read the amounts before claiming. Claiming deletes the records that
       // hold them, and "$25 was waiting for you" is the whole moment.
-      const amounts = await this.deps.adapter.waitingFor(handle);
-      const result = await this.deps.adapter.claim(handle);
+      const amounts = await this.deps.adapter.waitingFor(handle, user);
+      const result = await this.deps.adapter.claim(handle, user);
       outcomes.push({
         handle,
         released: pending.length,
@@ -274,7 +274,11 @@ export class IdentityService {
   }
 
   async #addressFor(token: string, identities: VerifiedIdentity[]): Promise<string> {
-    const managed = await this.deps.provider.walletAddress?.(token);
+    const managed = (await this.deps.provider.walletAddress?.(token)) ?? null;
+    // A chain that opens accounts itself (NEAR: with the user's own key) does so.
+    if (this.deps.adapter.openAccount) {
+      return this.deps.adapter.openAccount({ identities, providerWallet: managed });
+    }
     if (managed) return managed;
 
     // No provider-managed wallet, so Selkie provisions one against the first

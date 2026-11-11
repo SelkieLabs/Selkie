@@ -70,6 +70,6 @@ test("the relayer only pays for the product's own calls", () => {
   const rich = prepared(key, { receiverId: USDC, calls: [{ ...directTransfer(USDC, { to: "x", amount: "1" }).calls[0]!, deposit: "2" }] });
   assert.throws(() => assertRelayable(rich, policy), /deposit/);
 
-  const greedy = prepared(key, { receiverId: USDC, calls: [{ ...directTransfer(USDC, { to: "x", amount: "1" }).calls[0]!, gas: (300n * TGAS).toString() }] });
+  const greedy = prepared(key, { receiverId: USDC, calls: [{ ...directTransfer(USDC, { to: "x", amount: "1" }).calls[0]!, gas: (301n * TGAS).toString() }] });
   assert.throws(() => assertRelayable(greedy, policy), /Gas/);
 });
