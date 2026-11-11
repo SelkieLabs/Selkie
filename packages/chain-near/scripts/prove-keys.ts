@@ -5,7 +5,8 @@
  *
  * Reads the account's access keys from the chain, then reads every key on every
  * account Selkie operates (the root and its x., relayer., oracle. and escrow.
- * children), also from the chain, and says whether the two lists share a key.
+ * children, plus whichever oracle the escrow contract names right now), also
+ * from the chain, and says whether the two lists share a key.
  * Needs no secrets and no Selkie server: anyone can run it, and the explorer
  * link at the end shows the same thing without running anything.
  *
@@ -40,9 +41,22 @@ async function keysOrNone(id: string): Promise<AccessKeySummary[]> {
   return listAccessKeys(provider, id).catch(() => []);
 }
 
+/**
+ * The oracle the escrow answers to today, read from the contract itself. The
+ * oracle can be rotated (scripts/rotate-oracle.ts), and asking the contract
+ * means a new one is never missed because a list here went stale.
+ */
+async function currentOracle(): Promise<string | null> {
+  const config = await provider
+    .callFunction<{ oracle: string }>({ contractId: `escrow.${root}`, method: "get_config", args: {} })
+    .catch(() => null);
+  return config?.oracle ?? null;
+}
+
 async function main() {
   const keys = await listAccessKeys(provider, accountId!);
-  const operators = selkieAccounts(root);
+  const oracle = await currentOracle();
+  const operators = [...new Set([...selkieAccounts(root), ...(oracle ? [oracle] : [])])];
   const selkie = new Map<string, string>();
   for (const operator of operators) {
     for (const key of await keysOrNone(operator)) selkie.set(key.publicKey, operator);

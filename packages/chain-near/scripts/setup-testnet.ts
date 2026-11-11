@@ -115,7 +115,7 @@ async function main() {
     { prefix: "x", env: "NEAR_HANDLE_PARENT", near: "1" },
     { prefix: "escrow", env: "NEAR_ESCROW_CONTRACT", near: "3" },
     { prefix: "relayer", env: "NEAR_RELAYER_ACCOUNT", near: "2" },
-    { prefix: "oracle", env: "NEAR_ORACLE_ACCOUNT", near: "0.5", oracle: true },
+    { prefix: "oracle", env: "NEAR_ORACLE_ACCOUNT", near: "2", oracle: true },
   ];
 
   const escrowId = `escrow.${root}`;
@@ -131,7 +131,10 @@ async function main() {
     const publicKey = KeyPair.fromString(secret).getPublicKey();
     const accessKey = child.oracle
       ? // Function-call key: may call escrow.claim, nothing else, and can never attach a deposit.
-        actions.addFunctionCallAccessKey(publicKey, escrowId, ["claim"], nearToYocto("0.25"))
+        // No allowance cap: an allowance only ever shrinks (unused gas is refunded to
+        // the balance, not to it), so a capped key dies after a few claims. The
+        // account's balance is the bound instead.
+        actions.addFunctionCallAccessKey(publicKey, escrowId, ["claim"])
       : actions.addFullAccessKey(publicKey);
     await rootAccount.signAndSendTransaction({
       receiverId: accountId,
