@@ -175,6 +175,16 @@ export interface Me {
  * NEAR: exactly what the user's key is about to sign, as the backend prepared
  * it. The relayer refuses anything that differs from this by a single byte.
  */
+/** A NEAR account looked up before paying it. */
+export interface AccountLookup {
+  accountId: string;
+  /** A contract may have no way to send USDC back out. */
+  kind: "missing" | "wallet" | "contract";
+  onSelkie: boolean;
+  isYou: boolean;
+  warning?: string;
+}
+
 export interface PreparedPayment {
   prepareId: string;
   delegate: PreparedDelegate;
@@ -468,6 +478,8 @@ export const api = {
       amount: string;
       note?: string;
       purpose?: "send" | "cashout";
+      /** They saw the contract warning and still want to pay it. */
+      toContract?: boolean;
     }): Promise<PreparedPayment> {
       return request("/near/payments/prepare", json(input));
     },
@@ -497,6 +509,11 @@ export const api = {
 
     async keys(): Promise<AccountKeys> {
       return request("/near/account/keys");
+    },
+
+    /** What a NEAR account name points at, before paying it. */
+    async account(accountId: string): Promise<AccountLookup> {
+      return request(`/near/accounts/${encodeURIComponent(accountId)}`);
     },
   },
 };

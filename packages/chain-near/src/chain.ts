@@ -24,6 +24,28 @@ export interface TxOutcome {
   failure: string | null;
 }
 
+/**
+ * What sits at an account name. A contract matters to someone paying it: most
+ * contracts have no way to send a token back out, so USDC paid to one (a
+ * staking pool, a DAO, a game) can be stuck there for good.
+ */
+export type AccountKind = "missing" | "wallet" | "contract";
+
+/** base58 of 32 zero bytes: the code hash NEAR reports for an account with no contract. */
+const NO_CONTRACT = "11111111111111111111111111111111";
+
+/**
+ * True when the account runs code: its own contract, or a global contract it
+ * points at (those report the empty code hash, so the hash alone misses them).
+ */
+export function hasContract(view: {
+  code_hash: string;
+  global_contract_hash?: string | null;
+  global_contract_account_id?: string | null;
+}): boolean {
+  return view.code_hash !== NO_CONTRACT || Boolean(view.global_contract_hash) || Boolean(view.global_contract_account_id);
+}
+
 /** How long a prepared action stays signable, in blocks (~1 s each). */
 const PREPARE_TTL_BLOCKS = 300n;
 
@@ -54,11 +76,16 @@ export class NearChain {
   // ---- reads ---------------------------------------------------------------
 
   async accountExists(accountId: string): Promise<boolean> {
+    return (await this.accountKind(accountId)) !== "missing";
+  }
+
+  /** Whether a name is free, a wallet somebody holds keys to, or a contract. */
+  async accountKind(accountId: string): Promise<AccountKind> {
     try {
-      await this.provider.viewAccount({ accountId, blockQuery: { finality: "final" } });
-      return true;
+      const view = await this.provider.viewAccount({ accountId, blockQuery: { finality: "final" } });
+      return hasContract(view) ? "contract" : "wallet";
     } catch (error) {
-      if (isMissingAccount(error)) return false;
+      if (isMissingAccount(error)) return "missing";
       throw error;
     }
   }

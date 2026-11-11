@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, AtSign, Check, Clock, ExternalLink, Loader2, Wallet } from "lucide-react";
 import { Avatar } from "@/components/Layout";
+import { ContractWarning } from "@/components/wallet/ContractWarning";
 import { PlatformLogo } from "@/components/Mark";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { PlatformToggle } from "@/components/wallet/PlatformToggle";
@@ -18,6 +19,7 @@ import {
 import { ADDRESS } from "@/lib/address";
 import { features, isNear } from "@/lib/chain";
 import { DOLLAR, cleanAmount, usd } from "@/lib/format";
+import { useAccountCheck } from "@/lib/near-account";
 import { useNearPay } from "@/lib/near-wallet";
 import { PLATFORMS, PLATFORM_FIELD, PLATFORM_LABEL, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
 
@@ -80,6 +82,7 @@ export function SendPanel({
 }) {
   const toast = useToast();
   const nearPay = useNearPay();
+  const target = useAccountCheck();
   const [step, setStep] = useState<Step>("compose");
   const [mode, setMode] = useState<Mode>("handle");
   const [platform, setPlatform] = useState<Platform>("x");
@@ -118,6 +121,7 @@ export function SendPanel({
     setResult(null);
     setError(null);
     setIntent(null);
+    target.reset();
   };
 
   const toConfirm = async () => {
@@ -125,6 +129,12 @@ export function SendPanel({
     // An address has nobody to look up. Nothing to show but the address itself,
     // which is exactly why the confirm step matters more here, not less.
     if (mode === "address") {
+      // On NEAR, say now if the name is free or runs a contract, not after Send.
+      const problem = isNear ? await target.check(cleanAddress) : null;
+      if (problem) {
+        setError(problem);
+        return;
+      }
       setIntent(newIdempotencyKey());
       setStep("confirm");
       return;
@@ -153,7 +163,7 @@ export function SendPanel({
       const sent = isNear
         ? await nearPay(() =>
             mode === "address"
-              ? api.near.prepareTransfer({ toAccount: cleanAddress, amount, note: memo })
+              ? api.near.prepareTransfer({ toAccount: cleanAddress, amount, note: memo, toContract: target.toContract })
               : api.near.prepareSend({ to: cleanHandle, amount, note: memo }),
           )
         : await api.send(
@@ -171,6 +181,7 @@ export function SendPanel({
       toast("success", sent.message ?? "Sent.");
       onSent();
     } catch (err) {
+      if (target.fromRefusal(err)) return;
       const message =
         err instanceof ApiError ? err.message : "That did not send. Your money is safe. Try again.";
       setError(message);
@@ -250,20 +261,28 @@ export function SendPanel({
             {usd(amount)}
           </p>
 
-          <p className="mt-5 flex max-w-md items-start gap-2.5 rounded-xl bg-[#a11d34]/[0.07] p-3.5 text-left text-[14px] leading-relaxed text-pen/75">
-            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[#a11d34]" />
-            <span>
-              Check every character. Money sent to a wrong address cannot be undone by anyone, and
-              unlike a handle there is nobody here to send it back.
-            </span>
-          </p>
+          {target.isContract ? (
+            <ContractWarning accountId={cleanAddress} accepted={target.accepted} onAccept={target.setAccepted} />
+          ) : target.info?.onSelkie ? (
+            <p className="mt-5 max-w-md text-[15px] leading-relaxed text-pen/65">
+              This is a Selkie account, so it lands straight away.
+            </p>
+          ) : (
+            <p className="mt-5 flex max-w-md items-start gap-2.5 rounded-xl bg-[#a11d34]/[0.07] p-3.5 text-left text-[14px] leading-relaxed text-pen/75">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[#a11d34]" />
+              <span>
+                Check every character. Money sent to a wrong address cannot be undone by anyone, and
+                unlike a handle there is nobody here to send it back.
+              </span>
+            </p>
+          )}
         </div>
 
         {error && <p className="mt-4 text-center text-sm font-semibold text-[#a11d34]">{error}</p>}
 
         <button
           onClick={() => void send()}
-          disabled={sending}
+          disabled={sending || target.blocked}
           className="btn btn-gold mt-7 w-full"
         >
           {sending ? <Loader2 size={16} className="animate-spin" /> : null}
@@ -512,11 +531,11 @@ export function SendPanel({
 
       <button
         onClick={() => void toConfirm()}
-        disabled={!canContinue || checking}
+        disabled={!canContinue || checking || target.checking}
         className="btn btn-gold mt-6 w-full"
       >
-        {checking ? <Loader2 size={16} className="animate-spin" /> : null}
-        {checking ? "Checking" : "Continue"}
+        {checking || target.checking ? <Loader2 size={16} className="animate-spin" /> : null}
+        {checking || target.checking ? "Checking" : "Continue"}
       </button>
     </Panel>
   );

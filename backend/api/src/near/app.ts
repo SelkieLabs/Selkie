@@ -6,6 +6,7 @@ import {
   RelayRefusedError,
   USDC_DECIMALS,
   assertRelayable,
+  isValidAccountId,
   recipientKeyFor,
   relayPolicy,
   toBaseUnits,
@@ -32,7 +33,7 @@ import type { PushNotifier } from "../push/notifier";
 import { registerPushRoutes } from "../push/routes";
 import { InMemoryPushStore, type PushStore } from "../push/store";
 import { InMemoryRequestStore, type RequestStore } from "../requests/store";
-import { NearPayments, type PrepareBody } from "./payments";
+import { CONTRACT_WARNING, NOT_AN_ACCOUNT, NearPayments, type PrepareBody } from "./payments";
 import { Refusal } from "./refusal";
 import { registerNearRequestRoutes } from "./requests";
 import type { NearAccountStore, PrepareStore } from "./store";
@@ -230,6 +231,26 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     if (found) return { ...base, nearAccount: found.address };
     const key = await recipientKeyFor({ username: handle.username, xUserId: await xLookup.idOf(handle.username) });
     return { ...base, recipientKey: key.key, scheme: key.scheme };
+  });
+
+  /**
+   * What a NEAR account name points at, before anyone pays it: nothing, a
+   * wallet, or a contract that may never send the money back out.
+   */
+  app.get("/near/accounts/:accountId", capped("handles"), async (request, reply) => {
+    const caller = await requireUser(request, reply);
+    if (!caller) return;
+    const accountId = String((request.params as { accountId?: string }).accountId ?? "").trim().toLowerCase();
+    if (!isValidAccountId(accountId)) return reply.code(400).send({ error: NOT_AN_ACCOUNT });
+    const kind = await chain.accountKind(accountId);
+    const onSelkie = kind !== "missing" && Boolean(await deps.accounts.findByAccountId(accountId));
+    return {
+      accountId,
+      kind,
+      onSelkie,
+      isYou: accountId === caller.address,
+      ...(kind === "contract" ? { warning: CONTRACT_WARNING(accountId) } : {}),
+    };
   });
 
   /**

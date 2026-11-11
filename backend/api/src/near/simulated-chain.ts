@@ -10,6 +10,7 @@
  * Never used outside tests.
  */
 import type {
+  AccountKind,
   AccessKeySummary,
   Call,
   EscrowEvent,
@@ -45,6 +46,7 @@ export class SimulatedNearChain {
   readonly balances = new Map<string, bigint>();
   /** The escrow is registered on USDC at deploy, as on testnet. */
   readonly registered = new Set<string>([ESCROW]);
+  readonly contracts = new Set<string>();
   readonly payments = new Map<string, PaymentView>();
   /** Every delegate the relayer submitted, for tests that care about its shape. */
   readonly relayed: SignedDelegate[] = [];
@@ -63,6 +65,12 @@ export class SimulatedNearChain {
     this.accounts.set(accountId, ["ed25519:outside"]);
   }
 
+  /** An account running a contract: a staking pool, a DAO. */
+  addContractAccount(accountId: string): void {
+    this.accounts.set(accountId, []);
+    this.contracts.add(accountId);
+  }
+
   /** Make a held payment refundable now. */
   expire(id: string): void {
     const payment = this.payments.get(id);
@@ -75,6 +83,11 @@ export class SimulatedNearChain {
 
   async accountExists(accountId: string): Promise<boolean> {
     return this.accounts.has(accountId);
+  }
+
+  async accountKind(accountId: string): Promise<AccountKind> {
+    if (!this.accounts.has(accountId)) return "missing";
+    return this.contracts.has(accountId) ? "contract" : "wallet";
   }
 
   async listKeys(accountId: string): Promise<AccessKeySummary[]> {

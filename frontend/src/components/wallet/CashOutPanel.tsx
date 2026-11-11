@@ -16,12 +16,14 @@ import {
   Sparkles,
   Wallet,
 } from "lucide-react";
+import { ContractWarning } from "@/components/wallet/ContractWarning";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { useToast } from "@/contexts/ToastContext";
 import { ADDRESS } from "@/lib/address";
 import { ApiError, api, type SendResult } from "@/lib/api";
 import { isNear } from "@/lib/chain";
 import { cleanAmount, money, usd } from "@/lib/format";
+import { useAccountCheck } from "@/lib/near-account";
 import { useNearPay } from "@/lib/near-wallet";
 
 /**
@@ -60,6 +62,7 @@ const COUNTRIES = [
 export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: () => void }) {
   const toast = useToast();
   const nearPay = useNearPay();
+  const target = useAccountCheck();
   const [step, setStep] = useState<Step>("where");
   const [destination, setDestination] = useState<Destination>("bank");
   const [amount, setAmount] = useState("");
@@ -102,6 +105,18 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
     setAddress("");
     setError(null);
     setResult(null);
+    target.reset();
+  };
+
+  /** On NEAR, look the account up first: say now if it is free or a contract. */
+  const toReview = async () => {
+    setError(null);
+    const problem = live ? await target.check(cleanAddress) : null;
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setStep("review");
   };
 
   /** The user's own key signs a transfer out; Selkie's relayer pays the gas. */
@@ -110,13 +125,14 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
     setError(null);
     try {
       const sent = await nearPay(() =>
-        api.near.prepareTransfer({ toAccount: cleanAddress, amount, purpose: "cashout" }),
+        api.near.prepareTransfer({ toAccount: cleanAddress, amount, purpose: "cashout", toContract: target.toContract }),
       );
       setResult(sent);
       setStep("done");
       toast("success", sent.message);
       onSent?.();
     } catch (err) {
+      if (target.fromRefusal(err)) return;
       const message =
         err instanceof ApiError ? err.message : "That did not go out. Your money is safe. Try again.";
       setError(message);
@@ -146,6 +162,9 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
         onConfirm={live ? () => void cashOut() : () => setStep("soon")}
         sending={sending}
         error={error}
+        contract={
+          target.isContract ? { accepted: target.accepted, onAccept: target.setAccepted } : undefined
+        }
       />
     );
   }
@@ -235,12 +254,22 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
           />
         )}
 
+        {error && <p className="mt-4 text-sm font-semibold text-[#a11d34]">{error}</p>}
+
         <button
-          onClick={() => setStep("review")}
-          disabled={!canReview}
+          onClick={() => void toReview()}
+          disabled={!canReview || target.checking}
           className="btn btn-gold mt-7 w-full"
         >
-          Review <ArrowRight size={16} strokeWidth={2.4} />
+          {target.checking ? (
+            <>
+              <Loader2 size={16} className="animate-spin" /> Checking
+            </>
+          ) : (
+            <>
+              Review <ArrowRight size={16} strokeWidth={2.4} />
+            </>
+          )}
         </button>
       </Panel>
     );
@@ -465,6 +494,7 @@ function Review({
   onConfirm,
   sending = false,
   error = null,
+  contract,
 }: {
   destination: Destination;
   amount: string;
@@ -477,6 +507,8 @@ function Review({
   onConfirm: () => void;
   sending?: boolean;
   error?: string | null;
+  /** Set when the account runs a contract: the warning, and whether they accepted it. */
+  contract?: { accepted: boolean; onAccept: (accepted: boolean) => void };
 }) {
   const toBank = destination === "bank";
 
@@ -524,9 +556,15 @@ function Review({
         </p>
       )}
 
+      {contract && <ContractWarning accountId={address} accepted={contract.accepted} onAccept={contract.onAccept} />}
+
       {error && <p className="mt-4 text-center text-sm font-semibold text-[#a11d34]">{error}</p>}
 
-      <button onClick={onConfirm} disabled={sending} className="btn btn-gold mt-7 w-full">
+      <button
+        onClick={onConfirm}
+        disabled={sending || (contract !== undefined && !contract.accepted)}
+        className="btn btn-gold mt-7 w-full"
+      >
         {sending ? <Loader2 size={16} className="animate-spin" /> : null}
         {sending ? "Sending" : toBank ? "Send to my bank" : isNear ? "Send to this account" : "Send to my wallet"}
       </button>

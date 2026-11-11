@@ -290,6 +290,55 @@ describe("NEAR app", () => {
       }
       assert.equal((await prepare(tunde, { toAccount: "x.selkie.test", amount: "99" })).statusCode, 409);
     });
+
+    test("a contract is only paid once the sender says they know what it is", async () => {
+      const tunde = person("2001", "tunde");
+      await signIn(tunde);
+      chain.fund(tunde.account!, 5n * DOLLAR);
+      chain.addContractAccount("pool.testnet");
+
+      const asked = await prepare(tunde, { toAccount: "pool.testnet", amount: "1.5" });
+      assert.equal(asked.statusCode, 409, asked.body);
+      assert.equal(asked.json().code, "contract_account");
+      assert.equal(asked.json().account, "pool.testnet");
+      assert.match(asked.json().error, /smart contract/);
+      assert.equal(await chain.usdcBalance("pool.testnet"), 0n);
+
+      const res = await pay(tunde, { toAccount: "pool.testnet", amount: "1.5", toContract: true });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.equal(await chain.usdcBalance("pool.testnet"), 1_500_000n);
+    });
+  });
+
+  describe("look up a NEAR account before paying it", () => {
+    const lookUp = (who: Person, accountId: string) =>
+      app.inject({ method: "GET", url: `/near/accounts/${encodeURIComponent(accountId)}`, headers: auth(who) });
+
+    test("says whether it is a wallet, a contract, missing, Selkie, or you", async () => {
+      const tunde = person("2001", "tunde");
+      const amaka = person("1001", "amaka");
+      await signIn(tunde);
+      await signIn(amaka);
+      chain.addOutsideAccount("friend.testnet");
+      chain.addContractAccount("pool.testnet");
+
+      const wallet = (await lookUp(tunde, "Friend.testnet")).json();
+      assert.deepEqual(wallet, { accountId: "friend.testnet", kind: "wallet", onSelkie: false, isYou: false });
+
+      const contract = (await lookUp(tunde, "pool.testnet")).json();
+      assert.equal(contract.kind, "contract");
+      assert.match(contract.warning, /pool\.testnet is a smart contract/);
+
+      assert.equal((await lookUp(tunde, "ghost.testnet")).json().kind, "missing");
+      assert.equal((await lookUp(tunde, amaka.account!)).json().onSelkie, true);
+      assert.equal((await lookUp(tunde, tunde.account!)).json().isYou, true);
+      assert.equal((await lookUp(tunde, "not an account")).statusCode, 400);
+    });
+
+    test("needs a signed-in caller", async () => {
+      const res = await app.inject({ method: "GET", url: "/near/accounts/friend.testnet" });
+      assert.equal(res.statusCode, 401);
+    });
   });
 
   describe("pay many", () => {

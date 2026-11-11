@@ -38,6 +38,12 @@ import type { XUserLookup } from "./x-lookup";
 
 const NOTE_MAX = 120;
 
+export const NOT_AN_ACCOUNT = "That is not a NEAR account name. It looks like alice.near, or 64 letters and numbers.";
+
+/** Said before paying an account that runs code. */
+export const CONTRACT_WARNING = (accountId: string) =>
+  `${accountId} is a smart contract, not a wallet. Most contracts cannot send USDC back out, so money sent there can be stuck for good. Only pay it if you know it accepts USDC.`;
+
 export interface PrepareBody {
   /** A handle to pay. */
   to?: string;
@@ -53,6 +59,8 @@ export interface PrepareBody {
   note?: string;
   /** How a transfer to an account shows in the feed: a send, or money cashed out. */
   purpose?: "send" | "cashout";
+  /** The sender was told `toAccount` is a contract and still wants to pay it. */
+  toContract?: boolean;
 }
 
 export interface PaymentPlan {
@@ -145,17 +153,19 @@ export class NearPayments {
   /** Any NEAR account: a friend's wallet, an exchange deposit, your own other account. */
   private async planTransfer(user: User, body: PrepareBody): Promise<PaymentPlan> {
     const toAccount = String(body.toAccount ?? "").trim().toLowerCase();
-    if (!isValidAccountId(toAccount)) {
-      throw new Refusal(400, "That is not a NEAR account name. It looks like alice.near, or 64 letters and numbers.");
-    }
+    if (!isValidAccountId(toAccount)) throw new Refusal(400, NOT_AN_ACCOUNT);
     if (toAccount === user.address) throw new Refusal(400, "That's your own account. Pick another one.");
     if (toAccount === this.config.usdcContract || toAccount === this.config.escrowContract) {
       throw new Refusal(400, "That is a contract, not somebody's account. Money sent there is lost.");
     }
     const units = toPositiveBaseUnits(String(body.amount ?? ""), USDC_DECIMALS);
     await this.ensureBalance(user, units);
-    if (!(await this.deps.chain.accountExists(toAccount))) {
-      throw new Refusal(400, `There is no NEAR account called ${toAccount}. Check the name.`);
+    const kind = await this.deps.chain.accountKind(toAccount);
+    if (kind === "missing") throw new Refusal(400, `There is no NEAR account called ${toAccount}. Check the name.`);
+    // The web app asks before it gets here; this is for anything that skipped
+    // the question. Staking pools, DAOs and games take USDC and keep it.
+    if (kind === "contract" && body.toContract !== true) {
+      throw new Refusal(409, CONTRACT_WARNING(toAccount), { code: "contract_account", account: toAccount });
     }
     // An ft_transfer to an account the token has never seen fails. Selkie pays
     // the small storage fee so the person paying never has to know about it.
