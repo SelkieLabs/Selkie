@@ -34,7 +34,7 @@ const NEAR_QUESTIONS: Question[] = [
   },
   {
     q: "Can I get the money out?",
-    a: "You can send it on to anyone with an X handle, whenever you like. Moving it out to other chains, through NEAR Intents, is coming soon.",
+    a: "Yes. Send it on to anyone with an X handle, or cash out to any NEAR account: your own wallet or an exchange. Moving it out to other chains, through NEAR Intents, opens with mainnet.",
   },
   {
     q: "Where is my money actually kept?",

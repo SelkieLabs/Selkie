@@ -11,6 +11,7 @@ import {
   Clock,
   Coins,
   Fuel,
+  HandCoins,
   KeyRound,
   Undo2,
   UserPlus,
@@ -94,9 +95,9 @@ const STEPS = isNear
 type Feature = { icon: LucideIcon; title: string; body: string; span: string };
 
 /**
- * On NEAR, Pay many and Cash out are not built yet, so their cards give way to
- * the three things NEAR adds: a named account, a key only the owner holds, and
- * no gas. Refunds fold into "Money that waits" to keep the grid at 4+2 / 2+2+2.
+ * On NEAR the grid adds the three things NEAR brings (a named account, a key
+ * only the owner holds, no gas) to what Selkie already did. Refunds fold into
+ * "Money that waits" to keep the grid at 4+2 / 2+2+2 / 2+2+2.
  */
 const NEAR_FEATURES: Feature[] = [
   {
@@ -127,6 +128,24 @@ const NEAR_FEATURES: Feature[] = [
     icon: Fuel,
     title: "Nobody pays gas",
     body: "You approve each payment. Selkie pays the network fee, so a small amount stays small.",
+    span: "lg:col-span-2",
+  },
+  {
+    icon: Users,
+    title: "Pay a whole list at once",
+    body: "Up to twenty people, one amount each, one approval.",
+    span: "lg:col-span-2",
+  },
+  {
+    icon: HandCoins,
+    title: "Ask for it",
+    body: "Request money from any handle. Nothing moves until they say yes.",
+    span: "lg:col-span-2",
+  },
+  {
+    icon: Banknote,
+    title: "Cash out",
+    body: "Send it to your own NEAR wallet or an exchange whenever you want it out.",
     span: "lg:col-span-2",
   },
 ];

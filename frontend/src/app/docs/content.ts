@@ -1,5 +1,6 @@
 import {
   ArrowDownToLine,
+  ArrowUpFromLine,
   AtSign,
   Bell,
   CircleHelp,
@@ -53,10 +54,9 @@ export interface Section {
 const HANDLE_SUFFIX = `x.selkiepay.${NEAR_NETWORK === "mainnet" ? "near" : "testnet"}`;
 
 /**
- * The NEAR build. Requests, Pay many, Cash out and the X bot are not part of
- * it yet, so their sections are left out rather than promised; the account and
- * its single key get a section of their own, because that is the claim a reader
- * can go and check.
+ * The NEAR build. The X bot is not part of it yet, so it is left out rather
+ * than promised; the account and its single key get a section of their own,
+ * because that is the claim a reader can go and check.
  */
 const NEAR_SECTIONS: Section[] = [
   {
@@ -133,6 +133,12 @@ const NEAR_SECTIONS: Section[] = [
         p: "If they already have a Selkie account, it goes straight into their NEAR account in seconds. If they do not, see the next section.",
       },
       {
+        p: "To pay several people the same amount, use Pay many: one list, one approval for all of them. People already on Selkie get theirs at once, and the rest wait for them.",
+      },
+      {
+        p: `You can also pay any NEAR account by name, such as ${NEAR_NETWORK === "mainnet" ? "alice.near" : "alice.testnet"}. Pick "A NEAR account" on Send. That goes straight there, so nothing waits and nothing can be taken back. Check the name.`,
+      },
+      {
         note: "There is no gas to pay and no fee. You approve the payment, and Selkie pays the network cost of sending it. Selkie can pay for what you approved, but it cannot change it.",
       },
     ],
@@ -176,6 +182,23 @@ const NEAR_SECTIONS: Section[] = [
     ],
   },
   {
+    id: "requests",
+    icon: Bell,
+    title: "Asking for money",
+    lead: "A request moves nothing by itself.",
+    blocks: [
+      {
+        p: "You can ask an X handle for an amount from Requests, and they see it the next time they open Selkie. If they have not joined yet, it waits for them. It sits there until they decide.",
+      },
+      {
+        p: "Only the person you asked can turn a request into a payment, and they approve it with their own key, for exactly the amount you asked. Nobody can pull money out of your account by asking.",
+      },
+      {
+        note: "This is why a request is safe to accept from anyone. The worst a bad one can do is waste a moment of your time.",
+      },
+    ],
+  },
+  {
     id: "adding-money",
     icon: ArrowDownToLine,
     title: "Adding money",
@@ -189,6 +212,24 @@ const NEAR_SECTIONS: Section[] = [
       },
       {
         note: "Adding money from other chains, through NEAR Intents, is coming soon.",
+      },
+    ],
+  },
+  {
+    id: "cashing-out",
+    icon: ArrowUpFromLine,
+    title: "Getting money out",
+    lead: "Send it to any NEAR account you use.",
+    blocks: [
+      {
+        steps: [
+          "Go to Cash out and pick \"A NEAR account or exchange\".",
+          "Type the amount and the account: your own NEAR wallet, or the NEAR deposit account an exchange shows you.",
+          "Check the name, then approve it with your key. It arrives in seconds, and Selkie pays the network fee.",
+        ],
+      },
+      {
+        note: "Cashing out to other chains, such as USDC on Base or USDT on Tron, runs through NEAR Intents. That only works on NEAR mainnet, so it opens with mainnet.",
       },
     ],
   },
