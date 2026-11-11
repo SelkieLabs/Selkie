@@ -15,8 +15,10 @@ import {
   Send,
 } from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
+import { KeyProof } from "@/components/wallet/KeyProof";
 import { useToast } from "@/contexts/ToastContext";
 import type { Money, User } from "@/lib/api";
+import { features, isNear } from "@/lib/chain";
 import { DOLLAR, money, moneyLike, shortAddress } from "@/lib/format";
 import { MASK, toggleAmountsHidden, useAmountsHidden } from "@/lib/privacy";
 import { useCountUp } from "@/lib/useCountUp";
@@ -43,7 +45,8 @@ export function BalanceCard({
   loading: boolean;
   refreshing: boolean;
   onRefresh: () => void;
-  onConvert: () => void;
+  /** Absent where the chain has no conversion; the button goes with it. */
+  onConvert?: () => void;
 }) {
   const hidden = useAmountsHidden();
   const dollars = balances.find((balance) => balance.asset === DOLLAR)?.amount ?? "0";
@@ -66,10 +69,17 @@ export function BalanceCard({
         <div className="flex min-w-0 items-center gap-3">
           <Avatar url={profile?.avatarUrl} fallback={handle?.username ?? name ?? "?"} />
           <div className="min-w-0">
-            <p className="eyebrow">Your wallet</p>
+            <p className="eyebrow">{isNear ? "Your NEAR account" : "Your wallet"}</p>
             <p className="truncate font-display text-[17px] font-bold tracking-tight">
               {handle ? `@${handle.username}` : (name ?? "Not linked yet")}
             </p>
+            {/* The account is named after the handle; that is the point, so it
+                is shown whole. Copy is on the button beside it. */}
+            {isNear && (
+              <p className="truncate font-mono text-[12px] font-medium text-pen/60" title={user.address}>
+                {user.address}
+              </p>
+            )}
           </div>
         </div>
 
@@ -137,13 +147,19 @@ export function BalanceCard({
         <Link href="/wallet/receive" className="btn flex-1 sm:flex-none">
           <ArrowDownToLine size={15} strokeWidth={2.4} /> Deposit
         </Link>
-        <Link href="/wallet/cashout" className="btn flex-1 sm:flex-none">
-          <Banknote size={15} strokeWidth={2.4} /> Cash out
-        </Link>
-        <button onClick={onConvert} disabled={!hasSomethingToConvert} className="btn">
-          <Repeat size={15} strokeWidth={2.4} /> Convert
-        </button>
+        {features.cashOut && (
+          <Link href="/wallet/cashout" className="btn flex-1 sm:flex-none">
+            <Banknote size={15} strokeWidth={2.4} /> Cash out
+          </Link>
+        )}
+        {features.convert && onConvert && (
+          <button onClick={onConvert} disabled={!hasSomethingToConvert} className="btn">
+            <Repeat size={15} strokeWidth={2.4} /> Convert
+          </button>
+        )}
       </div>
+
+      {isNear && <KeyProof />}
     </section>
   );
 }
@@ -260,7 +276,7 @@ function CopyAddress({ address }: { address: string }) {
     try {
       await navigator.clipboard.writeText(address);
       setCopied(true);
-      toast("success", "Address copied.");
+      toast("success", isNear ? "Account name copied." : "Address copied.");
       setTimeout(() => setCopied(false), 1800);
     } catch {
       toast("error", "Could not copy. Long press the address to copy it by hand.");
@@ -284,7 +300,8 @@ function CopyAddress({ address }: { address: string }) {
       ) : (
         <Copy size={13} strokeWidth={2.5} />
       )}
-      <span className="hidden sm:inline">{copied ? "Copied" : shortAddress(address)}</span>
+      {/* On NEAR the full name is already on the card; the pill only copies it. */}
+      <span className="hidden sm:inline">{copied ? "Copied" : isNear ? "Copy" : shortAddress(address)}</span>
     </button>
   );
 }

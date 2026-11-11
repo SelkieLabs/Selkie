@@ -22,6 +22,7 @@ import { SendPanel } from "@/components/wallet/SendPanel";
 import { SettingsPanel } from "@/components/wallet/SettingsPanel";
 import { useAuth } from "@/contexts/useAuth";
 import { api, type ActivityEntry, type MoneyRequest } from "@/lib/api";
+import { features } from "@/lib/chain";
 import { DOLLAR } from "@/lib/format";
 import { isWalletTab } from "@/lib/tabs";
 import { useLiveRefresh } from "@/lib/useLiveRefresh";
@@ -57,6 +58,12 @@ export default function WalletTabPage() {
   }, []);
 
   const loadRequests = useCallback(async () => {
+    // Where the chain has no requests there is no endpoint to ask, and asking
+    // every fifteen seconds would just fill the console with 404s.
+    if (!features.requests) {
+      setLoadingRequests(false);
+      return;
+    }
     try {
       const { incoming: mine, outgoing: theirs } = await api.requests();
       setIncoming(mine);
@@ -152,7 +159,7 @@ export default function WalletTabPage() {
                   loading={!balancesReady}
                   refreshing={refreshing}
                   onRefresh={() => void refreshAll()}
-                  onConvert={() => setConverting(true)}
+                  onConvert={features.convert ? () => setConverting(true) : undefined}
                 />
               )}
 
