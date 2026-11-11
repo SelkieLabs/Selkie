@@ -18,6 +18,8 @@ import { InMemoryUserStore } from "../identity/store";
 import { InMemoryRequestStore } from "../requests/store";
 import { buildNearApp } from "./app";
 import { OUTSIDE } from "./balance-watch";
+import { PushNotifier } from "../push/notifier";
+import { InMemoryPushStore } from "../push/store";
 import { SimulatedNearChain } from "./simulated-chain";
 import { InMemoryNearAccountStore, InMemoryPrepareStore } from "./store";
 
@@ -62,6 +64,9 @@ let app: FastifyInstance;
 let chain: SimulatedNearChain;
 let requests: InMemoryRequestStore;
 let accounts: InMemoryNearAccountStore;
+let notifier: PushNotifier;
+/** What reached each browser's push service: endpoint -> notification bodies. */
+let pushed: Map<string, string[]>;
 /** The balance watch's clock, moved by hand. */
 let clock = 0;
 const SETTLE_MS = 10_000;
@@ -71,7 +76,16 @@ beforeEach(async () => {
   requests = new InMemoryRequestStore();
   accounts = new InMemoryNearAccountStore();
   clock = 0;
+  pushed = new Map();
+  const pushStore = new InMemoryPushStore();
+  notifier = new PushNotifier({
+    store: pushStore,
+    send: async (target, payload) => {
+      pushed.set(target.endpoint, [...(pushed.get(target.endpoint) ?? []), JSON.parse(payload).body]);
+    },
+  });
   app = await buildNearApp({
+    push: { store: pushStore, notifier, publicKey: "BPublicKeyForTests" },
     users: new InMemoryUserStore(),
     provider: new WalletProvider(),
     chain: chain as unknown as NearChain,
@@ -531,6 +545,68 @@ describe("NEAR app", () => {
         (await fromOutside(kemi)).map((entry) => entry.amount.amount),
         ["7"],
       );
+    });
+  });
+
+  describe("notifications when money comes in", () => {
+    const phone = (who: Person) => `https://fcm.googleapis.com/fcm/send/${who.username}-phone`;
+    const subscribe = (who: Person, endpoint = phone(who)) =>
+      app.inject({
+        method: "POST",
+        url: "/push/subscribe",
+        headers: auth(who),
+        payload: { endpoint, keys: { p256dh: "B".repeat(87), auth: "a".repeat(22) } },
+      });
+    const delivered = async (who: Person) => {
+      await notifier.settled();
+      return pushed.get(phone(who)) ?? [];
+    };
+
+    test("a browser subscribes with the server's key, signed in, to a real push service", async () => {
+      const amaka = person("1001", "amaka");
+      await signIn(amaka);
+      assert.deepEqual((await app.inject({ method: "GET", url: "/push/key" })).json(), { publicKey: "BPublicKeyForTests" });
+      const anonymous = await app.inject({ method: "POST", url: "/push/subscribe", payload: {} });
+      assert.equal(anonymous.statusCode, 401);
+      assert.equal((await subscribe(amaka, "https://127.0.0.1/admin")).statusCode, 400);
+      assert.equal((await subscribe(amaka)).statusCode, 200);
+    });
+
+    test("the person paid gets told who sent what; the payer does not", async () => {
+      const tunde = person("2001", "tunde");
+      const amaka = person("1001", "amaka");
+      await signIn(tunde);
+      await signIn(amaka);
+      await subscribe(tunde);
+      await subscribe(amaka);
+      chain.fund(tunde.account!, 5n * DOLLAR);
+
+      assert.equal((await pay(tunde, { to: "@amaka", amount: "1.5" })).statusCode, 200);
+      assert.deepEqual(await delivered(amaka), ["@tunde sent you 1.50 USDC."]);
+      assert.deepEqual(await delivered(tunde), []);
+    });
+
+    test("money from outside Selkie is announced once it is written down", async () => {
+      const amaka = person("1001", "amaka");
+      await signIn(amaka);
+      await subscribe(amaka);
+      chain.fund(amaka.account!, 20n * DOLLAR);
+      await settle(amaka);
+      await look(amaka);
+      assert.deepEqual(await delivered(amaka), ["20.00 USDC arrived from outside Selkie."]);
+    });
+
+    test("switching off stops them", async () => {
+      const tunde = person("2001", "tunde");
+      const amaka = person("1001", "amaka");
+      await signIn(tunde);
+      await signIn(amaka);
+      await subscribe(amaka);
+      const off = await app.inject({ method: "POST", url: "/push/unsubscribe", headers: auth(amaka), payload: { endpoint: phone(amaka) } });
+      assert.equal(off.statusCode, 200);
+      chain.fund(tunde.account!, 5n * DOLLAR);
+      assert.equal((await pay(tunde, { to: "@amaka", amount: "1" })).statusCode, 200);
+      assert.deepEqual(await delivered(amaka), []);
     });
   });
 });

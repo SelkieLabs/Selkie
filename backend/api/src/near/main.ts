@@ -4,6 +4,8 @@ import { migrate } from "../db/migrate";
 import { openPool } from "../db/pool";
 import { PostgresUserStore } from "../identity/postgres-store";
 import { PrivyIdentityProvider } from "../identity/privy";
+import { PushNotifier, webPushSender } from "../push/notifier";
+import { PostgresPushStore } from "../push/postgres-store";
 import { PostgresRequestStore } from "../requests/postgres-store";
 import { buildNearApp } from "./app";
 import { PostgresNearAccountStore, PostgresPrepareStore } from "./postgres-store";
@@ -28,6 +30,28 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
   const pool = openPool(databaseUrl);
   await migrate(pool, (message) => console.log(message));
 
+  // Push is optional: without keys the wallet still says so in an open tab.
+  const vapid = {
+    publicKey: env.WEB_PUSH_PUBLIC_KEY ?? "",
+    privateKey: env.WEB_PUSH_PRIVATE_KEY ?? "",
+    subject: env.WEB_PUSH_SUBJECT || env.SELKIE_WEB_URL || "",
+  };
+  const pushStore = new PostgresPushStore(pool);
+  const push =
+    vapid.publicKey && vapid.privateKey && vapid.subject
+      ? {
+          store: pushStore,
+          publicKey: vapid.publicKey,
+          notifier: new PushNotifier({
+            store: pushStore,
+            send: webPushSender(vapid),
+            // Status and message only: a push error also carries the browser's endpoint.
+            onError: (error) =>
+              console.warn("[push]", (error as { statusCode?: number }).statusCode ?? "", error instanceof Error ? error.message : error),
+          }),
+        }
+      : undefined;
+
   const app = await buildNearApp({
     users: new PostgresUserStore(pool),
     // The user's key is their Privy embedded NEAR wallet; nothing else is.
@@ -38,6 +62,7 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
     activity: new PostgresActivityStore(pool),
     requests: new PostgresRequestStore(pool),
     xLookup: env.X_BEARER_TOKEN ? new XApiUserLookup(env.X_BEARER_TOKEN) : noXLookup,
+    push,
   });
 
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
@@ -56,4 +81,5 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
   console.log(`escrow ${config.escrowContract}, USDC ${config.usdcContract}`);
   console.log(`accounts under ${config.handleParent}; relayer ${config.relayerAccount}; oracle ${config.oracleAccount}`);
   console.log(env.X_BEARER_TOKEN ? "X user-id recipient keys on" : "X user-id lookup off (username keys only)");
+  console.log(push ? "push notifications on" : "push notifications off (npm run push:keys, then restart)");
 }
