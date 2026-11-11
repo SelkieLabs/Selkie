@@ -19,6 +19,7 @@ NEAR (Stellar stays in the code, hidden from users).
 | 6.4 Frontend NEAR mode | **built** (sign-in opens the account, send, refund, receive, key proof badge); needs the two-browser test with real X logins |
 | Restored on NEAR (human asked) | **done**: Pay many (one signature, `hold_many` for non-users), pay any NEAR account, Cash out to a NEAR account or exchange, Requests. Each goes prepare → sign → relay. 16 app tests (`backend/api/src/near/app.test.ts`) run the real app on a simulated chain with real ed25519 signatures |
 | Money in, live | **done**: the wallet polls every 12 s and on returning to the tab; new money in shows a toast ("@tunde sent you 2.00 USDC."). Deposits that skip Selkie (faucet, exchange, another wallet) now get a feed line "from outside Selkie" (`backend/api/src/near/balance-watch.ts`, migration 003). 6 more app tests (22 total) |
+| Push notifications | **built**: Settings → "When money comes in" (and a one-time offer on Home) subscribes the browser to Web Push. Every money-in feed line also goes to the person's devices, even with Selkie closed. Server side tested with a fake push service (13 tests); **real delivery still to be checked in a browser**. iPhone needs Selkie added to the Home Screen first |
 | Oracle | **rotated** to `oracle-v2.selkiepay.testnet`: claim-only key, no allowance cap (see Setup) |
 | 6.5 Copy | **done**: landing, FAQ, docs, settings, footer all NEAR |
 | Full loop on testnet | **blocked on test USDC**: fund an account from faucet.circle.com (NEAR Testnet) |
@@ -152,6 +153,20 @@ unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
   RPC lag and the gap between a transaction landing and Selkie recording it.
   Accounts opened before this start counting at 0 if their feed is empty (so a faucet
   balance shows up), otherwise at their current balance.
+- **Web Push for money in** (not in the brief; the human asked). `backend/api/src/push/`:
+  - `notifyingActivity` wraps the activity store. Every way money arrives already writes
+    a feed line there, so a new way of receiving cannot forget to notify.
+  - Endpoints must be on a known push service (FCM, Mozilla, Apple, Microsoft), so a
+    signed-in user cannot make the server POST to an internal address.
+  - Keys: `npm run push:keys` writes `WEB_PUSH_PUBLIC_KEY` / `WEB_PUSH_PRIVATE_KEY` to
+    `.env`. The subject defaults to `SELKIE_WEB_URL`. **The hosted API needs the same
+    keys set**, or push stays off there.
+  - Library: `web-push` pinned at 3.6.7. 4.0.0 came out 2026-11-06 and is ESM-only;
+    too new to trust a day before a deadline.
+  - The service worker (`frontend/public/sw.js`) always shows a notification. It is
+    silent when a Selkie tab is focused, because Safari withdraws push from sites that
+    receive one and show nothing.
+  - Signing out unsubscribes the browser.
 - **Cash out on NEAR = a transfer to any NEAR account** (your wallet or an exchange's
   deposit account), shown as "cashout" in the feed. To other chains it needs NEAR Intents
   on mainnet; the screen says so. Bank cash-out stays the pre-existing "almost open" screen.
