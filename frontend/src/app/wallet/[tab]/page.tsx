@@ -161,7 +161,7 @@ export default function WalletTabPage() {
   return (
     <>
       <Header app />
-      <main className="pb-32 pt-3 lg:pb-20 lg:pt-5">
+      <main className="pb-20 pt-3 lg:pt-5">
         <Shell app>
           <div className="flex gap-7">
             <Rail active={tab} waiting={waiting} />

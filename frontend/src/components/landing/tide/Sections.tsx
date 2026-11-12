@@ -2,6 +2,7 @@
 
 import { BookOpen, Check, ExternalLink, Fuel, Layers, Lock, PenLine, X as Cross } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { CoinOnChain } from "@/components/ChainLogo";
 import { XLogo } from "@/components/Mark";
 import { NEAR_NETWORK } from "@/lib/chain";
 import { explorer } from "@/lib/explorer";
@@ -252,15 +253,16 @@ function FlowNode({
 
 /* ---------------- intents: the currents ---------------- */
 
-type Chip = { b: string; s: string; bg: string; l: string };
+// `chain` is 1Click's blockchain name, which is what the shared logo helper keys on.
+type Chip = { coin: string; chain: string; chainName: string };
 const INS: Chip[] = [
-  { b: "USDT", s: "on Tron", bg: "#c4302b", l: "T" },
-  { b: "USDC", s: "on Base", bg: "#2c5ff6", l: "B" },
+  { coin: "USDT", chain: "tron", chainName: "Tron" },
+  { coin: "USDC", chain: "base", chainName: "Base" },
 ];
 const OUTS: Chip[] = [
-  { b: "USDC", s: "on Base", bg: "#2c5ff6", l: "B" },
-  { b: "USDT", s: "on Tron", bg: "#c4302b", l: "T" },
-  { b: "USDC", s: "on Solana", bg: "linear-gradient(135deg,#9945ff,#14f195)", l: "S" },
+  { coin: "USDC", chain: "base", chainName: "Base" },
+  { coin: "USDT", chain: "tron", chainName: "Tron" },
+  { coin: "USDC", chain: "sol", chainName: "Solana" },
 ];
 
 function Currents() {
@@ -277,16 +279,16 @@ function Currents() {
   }, []);
 
   const wide = w >= 640;
-  const H = wide ? 470 : 600;
+  const H = wide ? 470 : 640;
   const cx = w / 2;
-  const cy = wide ? 235 : 290;
+  const cy = wide ? 235 : 300;
   const R = wide ? 88 : 70;
 
   // chip anchor points, and the strands that run from them into the hub and out again
-  const ins = wide ? INS.map((_, i) => ({ x: 0, y: [160, 330][i] })) : INS.map((_, i) => ({ x: w * [0.27, 0.73][i], y: 64 }));
+  const ins = wide ? INS.map((_, i) => ({ x: 0, y: [160, 330][i] })) : INS.map((_, i) => ({ x: w * [0.27, 0.73][i], y: 80 }));
   const outs = wide
     ? OUTS.map((_, i) => ({ x: w, y: [120, 245, 370][i] }))
-    : OUTS.map((_, i) => ({ x: w * [0.17, 0.5, 0.83][i], y: 520 }));
+    : OUTS.map((_, i) => ({ x: w * [0.17, 0.5, 0.83][i], y: 540 }));
 
   const paths: { d: string; main: boolean; dir: "in" | "out" }[] = [];
   for (const a of ins)
@@ -305,7 +307,7 @@ function Currents() {
     }
 
   return (
-    <div className="td-currents" ref={host} style={{ height: H }} aria-label="Money flows in from Tron and Base, through your NEAR account, and out to Base, Tron or Solana.">
+    <div className={`td-currents${wide ? "" : " narrow"}`} ref={host} style={{ height: H }} aria-label="Money flows in from Tron and Base, through your NEAR account, and out to Base, Tron or Solana.">
       {w > 0 && (
         <>
           <svg viewBox={`0 0 ${w} ${H}`} aria-hidden="true">
@@ -324,10 +326,10 @@ function Currents() {
                 )),
               )}
           </svg>
-          <span className="td-ccap" style={wide ? { left: 0, top: 40 } : { left: 0, top: 6 }}>
+          <span className="td-ccap" style={wide ? { left: 0, top: 40 } : { left: 0, top: 0 }}>
             Add money
           </span>
-          <span className="td-ccap" style={wide ? { right: 0, top: 40 } : { right: 0, top: H - 22 }}>
+          <span className="td-ccap" style={wide ? { right: 0, top: 40 } : { left: 0, top: H - 22 }}>
             Cash out
           </span>
           {INS.map((c, i) => (
@@ -335,6 +337,9 @@ function Currents() {
           ))}
           <div className="td-hub" style={{ left: cx, top: cy }}>
             <div>
+              <div className="coin">
+                <CoinOnChain symbol="USDC" blockchain="near" chainName="NEAR" size={40} />
+              </div>
               <div className="usd">USDC</div>
               <div className="acct">your account</div>
               <div className="net">on NEAR</div>
@@ -343,7 +348,7 @@ function Currents() {
           {OUTS.map((c, i) => (
             <ChipBox key={`out${i}`} c={c} style={wide ? { right: 0, top: outs[i].y } : { left: outs[i].x, top: outs[i].y }} />
           ))}
-          <span className="td-ccap" style={{ left: "50%", top: wide ? 438 : H - 52, transform: "translateX(-50%)" }}>
+          <span className="td-ccap" style={wide ? { left: "50%", top: 438, transform: "translateX(-50%)" } : { right: 0, top: H - 22 }}>
             via NEAR Intents · 1Click
           </span>
         </>
@@ -355,12 +360,10 @@ function Currents() {
 function ChipBox({ c, style }: { c: Chip; style: CSSProperties }) {
   return (
     <div className="td-chip" style={style}>
-      <span className="lg" style={{ background: c.bg }}>
-        {c.l}
-      </span>
+      <CoinOnChain symbol={c.coin} blockchain={c.chain} chainName={c.chainName} size={34} />
       <div>
-        <b>{c.b}</b>
-        <span>{c.s}</span>
+        <b>{c.coin}</b>
+        <span>on {c.chainName}</span>
       </div>
     </div>
   );
@@ -383,7 +386,7 @@ function Bullets({ items }: { items: string[] }) {
 
 export function Intents() {
   return (
-    <section className="td-sec td-intents" data-depth="-30" aria-labelledby="intents-title">
+    <section id="chains" className="td-sec td-intents" data-depth="-30" aria-labelledby="intents-title">
       <div className="td-inner">
         <div>
           <Depth>−30 m · any chain</Depth>
@@ -443,7 +446,7 @@ export function PayMany() {
   const waiting = LIST.slice(0, checked).filter((r) => !r.here).length;
 
   return (
-    <section className="td-sec td-many" data-depth="-35" aria-labelledby="many-title">
+    <section id="many" className="td-sec td-many" data-depth="-35" aria-labelledby="many-title">
       <div className="td-inner">
         <div>
           <Depth>−35 m · pay many</Depth>
@@ -524,7 +527,7 @@ const PARTS = [
 
 export function Trust() {
   return (
-    <section className="td-sec td-trust" data-depth="-40" aria-labelledby="trust-title">
+    <section id="trust" className="td-sec td-trust" data-depth="-40" aria-labelledby="trust-title">
       <div className="td-inner">
         <div className="head">
           <div>

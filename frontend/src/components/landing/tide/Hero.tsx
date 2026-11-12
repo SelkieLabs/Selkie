@@ -1,19 +1,107 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ArrowRight, Menu, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useAuth } from "@/contexts/useAuth";
 import { NEAR_NETWORK } from "@/lib/chain";
 import { Caustics } from "./Caustics";
 import { HandleForm } from "./HandleForm";
-import { chapterScroll, formatDepth, previewAccount, useDepth, useInView } from "./hooks";
-import { Chest, Kelp, Motes } from "./Sea";
+import { chapterScroll, formatDepth, previewAccount, scrollToY, setScrollLock, useDepth, useInView } from "./hooks";
+import { Kelp, Motes } from "./Sea";
 
 const CHAPTERS = ["01 you send", "02 it waits", "03 they sign in", "04 it's theirs"];
+
+const MENU = [
+  { href: "#how", label: "How it works" },
+  { href: "#proof", label: "Proof" },
+  { href: "#chains", label: "Any chain" },
+  { href: "#many", label: "Pay many" },
+  { href: "#trust", label: "What Selkie can't do" },
+  { href: "#faq", label: "Questions" },
+];
+
+/**
+ * The phone menu: a sheet of water that opens out of the burger and covers the
+ * screen. The page under it stops scrolling while it is open; picking a place
+ * closes it and glides there.
+ */
+function MenuSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { signIn } = useAuth();
+
+  useEffect(() => {
+    if (!open) return;
+    setScrollLock(true);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      setScrollLock(false);
+    };
+  }, [open, onClose]);
+
+  const go = (href: string) => {
+    onClose();
+    const el = document.querySelector<HTMLElement>(href);
+    // after the lock lifts, or Lenis ignores the request
+    if (el) requestAnimationFrame(() => scrollToY(el.getBoundingClientRect().top + window.scrollY));
+  };
+
+  return (
+    <div className={`td-menu${open ? " open" : ""}`} role="dialog" aria-modal="true" aria-label="Menu" inert={!open} data-lenis-prevent>
+      <div className="td-menu-top">
+        <span className="td-wm">Selkie</span>
+        <button className="td-burger" onClick={onClose} aria-label="Close menu">
+          <X size={22} />
+        </button>
+      </div>
+      <ol className="td-menu-links">
+        {MENU.map((m, i) => (
+          <li key={m.href} style={{ "--i": i } as CSSProperties}>
+            <a
+              href={m.href}
+              onClick={(e) => {
+                e.preventDefault();
+                go(m.href);
+              }}
+            >
+              <span className="n">{String(i + 1).padStart(2, "0")}</span>
+              {m.label}
+              <ArrowRight size={20} className="go" />
+            </a>
+          </li>
+        ))}
+      </ol>
+      <div className="td-menu-foot" style={{ "--i": MENU.length } as CSSProperties}>
+        <button
+          className="td-btn td-btn-sg"
+          onClick={() => {
+            onClose();
+            signIn();
+          }}
+        >
+          Open Selkie
+        </button>
+        <div className="td-menu-small">
+          <a href="/docs">Docs</a>
+          <a href="https://github.com/SelkieLabs/Selkie" target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+          <a href="https://x.com/SelkiePay" target="_blank" rel="noreferrer">
+            X
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Nav() {
   const { signIn } = useAuth();
   const depth = useDepth();
+  const [menu, setMenu] = useState(false);
+  const close = useRef(() => setMenu(false)).current;
   return (
     <nav className="td-nav" aria-label="Main">
       <div className="l">
@@ -31,7 +119,11 @@ function Nav() {
         <button onClick={signIn} className="td-btn td-btn-ghost">
           Open Selkie
         </button>
+        <button className="td-burger" onClick={() => setMenu(true)} aria-label="Open menu" aria-expanded={menu}>
+          <Menu size={22} />
+        </button>
       </div>
+      <MenuSheet open={menu} onClose={close} />
     </nav>
   );
 }
@@ -227,13 +319,6 @@ export function Hero() {
         <FloatingPass handle={handle} />
       </div>
 
-      <div className="td-vault">
-        <div className="tag">
-          <b>−40 m</b>&nbsp; escrow.selkiepay.{NEAR_NETWORK === "mainnet" ? "near" : "testnet"}: money
-          waits here
-        </div>
-        <Chest />
-      </div>
 
       <div className="td-hfoot">
         <span className="scroll">

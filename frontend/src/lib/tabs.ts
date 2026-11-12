@@ -68,3 +68,6 @@ export const PHONE_TABS = TABS.filter((tab) => tab.onPhone);
 /** Guards the URL: /wallet/anything-else is not a tab, it is a typo. */
 export const isWalletTab = (value: string): value is WalletTab =>
   TABS.some((tab) => tab.id === value);
+
+/** Fired by the header's burger on small screens; the wallet rail opens its drawer. */
+export const MENU_EVENT = "selkie:open-menu";

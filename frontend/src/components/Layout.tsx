@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, Home, LogOut, Settings, Wallet } from "lucide-react";
+import { ChevronDown, Home, LogOut, Menu, Settings, Wallet } from "lucide-react";
 import Link from "next/link";
 import { LoaderMark, Mark, Wordmark } from "./Mark";
 import { SignOutModal } from "./SignOutModal";
 import { useAuth } from "@/contexts/useAuth";
 import type { User } from "@/lib/api";
 import { isNear } from "@/lib/chain";
+import { MENU_EVENT } from "@/lib/tabs";
 import { avatarOf, handleOf } from "@/lib/user";
 
 export function Shell({
@@ -153,7 +154,18 @@ export function Header({ app = false }: { app?: boolean }) {
     >
       <Shell wide={!app} app={app}>
         <div className="flex items-center justify-between gap-3">
-          <Wordmark />
+          <div className="flex items-center gap-2">
+            {app && (
+              <button
+                onClick={() => window.dispatchEvent(new Event(MENU_EVENT))}
+                aria-label="Open menu"
+                className="-ml-1.5 grid h-10 w-10 place-items-center rounded-xl text-pen/80 transition-colors hover:bg-pen/[0.06] hover:text-pen lg:hidden"
+              >
+                <Menu size={22} />
+              </button>
+            )}
+            <Wordmark />
+          </div>
           {/* Signed in, not merely "we still have a user object". Those came
               apart on sign out, and the pill went on showing somebody's name on
               a page they had just left. Read the state that decides, not the

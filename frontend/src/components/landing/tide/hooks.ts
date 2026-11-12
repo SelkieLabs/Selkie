@@ -51,6 +51,15 @@ export function scrollToY(y: number) {
   else window.scrollTo({ top: y, behavior: "smooth" });
 }
 
+/** Hold the page still under a full-screen sheet (the phone menu), and let it go again. */
+export function setScrollLock(locked: boolean) {
+  if (lenis) {
+    if (locked) lenis.stop();
+    else lenis.start();
+  }
+  document.documentElement.style.overflow = locked ? "hidden" : "";
+}
+
 /** Where in the pinned dive each of its four steps sits, as a fraction of its scroll. */
 export const CHAPTER_AT = [0.04, 0.42, 0.66, 0.95];
 
