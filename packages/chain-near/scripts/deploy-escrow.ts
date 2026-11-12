@@ -12,8 +12,12 @@
  * 3. Calls `new` once, signed by the escrow account itself: `new` is #[private],
  *    so nobody can front-run the init and name their own oracle.
  *
- * Testnet only. Re-running redeploys the code and leaves state alone; a state
- * layout change needs a fresh escrow account.
+ * Re-running redeploys the code and leaves state alone; a state layout change
+ * needs a fresh escrow account.
+ *
+ * Mainnet (`npm run near:deploy-escrow:mainnet`, reads .env.mainnet) needs
+ * SELKIE_MAINNET_OK=yes from the human, has no faucet, and stops unless the
+ * escrow already holds MIN_BALANCE_MAINNET from `near:setup:mainnet`.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -25,10 +29,15 @@ import { balanceOf, topUpFromFaucet } from "./faucet";
 
 const WASM = resolve(import.meta.dirname, "../../../contracts-near/target/wasm32-unknown-unknown/release/selkie_handle_escrow.wasm");
 const MIN_BALANCE = nearToYocto("6");
+/** ~2.92 NEAR of code storage plus the 0.5 NEAR the contract keeps spare for records. */
+const MIN_BALANCE_MAINNET = nearToYocto("3.5");
 const MAX_LIFETIME_SECS = 365 * 24 * 60 * 60;
 
 const config = nearConfigFromEnv();
-if (config.network !== "testnet") throw new Error("This script only deploys to testnet.");
+const mainnet = config.network === "mainnet";
+if (mainnet && process.env.SELKIE_MAINNET_OK !== "yes") {
+  throw new Error("Deploying to mainnet spends real NEAR. Set SELKIE_MAINNET_OK=yes once the human has agreed.");
+}
 const escrowKey = process.env.NEAR_ESCROW_KEY as KeyPairString | undefined;
 if (!escrowKey) throw new Error("NEAR_ESCROW_KEY missing from .env (run npm run near:setup)");
 const owner = process.env.NEAR_ROOT_ACCOUNT;
@@ -41,6 +50,11 @@ const tx = (hash: string) => `${config.explorerUrl}/transactions/${hash}`;
 const balance = (accountId: string) => balanceOf(provider, accountId);
 
 async function topUp(): Promise<void> {
+  if (mainnet) {
+    const have = await balance(escrow.accountId);
+    if (have < MIN_BALANCE_MAINNET) throw new Error(`${escrow.accountId} needs 3.5 NEAR before deploy; fund it first.`);
+    return;
+  }
   for (const hash of await topUpFromFaucet(provider, escrow.accountId, MIN_BALANCE)) {
     console.log(`topped up ${escrow.accountId} from the faucet: ${tx(hash)}`);
   }
