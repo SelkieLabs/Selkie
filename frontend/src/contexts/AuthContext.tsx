@@ -178,6 +178,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const loadSession = useCallback(async () => {
     const mine = session.current;
+    if (isNear) {
+      // A NEAR web app pointed at the Stellar API signs people in to a Stellar
+      // wallet under NEAR screens, and nothing else looks wrong. Stop at the door.
+      const health = await api.health().catch(() => null);
+      if (session.current !== mine) return;
+      if (health && health.chain !== "near") {
+        setProblem(
+          "This Selkie is on NEAR, but the server it reached is the Stellar one, so nothing was opened. Point SELKIE_API_ORIGIN at the NEAR API.",
+        );
+        setStatus("signed-out");
+        return;
+      }
+    }
     let result = await api.session();
     if (session.current !== mine) return;
 

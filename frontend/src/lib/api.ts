@@ -336,6 +336,11 @@ const json = (value: unknown): RequestInit => ({ method: "POST", body: JSON.stri
 export const newIdempotencyKey = (): string => crypto.randomUUID();
 
 export const api = {
+  /** Which chain the API serves. The NEAR API says `chain: "near"`; the Stellar one says nothing. */
+  async health(): Promise<{ ok: boolean; chain?: string; network?: string }> {
+    return request("/health");
+  },
+
   /**
    * Sign in. An identity we have never seen comes back as `no-account` rather
    * than quietly becoming a second wallet for someone who already has one.
