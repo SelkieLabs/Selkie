@@ -23,7 +23,8 @@
  */
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Account, JsonRpcProvider, KeyPair, actions, nearToYocto, type KeyPairString } from "near-api-js";
+import { Account, KeyPair, actions, nearToYocto, type KeyPairString } from "near-api-js";
+import { failoverProvider, rpcUrls } from "../src/rpc";
 import { listAccessKeys } from "../src/keys";
 
 const ENV_PATH = resolve(import.meta.dirname, "../../../.env");
@@ -33,7 +34,7 @@ const CIRCLE_TESTNET_USDC = "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c3252
 
 const rpcUrl = process.env.NEAR_RPC_URL || "https://test.rpc.fastnear.com";
 const root = process.env.NEAR_ROOT_ACCOUNT || "selkiepay.testnet";
-const provider = new JsonRpcProvider({ url: rpcUrl });
+const provider = failoverProvider(rpcUrls(rpcUrl));
 
 if (!root.endsWith(".testnet")) {
   // Mainnet accounts cost real money and need the human's OK. This script never makes one.
@@ -149,7 +150,7 @@ async function main() {
       : actions.addFullAccessKey(publicKey);
     await rootAccount.signAndSendTransaction({
       receiverId: accountId,
-      actions: [actions.createAccount(), actions.transfer(nearToYocto(child.near)), accessKey],
+      actions: [actions.createAccount(), actions.transfer(nearToYocto(child.near as `${number}`)), accessKey],
     });
     console.log(`created ${accountId} (${child.near} NEAR)`);
   }

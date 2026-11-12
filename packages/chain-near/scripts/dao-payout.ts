@@ -21,7 +21,8 @@
  * claims both kinds for whoever signs in.
  */
 import { readFileSync } from "node:fs";
-import { Account, JsonRpcProvider, nearToYocto, type KeyPairString } from "near-api-js";
+import { Account, nearToYocto, type KeyPairString } from "near-api-js";
+import { failoverProvider } from "../src/rpc";
 import { fromBaseUnits } from "../src/amounts";
 import { NearChain } from "../src/chain";
 import { nearConfigFromEnv } from "../src/config";
@@ -44,7 +45,7 @@ const DAO_DEPOSIT = nearToYocto("6");
 
 const config = nearConfigFromEnv();
 if (config.network !== "testnet") throw new Error("near:dao runs on testnet only.");
-const provider = new JsonRpcProvider({ url: config.rpcUrl });
+const provider = failoverProvider(config.rpcUrls ?? [config.rpcUrl]);
 const tx = (hash: string) => `${config.explorerUrl}/transactions/${hash}`;
 
 function signer(): Account {

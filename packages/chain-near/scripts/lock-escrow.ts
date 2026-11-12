@@ -24,7 +24,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Account, JsonRpcProvider, KeyPair, PublicKey, actions, baseEncode, type KeyPairString } from "near-api-js";
+import { Account, KeyPair, PublicKey, actions, baseEncode, type KeyPairString } from "near-api-js";
+import { failoverProvider } from "../src/rpc";
 import { nearConfigFromEnv } from "../src/config";
 import { listAccessKeys } from "../src/keys";
 
@@ -34,7 +35,7 @@ const MIN_SPARE_NEAR = 2;
 
 const config = nearConfigFromEnv();
 if (config.network !== "testnet") throw new Error("near:lock-escrow runs on testnet only.");
-const provider = new JsonRpcProvider({ url: config.rpcUrl });
+const provider = failoverProvider(config.rpcUrls ?? [config.rpcUrl]);
 const escrowId = config.escrowContract;
 const yes = process.argv.includes("--yes");
 

@@ -16,3 +16,4 @@ export * from "./names";
 export * from "./recipient";
 export * from "./relayer";
 export { publicKeyFromImplicit } from "./browser";
+export * from "./rpc";

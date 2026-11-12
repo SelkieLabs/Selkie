@@ -11,10 +11,11 @@
  *
  * None of them can move money that already sits in a user's account.
  */
-import { Account, JsonRpcProvider, KeyPair, PublicKey, actions, type SignedDelegate } from "near-api-js";
+import { Account, KeyPair, PublicKey, actions, type JsonRpcProvider, type SignedDelegate } from "near-api-js";
 import type { NearServerConfig } from "./config";
 import type { PreparedDelegate } from "./delegate";
 import { listAccessKeys, type AccessKeySummary } from "./keys";
+import { failoverProvider } from "./rpc";
 import { GAS, escrowEvents, firstFailure, type Call, type EscrowEvent, type OutcomeLike, type PaymentView } from "./escrow";
 
 export interface TxOutcome {
@@ -56,7 +57,7 @@ export class NearChain {
   readonly #oracle: Account;
 
   constructor(readonly config: NearServerConfig) {
-    this.provider = new JsonRpcProvider({ url: config.rpcUrl });
+    this.provider = failoverProvider(config.rpcUrls ?? [config.rpcUrl]);
     this.#creator = new Account(config.handleParent, this.provider, config.handleParentKey);
     this.#relayer = new Account(config.relayerAccount, this.provider, config.relayerKey);
     this.#oracle = new Account(config.oracleAccount, this.provider, config.oracleKey);

@@ -25,7 +25,8 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Account, JsonRpcProvider, KeyPair, actions, nearToYocto, type KeyPairString } from "near-api-js";
+import { Account, KeyPair, actions, nearToYocto, type KeyPairString } from "near-api-js";
+import { failoverProvider, rpcUrls } from "../src/rpc";
 
 const ENV_PATH = resolve(import.meta.dirname, "../../../.env");
 const NEXT_KEY = "NEAR_ORACLE_NEXT_KEY";
@@ -43,7 +44,7 @@ const escrowId = process.env.NEAR_ESCROW_CONTRACT;
 if (!root || !rootKey || !escrowId) throw new Error("NEAR_ROOT_ACCOUNT, NEAR_ROOT_KEY and NEAR_ESCROW_CONTRACT are needed.");
 if (!root.endsWith(".testnet")) throw new Error("rotate-oracle only runs on testnet.");
 
-const provider = new JsonRpcProvider({ url: rpcUrl });
+const provider = failoverProvider(rpcUrls(rpcUrl));
 const owner = new Account(root, provider, rootKey);
 const oracleId = `${prefix}.${root}`;
 

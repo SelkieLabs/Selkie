@@ -17,7 +17,8 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Account, JsonRpcProvider, nearToYocto, type KeyPairString } from "near-api-js";
+import { Account, nearToYocto, type KeyPairString } from "near-api-js";
+import { failoverProvider } from "../src/rpc";
 import { nearConfigFromEnv } from "../src/config";
 import { MIN_HOLD_UNITS } from "../src/escrow";
 import { balanceOf, topUpFromFaucet } from "./faucet";
@@ -33,7 +34,7 @@ if (!escrowKey) throw new Error("NEAR_ESCROW_KEY missing from .env (run npm run 
 const owner = process.env.NEAR_ROOT_ACCOUNT;
 if (!owner) throw new Error("NEAR_ROOT_ACCOUNT missing from .env");
 
-const provider = new JsonRpcProvider({ url: config.rpcUrl });
+const provider = failoverProvider(config.rpcUrls ?? [config.rpcUrl]);
 const escrow = new Account(config.escrowContract, provider, escrowKey);
 const tx = (hash: string) => `${config.explorerUrl}/transactions/${hash}`;
 

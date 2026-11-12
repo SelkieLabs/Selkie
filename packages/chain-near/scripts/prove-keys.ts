@@ -12,7 +12,7 @@
  *
  * Exit code 0: Selkie holds no key to the account. 2: it holds at least one.
  */
-import { JsonRpcProvider } from "near-api-js";
+import { failoverProvider, rpcUrls } from "../src/rpc";
 import { listAccessKeys, selkieAccounts, type AccessKeySummary } from "../src/keys";
 
 const NETWORKS = {
@@ -29,7 +29,7 @@ const network = NETWORKS.testnet;
 const rpcUrl = process.env.NEAR_RPC_URL ?? network.rpc;
 const root = process.env.NEAR_ROOT_ACCOUNT ?? network.root;
 const explorer = (process.env.NEAR_EXPLORER_URL ?? network.explorer).replace(/\/$/, "");
-const provider = new JsonRpcProvider({ url: rpcUrl });
+const provider = failoverProvider(rpcUrls(rpcUrl));
 
 const describe = (key: AccessKeySummary) =>
   key.permission === "full"

@@ -7,6 +7,7 @@
  * two would be one careless spread away from shipping a key to the client.
  */
 import type { KeyPairString } from "near-api-js";
+import { rpcUrls } from "./rpc";
 
 export type NearNetwork = "testnet" | "mainnet";
 
@@ -24,6 +25,8 @@ export interface NearPublicConfig {
 }
 
 export interface NearServerConfig extends NearPublicConfig {
+  /** Every RPC in NEAR_RPC_URL, in order; `rpcUrl` is the first. The server fails over between them (rpc.ts). */
+  rpcUrls?: string[];
   /** Full-access key of `handleParent`. Only ever used for CreateAccount. */
   handleParentKey: KeyPairString;
   relayerAccount: string;
@@ -53,7 +56,8 @@ export function nearConfigFromEnv(env: Env = process.env): NearServerConfig {
 
   return {
     network,
-    rpcUrl: required(env, "NEAR_RPC_URL"),
+    rpcUrl: rpcUrls(required(env, "NEAR_RPC_URL"))[0]!,
+    rpcUrls: rpcUrls(required(env, "NEAR_RPC_URL")),
     explorerUrl: explorerUrl.replace(/\/$/, ""),
     usdcContract: required(env, "NEAR_USDC_CONTRACT"),
     escrowContract: required(env, "NEAR_ESCROW_CONTRACT"),
