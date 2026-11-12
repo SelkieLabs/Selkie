@@ -305,6 +305,27 @@ export interface PreparedPayment {
     | { kind: "refund"; claimRef: string; amount: Money };
 }
 
+/**
+ * NEAR: the "Send from X" pocket. A small balance the X bot may spend from when
+ * its owner tweets, never more than the daily limit. Decimal USDC ("12.5").
+ */
+export interface Pocket {
+  balance: string;
+  dailyCap: string;
+  spentToday: string;
+  leftToday: string;
+}
+
+export interface PocketInfo {
+  /** False when this server runs no pocket contract. */
+  enabled: boolean;
+  contract: string | null;
+  /** The X account to tweet at, without the @. */
+  bot: string;
+  /** Null until the first top-up. */
+  pocket: Pocket | null;
+}
+
 /** NEAR: the proof behind "Selkie holds no key". */
 export interface AccountKeys {
   accountId: string;
@@ -630,6 +651,28 @@ export const api = {
 
     async keys(): Promise<AccountKeys> {
       return request("/near/account/keys");
+    },
+
+    /**
+     * The X pocket. Topping up, withdrawing and changing the daily limit are
+     * signed by the user's own key like any other payment; only `pocket_send`
+     * belongs to the bot, and it can only reach Selkie accounts.
+     */
+    pocket: {
+      async get(): Promise<PocketInfo> {
+        return request("/near/pocket");
+      },
+      /** Move USDC from the account into the pocket; `dailyCap` sets the limit too. */
+      async prepareTopUp(input: { amount: string; dailyCap?: string }): Promise<PreparedPayment> {
+        return request("/near/payments/prepare", json({ pocket: { action: "top_up", ...input } }));
+      },
+      /** Back to the account. No amount means everything. */
+      async prepareWithdraw(input: { amount?: string } = {}): Promise<PreparedPayment> {
+        return request("/near/payments/prepare", json({ pocket: { action: "withdraw", ...input } }));
+      },
+      async prepareSetCap(input: { dailyCap: string }): Promise<PreparedPayment> {
+        return request("/near/payments/prepare", json({ pocket: { action: "set_cap", ...input } }));
+      },
     },
 
     /** What a NEAR account name points at, before paying it. */
