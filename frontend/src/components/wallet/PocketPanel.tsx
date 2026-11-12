@@ -392,7 +392,7 @@ function TopUpForm({
       <Hint bad={badLimit}>
         {badLimit
           ? "A daily limit has to be more than zero."
-          : limit !== ""
+          : pocket && limit !== ""
             ? `Now ${usd(current)} a day.`
             : pocket
               ? `Leave it empty to keep ${usd(current)} a day.`
