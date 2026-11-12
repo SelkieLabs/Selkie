@@ -368,8 +368,8 @@ function QuoteCard({ asset, quote }: { asset: ChainAsset; quote: OutQuote }) {
         label="They get about"
         icon={<CoinOnChain symbol={asset.symbol} blockchain={asset.blockchain} chainName={asset.chainName} size={20} />}
       >
-        <b className="font-semibold">
-          {q.amountOutFormatted} {asset.symbol}
+        <b className="co-in co-figure">
+          {q.amountOutFormatted} <span className="co-soft">{asset.symbol}</span>
         </b>
       </Row>
       {q.minAmountOutFormatted && (
@@ -378,7 +378,9 @@ function QuoteCard({ asset, quote }: { asset: ChainAsset; quote: OutQuote }) {
         </Row>
       )}
       <Row label="Takes">{inAbout(q.timeEstimate)}</Row>
-      <Row label="Fees">In the price. Selkie pays the network fee.</Row>
+      <Row label="Fees">
+        <span className="co-soft">In the price.</span> <span className="co-sgt">Selkie pays the network fee.</span>
+      </Row>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[rgba(233,241,236,.06)] px-4 py-3">
         <Fresh at={quote.at} every={30} loading={quote.loading} />
         {q.preview && (

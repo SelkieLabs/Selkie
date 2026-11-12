@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState } from "react";
 import { AlertTriangle, Building2, Check, ChevronDown, ExternalLink, Eye, Loader2, Smartphone } from "lucide-react";
 import { money } from "@/lib/format";
 import {
@@ -10,6 +11,7 @@ import {
   fiat,
   previewLabel,
   useBankStatus,
+  type BankCurrency,
   type useAccountName,
   type useBankQuote,
   type useBanks,
@@ -48,26 +50,13 @@ export function PaycrestBankFields({
   return (
     <>
       <span className="co-label">Paid in</span>
-      <div className="co-chips mt-2" role="group" aria-label="Currency">
-        {BANK_CURRENCIES.map((option) => (
-          <button
-            key={option.code}
-            type="button"
-            className="co-chip"
-            aria-pressed={bank.currency === option.code}
-            onClick={() => {
-              if (option.code !== bank.currency) {
-                onBank({ currency: option.code, institution: "", bank: "", accountName: "" });
-              }
-            }}
-          >
-            {/* Decorative: the code and the hint below already name the country. */}
-            <img src={option.flag} alt="" width={18} height={18} className="co-flag" />
-            {option.code}
-          </button>
-        ))}
-      </div>
-      <p className="co-hint mt-2">
+      <CurrencyChips
+        value={bank.currency}
+        onPick={(code) => {
+          if (code !== bank.currency) onBank({ currency: code, institution: "", bank: "", accountName: "" });
+        }}
+      />
+      <p key={currency.code} className="co-hint co-swap-in mt-2">
         {currency.name}, to a bank or mobile-money account in {currency.country}.
       </p>
 
@@ -177,6 +166,55 @@ export function PaycrestBankFields({
   );
 }
 
+/**
+ * The currency picker. One highlight glides from the old country to the new
+ * one instead of two chips swapping colour, so the eye follows the change.
+ * The glide is measured from the chips themselves, so it survives wrapping
+ * onto two lines on a narrow phone.
+ */
+function CurrencyChips({ value, onPick }: { value: string; onPick: (code: BankCurrency) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [glide, setGlide] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const place = () => {
+      const chip = el.querySelector<HTMLElement>('[aria-pressed="true"]');
+      if (chip) setGlide({ x: chip.offsetLeft, y: chip.offsetTop, w: chip.offsetWidth, h: chip.offsetHeight });
+    };
+    place();
+    const watch = new ResizeObserver(place);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [value]);
+
+  return (
+    <div ref={box} className="co-chips mt-2" role="group" aria-label="Currency" data-glide={glide ? "" : undefined}>
+      {glide && (
+        <span
+          className="co-glide"
+          aria-hidden="true"
+          style={{ width: glide.w, height: glide.h, transform: `translate(${glide.x}px, ${glide.y}px)` }}
+        />
+      )}
+      {BANK_CURRENCIES.map((option) => (
+        <button
+          key={option.code}
+          type="button"
+          className="co-chip"
+          aria-pressed={value === option.code}
+          onClick={() => onPick(option.code)}
+        >
+          {/* Decorative: the code and the hint below already name the country. */}
+          <img src={option.flag} alt="" width={18} height={18} className="co-flag" />
+          {option.code}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** The rate and what arrives, right under the details it depends on. */
 export function BankQuoteCard({ quote }: { quote: Quote }) {
   if (quote.error && !quote.quote) {
@@ -204,13 +242,19 @@ export function BankQuoteCard({ quote }: { quote: Quote }) {
   return (
     <div className="co-receipt">
       <Row label="They get about">
-        <b className="font-semibold">{fiat(q.fiatAmount, q.currency)}</b>
+        <b className="co-in co-figure">{fiat(q.fiatAmount, q.currency)}</b>
       </Row>
       <Row label="Rate">
-        {fiat(q.rate, q.currency)} per USDC
+        <span className="co-sgt">{fiat(q.rate, q.currency)}</span> <span className="co-soft">per USDC</span>
       </Row>
-      {q.sendAbout && <Row label="You send about">{money(q.sendAbout)} USDC</Row>}
-      <Row label="Fees">In the rate and the swap. Selkie pays the network fee.</Row>
+      {q.sendAbout && (
+        <Row label="You send about">
+          <span className="co-out">{money(q.sendAbout)}</span> <span className="co-soft">USDC</span>
+        </Row>
+      )}
+      <Row label="Fees">
+        <span className="co-soft">In the rate and the swap.</span> <span className="co-sgt">Selkie pays the network fee.</span>
+      </Row>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[rgba(233,241,236,.06)] px-4 py-3">
         <Fresh at={quote.at} every={30} loading={quote.loading} />
         {!q.payoutsOn && (

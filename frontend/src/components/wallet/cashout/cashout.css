@@ -462,6 +462,67 @@ select.co-field option {
     color 160ms var(--co-ease),
     box-shadow 160ms var(--co-ease);
 }
+/* The country highlight: one pill that glides between chips. */
+.co-chips {
+  position: relative;
+}
+.co-glide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 999px;
+  background: rgba(127, 209, 185, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(127, 209, 185, 0.55);
+  pointer-events: none;
+  transition:
+    transform 420ms var(--co-ease),
+    width 420ms var(--co-ease);
+}
+.co-chips[data-glide] .co-chip {
+  position: relative;
+}
+.co-chips[data-glide] .co-chip[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: none;
+}
+.co-chip[aria-pressed="true"] .co-flag {
+  animation: co-flag-in 460ms var(--co-ease);
+}
+@keyframes co-flag-in {
+  from {
+    transform: scale(0.6) rotate(-24deg);
+  }
+}
+.co-swap-in {
+  animation: co-swap-in 320ms var(--co-ease);
+}
+@keyframes co-swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Colour on the numbers that matter: gold arrives, coral leaves, sea-glass is Selkie's word. */
+.co-in {
+  color: var(--co-gold);
+}
+.co-out {
+  color: var(--co-bad);
+}
+.co-sgt {
+  color: var(--co-sg-light);
+}
+.co-soft {
+  color: var(--co-foam-3);
+  font-weight: 400;
+}
+.co-figure {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .co-flag {
   width: 18px;
   height: 18px;
