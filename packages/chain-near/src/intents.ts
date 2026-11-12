@@ -40,7 +40,8 @@ export interface ChainAsset {
 
 export interface OneClickQuoteRequest {
   dry: boolean;
-  swapType: "EXACT_INPUT";
+  /** EXACT_INPUT: `amount` is what goes in. EXACT_OUTPUT: `amount` is what must come out. */
+  swapType: "EXACT_INPUT" | "EXACT_OUTPUT";
   slippageTolerance: number;
   originAsset: string;
   depositType: "ORIGIN_CHAIN";
@@ -59,6 +60,8 @@ export interface OneClickQuote {
   depositMemo?: string | null;
   amountIn: string;
   amountInFormatted: string;
+  /** EXACT_OUTPUT only: the least deposit that still fills. Less is refunded. */
+  minAmountIn?: string;
   amountOut: string;
   amountOutFormatted: string;
   minAmountOut?: string;
@@ -200,6 +203,45 @@ export function quoteRequest(input: {
     recipient: incoming ? input.nearAccount : external,
     recipientType: "DESTINATION_CHAIN",
     deadline: new Date(input.now + QUOTE_DEADLINE_MS).toISOString(),
+    referral: "selkie",
+  };
+}
+
+/**
+ * USDC from the person's NEAR account to an address on another chain, sized so
+ * that exactly `amountOut` (base units of `asset`) arrives. For paying someone
+ * who asked for a set amount, like a bank-payout order: 1Click works out what
+ * to deposit (`amountIn`), and anything over what the route needed comes back
+ * to `refundTo`.
+ */
+export function exactOutputRequest(input: {
+  asset: ChainAsset | OneClickToken;
+  usdc: OneClickToken;
+  /** Base units of `asset` that must arrive. */
+  amountOut: bigint;
+  nearAccount: string;
+  externalAddress: string;
+  dry: boolean;
+  now: number;
+  /** When the deposit address must stop taking money. Defaults to the usual ten minutes. */
+  deadline?: number;
+}): OneClickQuoteRequest {
+  if (input.amountOut <= 0n) throw new IntentsError("Enter an amount.", 400);
+  const external = input.externalAddress.trim();
+  if (!external) throw new IntentsError("Add the address to send to.", 400);
+  return {
+    dry: input.dry,
+    swapType: "EXACT_OUTPUT",
+    slippageTolerance: SLIPPAGE_BPS,
+    originAsset: input.usdc.assetId,
+    depositType: "ORIGIN_CHAIN",
+    destinationAsset: input.asset.assetId,
+    amount: input.amountOut.toString(),
+    refundTo: input.nearAccount,
+    refundType: "ORIGIN_CHAIN",
+    recipient: external,
+    recipientType: "DESTINATION_CHAIN",
+    deadline: new Date(input.deadline ?? input.now + QUOTE_DEADLINE_MS).toISOString(),
     referral: "selkie",
   };
 }

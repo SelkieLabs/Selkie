@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { IntentsError, OneClickClient, chainAssets, nearUsdc, quoteRequest, type OneClickToken } from "./intents";
+import { IntentsError, OneClickClient, chainAssets, exactOutputRequest, nearUsdc, quoteRequest, type OneClickToken } from "./intents";
 
 // Shapes as /v0/tokens sent them on 11 Nov 2026.
 const TOKENS: OneClickToken[] = [
@@ -58,6 +58,20 @@ test("a bad amount or a missing address is refused before 1Click is asked", () =
   assert.throws(() => quoteRequest({ ...base_, direction: "in", amount: "0", externalAddress: "0x1" }), IntentsError);
   assert.throws(() => quoteRequest({ ...base_, direction: "in", amount: "1.1234567", externalAddress: "0x1" }), /decimal places/);
   assert.throws(() => quoteRequest({ ...base_, direction: "out", amount: "1", externalAddress: "  " }), /address to send to/);
+});
+
+test("exact output: a set amount must arrive, so 1Click sizes the deposit and refunds the rest to NEAR", () => {
+  const deadline = now + 5 * 60_000;
+  const request = exactOutputRequest({ asset: base!, usdc, amountOut: 10_050_000n, nearAccount: "amaka.near", externalAddress: " 0xpaycrest ", dry: false, now, deadline });
+  assert.equal(request.swapType, "EXACT_OUTPUT");
+  assert.equal(request.originAsset, "nep141:mainnet-usdc");
+  assert.equal(request.destinationAsset, "nep141:base-usdc");
+  assert.equal(request.amount, "10050000");
+  assert.equal(request.recipient, "0xpaycrest");
+  assert.equal(request.refundTo, "amaka.near");
+  assert.equal(request.deadline, "2026-11-11T21:05:00.000Z");
+  assert.throws(() => exactOutputRequest({ asset: base!, usdc, amountOut: 0n, nearAccount: "a.near", externalAddress: "0x1", dry: true, now }), IntentsError);
+  assert.throws(() => exactOutputRequest({ asset: base!, usdc, amountOut: 1n, nearAccount: "a.near", externalAddress: " ", dry: true, now }), /address/);
 });
 
 function fakeFetch(answers: Array<{ status: number; body: unknown }>, seen: Array<{ url: string; init?: RequestInit }>) {
