@@ -56,6 +56,15 @@ describe("reading a payment", () => {
     }
   });
 
+  it("does not read the first word of a note as an asset", () => {
+    // "pay @tunde 2.50 for lunch" read "for" as the asset and replied "I move USDC".
+    const command = sent("@SelkiePay pay @tunde 2.50 for lunch");
+    assert.equal(command.asset, "USDC");
+    assert.equal(command.amount, "2.50");
+    assert.equal(command.note, "for lunch");
+    assert.equal(sent("@SelkiePay send @amaka 5 usdc for rent").note, "for rent");
+  });
+
   it("keeps a note", () => {
     assert.equal(sent("@SelkiePay send 5 to @amaka for lunch").note, "for lunch");
   });

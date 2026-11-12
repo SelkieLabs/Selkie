@@ -49,8 +49,14 @@ const AMOUNT = String.raw`\d{1,12}(?:\.\d{1,7})?`;
  */
 const HANDLE = String.raw`@([A-Za-z0-9_]{1,32})`;
 
-/** Optional asset word. Missing means dollars. */
-const ASSET = String.raw`(?:\s*([A-Za-z]{2,8}))?`;
+/**
+ * Optional asset word. Missing means dollars.
+ *
+ * Not a word that opens a note: in "pay @tunde 2.50 for lunch" the "for" is
+ * the start of the note, and reading it as an asset answered a plain payment
+ * with "I move USDC".
+ */
+const ASSET = String.raw`(?:\s*(?!(?:for|to|from|and|on|as|via|with|because)\b)([A-Za-z]{2,8}))?`;
 
 /** A leading currency symbol reads as dollars, so "$5" needs no asset word. */
 const DOLLARS = String.raw`\$?`;
