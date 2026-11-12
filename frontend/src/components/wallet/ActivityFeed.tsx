@@ -1,9 +1,9 @@
 "use client";
 
 import { Avatar } from "@/components/Layout";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
-  ArrowDownLeft,
+  ArrowDownToLine,
   ArrowUpRight,
   Banknote,
   Clock,
@@ -273,6 +273,35 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
   );
 }
 
+/** A tinted disc with one icon: what kind of money moved, readable by colour first. */
+function Disc({ tint, children }: { tint: [number, number, number]; children: ReactNode }) {
+  const [r, g, b] = tint;
+  return (
+    <span
+      className="grid h-full w-full place-items-center rounded-full"
+      style={{
+        color: `rgb(${r} ${g} ${b})`,
+        background: `radial-gradient(circle at 30% 25%, rgb(${r} ${g} ${b} / 0.26), rgb(${r} ${g} ${b} / 0.1))`,
+        boxShadow: `inset 0 0 0 1px rgb(${r} ${g} ${b} / 0.28)`,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+const GOLD: [number, number, number] = [232, 189, 106]; // money that arrived
+const SEA: [number, number, number] = [127, 209, 185]; // still waiting
+const CORAL: [number, number, number] = [242, 140, 128]; // money that left
+const VIOLET: [number, number, number] = [185, 170, 255]; // out to a bank or exchange
+const SKY: [number, number, number] = [150, 196, 255]; // changed from one coin to another
+const GREY: [number, number, number] = [170, 178, 190]; // came back
+
+// <name>.x.selkiepay.testnet (or .near): an account Selkie made for a handle.
+const HANDLE_ACCOUNT = /^([a-z0-9_-]+)\.x\.selkiepay\.(?:testnet|near)$/;
+// any other named NEAR account
+const NEAR_ACCOUNT = /^[a-z0-9_-]+(\.[a-z0-9_-]+)*\.(?:testnet|near)$|^[a-z0-9_-]+(\.[a-z0-9_-]+)+$/;
+
 function Face({
   entry,
   waiting,
@@ -282,20 +311,60 @@ function Face({
   waiting: boolean;
   returned: boolean;
 }) {
-  if (returned) return <Undo2 size={16} strokeWidth={2.2} />;
+  if (returned)
+    return (
+      <Disc tint={GREY}>
+        <Undo2 size={16} strokeWidth={2.2} />
+      </Disc>
+    );
   const { kind, counterparty } = entry;
   // A cash-out to another chain ("0x5a…eAed on Base") shows that chain's mark.
   const chain = chainInLabel(counterparty);
-  if (chain) return <ChainLogo blockchain={chain} name={counterparty ?? chain} size={22} />;
+  if (chain) return <ChainLogo blockchain={chain} name={counterparty ?? chain} size={38} />;
   // A person reads as their face: their X photo when they are on Selkie, and
   // their own creature when they are not, the way people are drawn everywhere
   // else in the app.
   if (counterparty?.startsWith("@")) return <Avatar name={counterparty} src={entry.counterpartyAvatar} size={38} />;
-  if (kind === "cashout") return <Banknote size={16} strokeWidth={2.2} />;
-  if (kind === "swap") return <Repeat size={16} strokeWidth={2.2} />;
-  if (kind === "claim") return <Sparkles size={16} strokeWidth={2.2} />;
-  if (kind === "receive") return <ArrowDownLeft size={17} strokeWidth={2.2} />;
-  return waiting ? <Clock size={16} strokeWidth={2.2} /> : <ArrowUpRight size={17} strokeWidth={2.2} />;
+  // A Selkie handle account is a person too: the same face as their @handle,
+  // so "selkiepay.x.selkiepay.testnet" and "@selkiepay" read as one someone.
+  const handleAccount = counterparty?.match(HANDLE_ACCOUNT);
+  if (handleAccount) return <Avatar name={`@${handleAccount[1]}`} size={38} />;
+  // Any other NEAR account wears NEAR's own mark.
+  if (counterparty && NEAR_ACCOUNT.test(counterparty)) return <ChainLogo blockchain="near" name="NEAR" size={38} />;
+  if (kind === "cashout")
+    return (
+      <Disc tint={VIOLET}>
+        <Banknote size={17} strokeWidth={2.2} />
+      </Disc>
+    );
+  if (kind === "swap")
+    return (
+      <Disc tint={SKY}>
+        <Repeat size={16} strokeWidth={2.2} />
+      </Disc>
+    );
+  if (kind === "claim")
+    return (
+      <Disc tint={GOLD}>
+        <Sparkles size={16} strokeWidth={2.2} />
+      </Disc>
+    );
+  // Money in from outside Selkie (a faucet, an exchange, another wallet): a deposit.
+  if (kind === "receive")
+    return (
+      <Disc tint={GOLD}>
+        <ArrowDownToLine size={17} strokeWidth={2.2} />
+      </Disc>
+    );
+  return waiting ? (
+    <Disc tint={SEA}>
+      <Clock size={16} strokeWidth={2.2} />
+    </Disc>
+  ) : (
+    <Disc tint={CORAL}>
+      <ArrowUpRight size={17} strokeWidth={2.2} />
+    </Disc>
+  );
 }
 
 /**
