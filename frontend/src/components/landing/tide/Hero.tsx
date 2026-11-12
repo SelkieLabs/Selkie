@@ -102,29 +102,61 @@ function Nav() {
   const depth = useDepth();
   const [menu, setMenu] = useState(false);
   const close = useRef(() => setMenu(false)).current;
+  const bar = useRef<HTMLElement>(null);
+
+  // Fixed to the top. Past the first few pixels it turns to frosted water, and
+  // its bottom edge fills with sea-glass as you dive down the page. Written as
+  // a class and a CSS variable, so scrolling never re-renders React.
+  useEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    let raf = 0;
+    const read = () => {
+      raf = 0;
+      const y = window.scrollY;
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      el.classList.toggle("stuck", y > 24);
+      el.style.setProperty("--p", (max > 0 ? Math.min(1, y / max) : 0).toFixed(4));
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(read);
+    };
+    read();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
   return (
-    <nav className="td-nav" aria-label="Main">
-      <div className="l">
-        <span className="td-wm">Selkie</span>
-        <span className="td-mono" aria-hidden="true">
-          depth {formatDepth(depth)}
-        </span>
-      </div>
-      <div className="links">
-        <a href="#how">How it works</a>
-        <a href="#proof">Proof</a>
-        <a href="#faq">FAQ</a>
-      </div>
-      <div className="r">
-        <button onClick={signIn} className="td-btn td-btn-ghost">
-          Open Selkie
-        </button>
-        <button className="td-burger" onClick={() => setMenu(true)} aria-label="Open menu" aria-expanded={menu}>
-          <Menu size={22} />
-        </button>
-      </div>
+    <>
+      <nav className="td-nav" aria-label="Main" ref={bar}>
+        <div className="l">
+          <span className="td-wm">Selkie</span>
+          <span className="td-mono" aria-hidden="true">
+            depth {formatDepth(depth)}
+          </span>
+        </div>
+        <div className="links">
+          <a href="#how">How it works</a>
+          <a href="#proof">Proof</a>
+          <a href="#faq">FAQ</a>
+        </div>
+        <div className="r">
+          <button onClick={signIn} className="td-btn td-btn-ghost">
+            Open Selkie
+          </button>
+          <button className="td-burger" onClick={() => setMenu(true)} aria-label="Open menu" aria-expanded={menu}>
+            <Menu size={22} />
+          </button>
+        </div>
+      </nav>
+      {/* outside the nav: its backdrop-filter would trap a fixed child inside it */}
       <MenuSheet open={menu} onClose={close} />
-    </nav>
+    </>
   );
 }
 
