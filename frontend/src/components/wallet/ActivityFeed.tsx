@@ -247,7 +247,7 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
 
         <span
           className={`w-[5.75rem] shrink-0 text-right font-mono text-[14.5px] tabular-nums ${
-            returned ? "text-pen/35 line-through" : incoming ? "text-[#d9a441]" : "text-pen"
+            returned ? "text-pen/35 line-through" : incoming ? "text-[#d9a441]" : "text-[#b91c34]"
           }`}
         >
           {incoming ? "+" : "−"}

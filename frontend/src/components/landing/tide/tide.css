@@ -542,18 +542,64 @@ html.lenis {
   color: var(--foam-3);
   font-variant-numeric: tabular-nums;
 }
+/* the links ride in a glass capsule, visible over any part of the sea */
 .td-nav .links {
+  position: relative;
   display: flex;
-  gap: 34px;
-  font-size: 15px;
+  gap: 2px;
+  padding: 5px;
+  border-radius: 999px;
+  font-size: 14.5px;
   font-weight: 500;
-  color: var(--foam-2);
+  background: rgba(7, 19, 28, 0.42);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  box-shadow:
+    inset 0 0 0 1px rgba(233, 241, 236, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 32px -14px rgba(0, 0, 0, 0.6);
 }
 .td-nav .links a {
-  transition: color 150ms var(--ease);
+  position: relative;
+  z-index: 1;
+  padding: 9px 16px;
+  border-radius: 999px;
+  color: rgba(233, 241, 236, 0.86);
+  transition: color 200ms var(--ease);
 }
-.td-nav .links a:hover {
+.td-nav .links a:hover,
+.td-nav .links a.on {
   color: var(--foam);
+}
+.td-nav .links a.on {
+  color: #bff0e1;
+}
+/* the bubble that slides to the section you're in, or the link you point at */
+.td-nav .links .bubble {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 0;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(127, 209, 185, 0.24), rgba(127, 209, 185, 0.12));
+  box-shadow:
+    inset 0 0 0 1px rgba(127, 209, 185, 0.4),
+    0 0 18px rgba(127, 209, 185, 0.18);
+  opacity: 0;
+  transition:
+    transform 420ms var(--ease),
+    width 420ms var(--ease),
+    opacity 220ms var(--ease);
+}
+.td-open {
+  box-shadow: 0 10px 26px -10px rgba(127, 209, 185, 0.7);
+}
+.td-open svg {
+  transition: transform 220ms var(--ease);
+}
+.td-open:hover svg {
+  transform: translateX(3px);
 }
 .td-nav .r {
   display: flex;

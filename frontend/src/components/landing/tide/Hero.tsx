@@ -97,9 +97,63 @@ function MenuSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
+const NAV_LINKS = [
+  { href: "#how", label: "How it works" },
+  { href: "#proof", label: "Proof" },
+  { href: "#chains", label: "Any chain" },
+  { href: "#faq", label: "FAQ" },
+  { href: "/docs", label: "Docs" },
+];
+
+/**
+ * The desktop links, in a glass capsule. A sea-glass bubble slides under the
+ * section you are reading, and over whichever link the pointer is on.
+ */
+function NavLinks({ active }: { active: string | null }) {
+  const [hover, setHover] = useState<string | null>(null);
+  const bubble = useRef<HTMLSpanElement>(null);
+  const links = useRef<Record<string, HTMLAnchorElement | null>>({});
+
+  useEffect(() => {
+    const b = bubble.current;
+    if (!b) return;
+    const target = links.current[hover ?? active ?? ""];
+    if (!target) {
+      b.style.opacity = "0";
+      return;
+    }
+    b.style.opacity = "1";
+    b.style.width = `${target.offsetWidth}px`;
+    b.style.transform = `translateX(${target.offsetLeft}px)`;
+  }, [hover, active]);
+
+  return (
+    <div className="links" onMouseLeave={() => setHover(null)}>
+      <span className="bubble" ref={bubble} aria-hidden="true" />
+      {NAV_LINKS.map((l) => (
+        <a
+          key={l.href}
+          href={l.href}
+          ref={(el) => {
+            links.current[l.href] = el;
+          }}
+          onMouseEnter={() => setHover(l.href)}
+          onFocus={() => setHover(l.href)}
+          onBlur={() => setHover(null)}
+          aria-current={active === l.href ? "true" : undefined}
+          className={active === l.href ? "on" : undefined}
+        >
+          {l.label}
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function Nav() {
   const { signIn } = useAuth();
   const depth = useDepth();
+  const [active, setActive] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const close = useRef(() => setMenu(false)).current;
   const bar = useRef<HTMLElement>(null);
@@ -117,6 +171,15 @@ function Nav() {
       const max = document.documentElement.scrollHeight - window.innerHeight;
       el.classList.toggle("stuck", y > 24);
       el.style.setProperty("--p", (max > 0 ? Math.min(1, y / max) : 0).toFixed(4));
+      // the section under the upper third of the screen lights its link
+      const line = window.innerHeight * 0.35;
+      let now: string | null = null;
+      for (const l of NAV_LINKS) {
+        if (!l.href.startsWith("#")) continue;
+        const r = document.querySelector(l.href)?.getBoundingClientRect();
+        if (r && r.top <= line && r.bottom > line) now = l.href;
+      }
+      setActive(now);
     };
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(read);
@@ -140,14 +203,11 @@ function Nav() {
             depth {formatDepth(depth)}
           </span>
         </div>
-        <div className="links">
-          <a href="#how">How it works</a>
-          <a href="#proof">Proof</a>
-          <a href="#faq">FAQ</a>
-        </div>
+        <NavLinks active={active} />
         <div className="r">
-          <button onClick={signIn} className="td-btn td-btn-ghost">
+          <button onClick={signIn} className="td-btn td-btn-sg td-open">
             Open Selkie
+            <ArrowRight size={16} />
           </button>
           <button className="td-burger" onClick={() => setMenu(true)} aria-label="Open menu" aria-expanded={menu}>
             <Menu size={22} />
