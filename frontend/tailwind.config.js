@@ -27,17 +27,19 @@ export default {
           deep: "#c9964b",
           ink: "#8f6526",
         },
+        // Tide: the abyss the landing dives through, foam for text on it,
+        // sea-glass as the one accent, and the app's calm inks (0 darkest).
+        abyss: "#07131c",
+        deep: "#0d2230",
+        foam: "#e9f1ee",
+        sg: { light: "#a8e3d1", DEFAULT: "#7fd1b9", deep: "#4fae93" },
+        tide: { 0: "#0b0d14", 1: "#11141c", 2: "#1a1e28", 3: "#232836" },
       },
       fontFamily: {
-        display: [
-          '"Bricolage Grotesque"',
-          '"Space Grotesk"',
-          "Inter",
-          "ui-sans-serif",
-          "system-ui",
-          "sans-serif",
-        ],
-        body: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ['"Bricolage Grotesque"', '"Geist"', "ui-sans-serif", "system-ui", "sans-serif"],
+        body: ['"Geist"', "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ['"Geist Mono"', "ui-monospace", "SFMono-Regular", "monospace"],
+        serif: ['"Instrument Serif"', "ui-serif", "Georgia", "serif"],
       },
       keyframes: {
         rise: {

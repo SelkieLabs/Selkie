@@ -14,6 +14,7 @@
     "@privy-io/react-auth": "^3.36.1",
     "@selkie/chain-near": "*",
     "@selkie/core": "*",
+    "lenis": "1.3.27",
     "lucide-react": "^1.25.0",
     "next": "^16.2.12",
     "qrcode": "^1.5.4",

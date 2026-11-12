@@ -47,12 +47,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        {/* Bricolage carries the display voice: variable, with an optical size
-            axis, so a 5rem headline and a 1rem card title are each drawn for
-            the size they are set at rather than scaled from one master. Space
-            Grotesk stays as the fallback the wallet was built against. */}
+        {/* Bricolage carries the display voice (variable, with an optical size
+            axis, so headlines and card titles are each drawn for their size).
+            Geist is the body, Geist Mono the account names and numbers, and
+            Instrument Serif the one italic accent line on the landing. */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap"
           rel="stylesheet"
         />
       </head>

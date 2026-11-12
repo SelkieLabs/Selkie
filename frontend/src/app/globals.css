@@ -42,7 +42,7 @@
     background: linear-gradient(180deg, var(--sea-0) 0%, var(--sea-1) 46%, var(--sea-2) 100%);
     background-attachment: fixed;
     color: var(--ivory);
-    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
@@ -76,7 +76,7 @@
   h1,
   h2,
   h3 {
-    font-family: "Bricolage Grotesque", "Space Grotesk", "Inter", ui-sans-serif, sans-serif;
+    font-family: "Bricolage Grotesque", "Geist", ui-sans-serif, sans-serif;
   }
 
   ::selection {
@@ -161,7 +161,7 @@
     padding: 0 1.4rem;
     border-radius: 0.9rem;
     border: 2px solid var(--pen);
-    font-family: "Inter", sans-serif;
+    font-family: "Geist", sans-serif;
     font-size: 0.9375rem;
     font-weight: 700;
     letter-spacing: -0.01em;
@@ -420,7 +420,7 @@
     border: 2px solid var(--pen);
     background: #e8613f;
     color: #fff6ec;
-    font-family: "Space Grotesk", "Inter", sans-serif;
+    font-family: "Geist", sans-serif;
     font-size: 11px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
@@ -522,7 +522,7 @@
   }
 
   .num {
-    font-family: "Space Grotesk", "Inter", sans-serif;
+    font-family: "Geist", sans-serif;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
   }
@@ -581,21 +581,21 @@
      One clamp per level, so every heading on the page is set from the same
      three-step scale instead of a different arbitrary size each section. */
   .lp-h1 {
-    font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
+    font-family: "Bricolage Grotesque", "Geist", sans-serif;
     font-weight: 700;
     font-size: clamp(2.6rem, 6.6vw, 4.75rem);
     line-height: 0.97;
     letter-spacing: -0.04em;
   }
   .lp-h2 {
-    font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
+    font-family: "Bricolage Grotesque", "Geist", sans-serif;
     font-weight: 700;
     font-size: clamp(1.95rem, 4.3vw, 3.15rem);
     line-height: 1.03;
     letter-spacing: -0.034em;
   }
   .lp-h3 {
-    font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
+    font-family: "Bricolage Grotesque", "Geist", sans-serif;
     font-weight: 700;
     font-size: 1.1875rem;
     line-height: 1.25;
@@ -1138,7 +1138,7 @@
   background: linear-gradient(180deg, var(--gold-1), var(--gold-3));
 }
 .depth-read {
-  font-family: "Space Grotesk", "Inter", sans-serif;
+  font-family: "Geist", sans-serif;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1216,7 +1216,7 @@
   top: 47%;
   z-index: 0;
   transform: translate(-50%, -50%);
-  font-family: "Space Grotesk", "Inter", sans-serif;
+  font-family: "Geist", sans-serif;
   font-weight: 700;
   font-size: clamp(15rem, 40vw, 38rem);
   line-height: 1;
@@ -1472,7 +1472,7 @@
   position: absolute;
   left: 1.5rem;
   bottom: 1.75rem;
-  font-family: "Space Grotesk", Inter, sans-serif;
+  font-family: "Geist", sans-serif;
   font-variant-numeric: tabular-nums;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1486,14 +1486,14 @@
 }
 
 .pdk-h1 {
-  font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
+  font-family: "Bricolage Grotesque", "Geist", sans-serif;
   font-weight: 700;
   font-size: clamp(2.7rem, 7vw, 5.5rem);
   line-height: 0.95;
   letter-spacing: -0.042em;
 }
 .pdk-h2 {
-  font-family: "Bricolage Grotesque", "Space Grotesk", Inter, sans-serif;
+  font-family: "Bricolage Grotesque", "Geist", sans-serif;
   font-weight: 700;
   font-size: clamp(2rem, 4.6vw, 3.4rem);
   line-height: 1.02;
