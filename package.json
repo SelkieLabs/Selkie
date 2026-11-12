@@ -35,7 +35,8 @@
     "build:contracts:near": "RUSTFLAGS='-C link-arg=-s --cfg near' cargo build --manifest-path contracts-near/Cargo.toml -p selkie-handle-escrow -p selkie-pocket --target wasm32-unknown-unknown --release",
     "test:contracts:near": "cargo test --manifest-path contracts-near/Cargo.toml",
     "prove:keys": "tsx packages/chain-near/scripts/prove-keys.ts",
-    "test:live:near": "tsx --env-file-if-exists=.env packages/chain-near/scripts/live.ts"
+    "test:live:near": "tsx --env-file-if-exists=.env packages/chain-near/scripts/live.ts",
+    "test:live:near:pocket": "tsx --env-file-if-exists=.env packages/chain-near/scripts/pocket-live.ts"
   },
   "license": "MIT",
   "devDependencies": {
