@@ -1,0 +1,22 @@
+[package]
+name = "selkie-pocket"
+description = "A capped USDC pocket the Selkie X bot can pay Selkie handle accounts from"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = { workspace = true }
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }
+
+# `cfg(near)` is set when building for the chain (near-sdk >= 5.27).
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = ['cfg(near)']

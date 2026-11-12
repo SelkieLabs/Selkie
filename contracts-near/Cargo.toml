@@ -3,7 +3,7 @@
 # and sharing a Cargo.lock would let one chain's upgrade break the other's build.
 [workspace]
 resolver = "3"
-members = ["handle-escrow"]
+members = ["handle-escrow", "pocket"]
 
 [workspace.dependencies]
 # 5.29 is the newest near-sdk that builds on rustc 1.94 (5.30 needs 1.95).
