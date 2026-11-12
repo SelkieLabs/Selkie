@@ -87,7 +87,8 @@ const QUESTIONS = isNear ? NEAR_QUESTIONS : STELLAR_QUESTIONS;
  * The questions people ask before they will put money into something.
  *
  * One open at a time. An accordion where every row can be open at once turns
- * into the wall of text the accordion was there to avoid.
+ * into the wall of text the accordion was there to avoid. The answer is always
+ * mounted and animates its row from 0fr to 1fr, so opening has somewhere to go.
  */
 export function Faq() {
   const [open, setOpen] = useState<number | null>(0);
@@ -97,33 +98,16 @@ export function Faq() {
       {QUESTIONS.map((item, index) => {
         const isOpen = open === index;
         return (
-          <div key={item.q} className={`lp-faq ${isOpen ? "lp-faq-open" : ""}`}>
-            <button
-              onClick={() => setOpen(isOpen ? null : index)}
-              aria-expanded={isOpen}
-              className="lp-faq-q"
-            >
-              <span className="font-display text-[17px] font-bold tracking-tight sm:text-[19px]">
-                {item.q}
-              </span>
-              <span
-                className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border border-ivory/15 transition-transform duration-300 ${
-                  isOpen ? "rotate-45 border-gold/40 bg-gold/15 text-gold" : "text-ivory/50"
-                }`}
-                aria-hidden="true"
-              >
-                <Plus size={16} strokeWidth={2.6} />
-              </span>
+          <div key={item.q} className={`td-qa${isOpen ? " open" : ""}`}>
+            <button className="q" onClick={() => setOpen(isOpen ? null : index)} aria-expanded={isOpen}>
+              <span>{item.q}</span>
+              <i aria-hidden="true">
+                <Plus size={16} strokeWidth={2.4} />
+              </i>
             </button>
-
-            {/* Always mounted, never conditionally rendered: the row animates
-                from 0fr to 1fr, and there is nothing to animate to if the
-                answer only enters the DOM once it is already open. */}
-            <div className="lp-faq-a">
+            <div className="a">
               <div>
-                <p className="max-w-2xl pb-6 pr-12 text-[15px] leading-relaxed text-ivory/60 sm:text-base">
-                  {item.a}
-                </p>
+                <p>{item.a}</p>
               </div>
             </div>
           </div>

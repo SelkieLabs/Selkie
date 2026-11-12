@@ -71,3 +71,15 @@ export function takePayLink(kind: PayLinkKind): PayLink | null {
     return null;
   }
 }
+
+/** Whether a link of this kind is waiting, without taking it (so the landing knows where to send someone after sign-in). */
+export function hasPayLink(kind: PayLinkKind): boolean {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return false;
+    const stored = JSON.parse(raw) as { kind?: string; at?: number };
+    return stored.kind === kind && typeof stored.at === "number" && Date.now() - stored.at <= KEEP_MS;
+  } catch {
+    return false;
+  }
+}
