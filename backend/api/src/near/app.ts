@@ -361,7 +361,35 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     const { limit } = (request.query ?? {}) as { limit?: string };
     const parsed = Number(limit);
     const cap = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 200) : 50;
-    return { entries: await activity.list(user.id, { limit: cap }) };
+    const entries = await activity.list(user.id, { limit: cap });
+
+    // Faces: the X photo of anyone in the list who has signed in to Selkie,
+    // looked up once per name. People who have not joined have no photo we
+    // hold, and the app draws them a creature instead. A failed lookup only
+    // costs a photo, never the list.
+    const nameOf = (entry: (typeof entries)[number]) =>
+      entry.counterpartyHandle?.platform === "x" ? entry.counterpartyHandle.username.toLowerCase() : null;
+    const names = [...new Set(entries.map(nameOf).filter((name): name is string => Boolean(name)))].slice(0, 40);
+    const faces = new Map<string, string>();
+    await Promise.all(
+      names.map(async (name) => {
+        try {
+          const found = await identity.findByHandle("x", name);
+          const url = found?.identities.find(
+            (linked) => linked.provider === "x" && linked.username?.toLowerCase() === name,
+          )?.avatarUrl;
+          if (url) faces.set(name, url);
+        } catch {
+          // no photo for this one
+        }
+      }),
+    );
+    return {
+      entries: entries.map((entry) => {
+        const face = faces.get(nameOf(entry) ?? "");
+        return face ? { ...entry, counterpartyAvatar: face } : entry;
+      }),
+    };
   });
 
   app.setErrorHandler((error: FastifyError, _request, reply) => {

@@ -207,6 +207,8 @@ export interface ActivityEntry {
    * a different person from @amaka on Telegram.
    */
   counterpartyHandle?: Handle;
+  /** NEAR: their X photo, when they have signed in to Selkie. */
+  counterpartyAvatar?: string;
   /** `returned` is money that waited for someone who never came, taken back. */
   status: "pending" | "confirmed" | "failed" | "returned";
   at: string;

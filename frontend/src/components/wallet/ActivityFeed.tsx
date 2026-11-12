@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar } from "@/components/Layout";
 import { useMemo, useState } from "react";
 import {
   ArrowDownLeft,
@@ -286,9 +287,10 @@ function Face({
   // A cash-out to another chain ("0x5a…eAed on Base") shows that chain's mark.
   const chain = chainInLabel(counterparty);
   if (chain) return <ChainLogo blockchain={chain} name={counterparty ?? chain} size={22} />;
-  // A person reads as their initial, the way the people you pay are drawn
-  // everywhere else in the app.
-  if (counterparty?.startsWith("@")) return <>{counterparty.slice(1, 2).toUpperCase()}</>;
+  // A person reads as their face: their X photo when they are on Selkie, and
+  // their own creature when they are not, the way people are drawn everywhere
+  // else in the app.
+  if (counterparty?.startsWith("@")) return <Avatar name={counterparty} src={entry.counterpartyAvatar} size={38} />;
   if (kind === "cashout") return <Banknote size={16} strokeWidth={2.2} />;
   if (kind === "swap") return <Repeat size={16} strokeWidth={2.2} />;
   if (kind === "claim") return <Sparkles size={16} strokeWidth={2.2} />;

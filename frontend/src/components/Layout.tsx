@@ -1,7 +1,42 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, Home, LogOut, Menu, Settings, Wallet } from "lucide-react";
+import {
+  Bird,
+  Bot,
+  Cat,
+  Cherry,
+  ChevronDown,
+  Cookie,
+  Croissant,
+  Crown,
+  Dice5,
+  Dog,
+  Fish,
+  Gamepad2,
+  Gem,
+  Ghost,
+  Grape,
+  Home,
+  IceCreamCone,
+  LogOut,
+  Menu,
+  Origami,
+  Panda,
+  Pizza,
+  Popcorn,
+  Puzzle,
+  Rabbit,
+  Rocket,
+  Settings,
+  Shell as ShellIcon,
+  Shrimp,
+  Snail,
+  Squirrel,
+  Turtle,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { LoaderMark, Mark, Wordmark } from "./Mark";
 import { SignOutModal } from "./SignOutModal";
@@ -25,7 +60,15 @@ export function Shell({
   return <div className={`mx-auto w-full px-4 sm:px-8 ${width}`}>{children}</div>;
 }
 
-/** A face, or the next best thing. Never a blank circle. */
+// Sea creatures first, then toys and treats: someone who has not joined yet
+// still gets a face of their own, and it is the same one every time.
+const CREATURES: LucideIcon[] = [
+  Fish, ShellIcon, Turtle, Shrimp, Snail, Bird, Rabbit, Cat, Dog, Squirrel, Panda, Origami,
+  Ghost, Rocket, Bot, Gamepad2, Dice5, Puzzle, Crown, Gem, Cherry, Grape, Cookie,
+  Croissant, IceCreamCone, Pizza, Popcorn,
+];
+
+/** A face, or the next best thing: their photo, or their own creature. Never a blank circle. */
 export function Avatar({
   name,
   src,
@@ -35,17 +78,19 @@ export function Avatar({
   src?: string | null;
   size?: number;
 }) {
-  const initial = name.replace(/^@/, "").slice(0, 1).toUpperCase() || "?";
-  // Each name gets its own colour of water, the same every time, so people
-  // are told apart at a glance without anyone's photo.
+  const [broken, setBroken] = useState<string | null>(null);
+  // Each name gets its own creature and colour of water, the same every time,
+  // so people are told apart at a glance without anyone's photo.
   let hash = 0;
-  for (const ch of name.toLowerCase()) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  const hue = 150 + (hash % 150); // sea-glass through blue to violet, never alarm red
-  return src ? (
+  for (const ch of name.replace(/^@/, "").toLowerCase()) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  const hue = 30 + ((Math.imul(hash, 2654435761) >>> 0) % 300); // mixed, so names spread round the wheel (never alarm red)
+  const Creature = CREATURES[(hash >>> 8) % CREATURES.length];
+  return src && broken !== src ? (
     <img
       src={src}
       alt=""
       referrerPolicy="no-referrer"
+      onError={() => setBroken(src)}
       className="shrink-0 rounded-full object-cover ring-1 ring-pen/10"
       style={{ width: size, height: size }}
     />
@@ -55,14 +100,13 @@ export function Avatar({
       style={{
         width: size,
         height: size,
-        fontSize: Math.round(size * 0.4),
-        color: `hsl(${hue} 70% 82%)`,
+        color: `hsl(${hue} 75% 80%)`,
         background: `radial-gradient(circle at 30% 25%, hsl(${hue} 45% 34%), hsl(${hue} 50% 16%))`,
         boxShadow: `inset 0 0 0 1px hsl(${hue} 60% 60% / 0.3)`,
       }}
       aria-hidden="true"
     >
-      {initial}
+      <Creature size={Math.round(size * 0.52)} strokeWidth={2} />
     </span>
   );
 }
