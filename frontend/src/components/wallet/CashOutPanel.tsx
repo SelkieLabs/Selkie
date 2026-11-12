@@ -11,11 +11,11 @@ import {
   ChevronDown,
   Clock,
   ExternalLink,
-  Globe,
   Loader2,
   Sparkles,
   Wallet,
 } from "lucide-react";
+import { ChainLogo, ChainStack, CoinOnChain } from "@/components/ChainLogo";
 import { ContractWarning } from "@/components/wallet/ContractWarning";
 import { AssetSelect, IntentsProgress, PreviewNote } from "@/components/wallet/OtherChain";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
@@ -396,7 +396,7 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
           onClick={() => start("bank")}
         />
         <Choice
-          icon={<Wallet size={22} strokeWidth={2.2} />}
+          icon={isNear ? <ChainLogo blockchain="near" name="NEAR" size={28} /> : <Wallet size={22} strokeWidth={2.2} />}
           title={isNear ? "A NEAR account or exchange" : "Another wallet"}
           blurb={
             isNear
@@ -408,7 +408,7 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
         />
         {isNear && (
           <Choice
-            icon={<Globe size={22} strokeWidth={2.2} />}
+            icon={<ChainStack chains={CHAIN_PREVIEW} size={18} />}
             title="Another chain"
             blurb="USDC on Base, USDT on Tron and more, through NEAR Intents."
             meta={NEAR_NETWORK === "mainnet" ? "A few minutes" : "Preview on testnet"}
@@ -427,6 +427,13 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
     </Panel>
   );
 }
+
+/** The marks on the "Another chain" choice: the chains people ask for most. */
+const CHAIN_PREVIEW = [
+  { blockchain: "base", name: "Base" },
+  { blockchain: "tron", name: "Tron" },
+  { blockchain: "sol", name: "Solana" },
+];
 
 /** One of the two ways out. Big enough to hit with a thumb, quiet enough to read. */
 function Choice({
@@ -604,7 +611,8 @@ function ChainFields({
       </label>
       <AssetSelect id="cashout-asset" assets={assets} value={asset.assetId} onChange={onAsset} />
 
-      <label className="label mt-5 block" htmlFor="cashout-chain-address">
+      <label className="label mt-5 flex items-center gap-2" htmlFor="cashout-chain-address">
+        <ChainLogo blockchain={asset.blockchain} name={asset.chainName} size={18} />
         Your address on {asset.chainName}
       </label>
       <textarea
@@ -651,9 +659,7 @@ function ChainReview({
       <Steps at={3} />
 
       <div className="mt-1 flex flex-col items-center text-center">
-        <span className="grid h-14 w-14 place-items-center rounded-2xl border-2 border-pen/20 bg-pen/[0.06] text-pen/70">
-          <Globe size={24} strokeWidth={2.2} />
-        </span>
+        <CoinOnChain symbol={quote.asset.symbol} blockchain={quote.asset.blockchain} chainName={quote.asset.chainName} size={52} />
         <p className="mt-5 eyebrow">Taking out</p>
         <p className="mt-1.5 font-display text-[3rem] font-bold leading-none tracking-tight">
           {money(quote.amountInFormatted)}
@@ -662,8 +668,18 @@ function ChainReview({
       </div>
 
       <div className="mt-7 overflow-hidden rounded-2xl border-2 border-pen/15 bg-card-bright">
-        <Line label="To" value={address} mono wrap />
-        <Line label="Arrives as" value={assetName(quote.asset)} />
+        <Line
+          label="To"
+          value={address}
+          mono
+          wrap
+          icon={<ChainLogo blockchain={quote.asset.blockchain} name={quote.asset.chainName} size={18} />}
+        />
+        <Line
+          label="Arrives as"
+          value={assetName(quote.asset)}
+          icon={<CoinOnChain symbol={quote.asset.symbol} blockchain={quote.asset.blockchain} chainName={quote.asset.chainName} size={20} />}
+        />
         <Line label="You get about" value={`${quote.amountOutFormatted} ${quote.asset.symbol}`} />
         {quote.minAmountOutFormatted && (
           <Line label="At least" value={`${quote.minAmountOutFormatted} ${quote.asset.symbol}`} />
@@ -747,7 +763,13 @@ function Review({
           </>
         ) : (
           <>
-            <Line label="To" value={address} mono wrap />
+            <Line
+              label="To"
+              value={address}
+              mono
+              wrap
+              icon={isNear ? <ChainLogo blockchain="near" name="NEAR" size={18} /> : undefined}
+            />
             <Line label="Fee" value="None. We cover it." />
             <Line label="Arrives" value="In a few seconds" />
           </>
@@ -786,22 +808,28 @@ function Line({
   mono,
   muted,
   wrap,
+  icon,
 }: {
   label: string;
   value: string;
   mono?: boolean;
   muted?: boolean;
   wrap?: boolean;
+  /** A chain or coin mark before the value. */
+  icon?: React.ReactNode;
 }) {
   return (
     <div className="flex items-start justify-between gap-4 border-t-2 border-pen/[0.08] px-4 py-3.5 first:border-t-0">
       <span className="shrink-0 text-[14px] font-semibold text-pen/55">{label}</span>
-      <span
-        className={`min-w-0 text-right text-[14px] font-bold ${muted ? "text-pen/40" : "text-pen/85"} ${
-          mono ? "font-mono text-[12.5px]" : ""
-        } ${wrap ? "break-all" : "truncate"}`}
-      >
-        {value}
+      <span className="flex min-w-0 items-start justify-end gap-2">
+        {icon && <span className="mt-px shrink-0">{icon}</span>}
+        <span
+          className={`min-w-0 text-right text-[14px] font-bold ${muted ? "text-pen/40" : "text-pen/85"} ${
+            mono ? "font-mono text-[12.5px]" : ""
+          } ${wrap ? "break-all" : "truncate"}`}
+        >
+          {value}
+        </span>
       </span>
     </div>
   );

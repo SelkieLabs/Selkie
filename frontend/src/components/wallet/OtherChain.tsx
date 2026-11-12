@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -14,6 +14,7 @@ import {
   RotateCcw,
   X,
 } from "lucide-react";
+import { ChainLogo, CoinOnChain } from "@/components/ChainLogo";
 import { AddressCode, CopyButton } from "@/components/wallet/AddressBits";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { ApiError, api, type ChainAsset, type IntentsQuote, type IntentsStatus } from "@/lib/api";
@@ -34,6 +35,11 @@ import { addressPlaceholder, assetName, chainAddressProblem, inAbout, useChainAs
  * is a preview, and it says so where the person is looking.
  */
 
+/**
+ * Which coin, on which chain. A picker rather than a <select>, because a
+ * native option cannot show a logo, and people find "USDT on Tron" by its marks
+ * faster than by reading sixteen lines.
+ */
 export function AssetSelect({
   id,
   assets,
@@ -45,28 +51,75 @@ export function AssetSelect({
   value: string;
   onChange: (asset: ChainAsset) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const picked = assets.find((asset) => asset.assetId === value) ?? null;
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: PointerEvent) => {
+      if (!box.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
   return (
-    <div className="relative mt-2">
-      <select
+    <div ref={box} className="relative mt-2">
+      <button
         id={id}
-        className="field appearance-none pr-11"
-        value={value}
-        onChange={(e) => {
-          const picked = assets.find((asset) => asset.assetId === e.target.value);
-          if (picked) onChange(picked);
-        }}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+        className="field flex items-center gap-3 pr-11 text-left text-[15px] font-semibold"
       >
-        {assets.map((asset) => (
-          <option key={asset.assetId} value={asset.assetId}>
-            {assetName(asset)}
-          </option>
-        ))}
-      </select>
+        {picked && <CoinOnChain symbol={picked.symbol} blockchain={picked.blockchain} chainName={picked.chainName} size={26} />}
+        <span className="min-w-0 truncate">{picked ? assetName(picked) : "Pick a coin"}</span>
+      </button>
       <ChevronDown
         size={17}
         strokeWidth={2.4}
-        className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-pen/45"
+        className={`pointer-events-none absolute right-4 top-6 -translate-y-1/2 text-pen/45 transition-transform ${open ? "rotate-180" : ""}`}
       />
+      {open && (
+        <ul
+          role="listbox"
+          aria-labelledby={id}
+          className="absolute inset-x-0 z-30 mt-2 max-h-80 overflow-y-auto rounded-2xl border-2 border-pen bg-card-bright p-1.5 shadow-[0.18rem_0.24rem_0_rgba(3,9,15,0.55)]"
+        >
+          {assets.map((asset) => {
+            const selected = asset.assetId === value;
+            return (
+              <li key={asset.assetId} role="option" aria-selected={selected}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(asset);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[15px] font-semibold transition-colors hover:bg-pen/[0.06] ${
+                    selected ? "bg-gold/15" : ""
+                  }`}
+                >
+                  <CoinOnChain symbol={asset.symbol} blockchain={asset.blockchain} chainName={asset.chainName} size={28} />
+                  <span className="min-w-0 flex-1">
+                    {asset.symbol} <span className="font-medium text-pen/55">on {asset.chainName}</span>
+                  </span>
+                  {selected && <Check size={16} strokeWidth={2.6} className="shrink-0 text-gold-ink" />}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
@@ -85,11 +138,24 @@ export function PreviewNote({ what }: { what: string }) {
 }
 
 /** One line of a price: a label on the left, the number on the right. */
-export function QuoteRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+export function QuoteRow({
+  label,
+  value,
+  strong,
+  icon,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  icon?: React.ReactNode;
+}) {
   return (
     <div className="flex items-start justify-between gap-4 border-t-2 border-pen/[0.08] px-4 py-3.5 first:border-t-0">
       <span className="shrink-0 text-[14px] font-semibold text-pen/55">{label}</span>
-      <span className={`min-w-0 break-all text-right text-[14px] font-bold ${strong ? "text-pen" : "text-pen/85"}`}>
+      <span
+        className={`flex min-w-0 items-center justify-end gap-2 break-all text-right text-[14px] font-bold ${strong ? "text-pen" : "text-pen/85"}`}
+      >
+        {icon}
         {value}
       </span>
     </div>
@@ -296,7 +362,8 @@ export function AddFromChain() {
             onChange={(e) => changed(setAmount)(cleanAmount(e.target.value))}
           />
 
-          <label className="label mt-5 block" htmlFor="in-refund">
+          <label className="label mt-5 flex items-center gap-2" htmlFor="in-refund">
+            <ChainLogo blockchain={picked.blockchain} name={picked.chainName} size={18} />
             Your address on {picked.chainName}, in case it has to come back
           </label>
           <input
@@ -313,8 +380,17 @@ export function AddFromChain() {
 
           {quote && (
             <div className="mt-6 overflow-hidden rounded-2xl border-2 border-pen/15 bg-card-bright">
-              <QuoteRow label="You send" value={`${quote.amountInFormatted} ${quote.asset.symbol} on ${quote.asset.chainName}`} />
-              <QuoteRow label="You get about" value={`${quote.amountOutFormatted} USDC`} strong />
+              <QuoteRow
+                label="You send"
+                value={`${quote.amountInFormatted} ${quote.asset.symbol} on ${quote.asset.chainName}`}
+                icon={<CoinOnChain symbol={quote.asset.symbol} blockchain={quote.asset.blockchain} chainName={quote.asset.chainName} size={20} />}
+              />
+              <QuoteRow
+                label="You get about"
+                value={`${quote.amountOutFormatted} USDC`}
+                strong
+                icon={<CoinOnChain symbol="USDC" blockchain="near" chainName="NEAR" size={20} />}
+              />
               {quote.minAmountOutFormatted && <QuoteRow label="At least" value={`${quote.minAmountOutFormatted} USDC`} />}
               <QuoteRow label="Takes" value={inAbout(quote.timeEstimate)} />
             </div>
@@ -364,8 +440,11 @@ function DepositAddress({ quote, onDone }: { quote: IntentsQuote & { depositAddr
       <div className="mt-6 flex flex-col items-center gap-5 sm:flex-row sm:items-start">
         <AddressCode address={address} alt={`The ${quote.asset.chainName} deposit address as a scannable code`} />
         <div className="min-w-0 flex-1">
-          <p className="label">
-            Send exactly {quote.amountInFormatted} {quote.asset.symbol} on {quote.asset.chainName} to
+          <p className="label flex items-center gap-2">
+            <CoinOnChain symbol={quote.asset.symbol} blockchain={quote.asset.blockchain} chainName={quote.asset.chainName} size={22} />
+            <span>
+              Send exactly {quote.amountInFormatted} {quote.asset.symbol} on {quote.asset.chainName} to
+            </span>
           </p>
           <p className="mt-2 break-all rounded-xl border-2 border-pen/15 bg-card-bright p-3 font-mono text-[13px] font-medium leading-relaxed text-pen/85">
             {address}

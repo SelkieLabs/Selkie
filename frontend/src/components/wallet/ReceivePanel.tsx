@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Droplets, ExternalLink, Loader2 } from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
+import { ChainLogo } from "@/components/ChainLogo";
 import { AddressCode, CopyButton } from "@/components/wallet/AddressBits";
 import { AddFromChain } from "@/components/wallet/OtherChain";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
@@ -113,7 +114,10 @@ export function ReceivePanel({ handle }: { handle: string | null }) {
               <AddressCode address={details.address} />
 
               <div className="min-w-0 flex-1">
-                <p className="label">{COPY.label}</p>
+                <p className="label flex items-center gap-2">
+                  {isNear && <ChainLogo blockchain="near" name="NEAR" size={18} />}
+                  {COPY.label}
+                </p>
                 <p className="mt-2 break-all rounded-xl border-2 border-pen/15 bg-card-bright p-3 font-mono text-[13px] font-medium leading-relaxed text-pen/85">
                   {details.address}
                 </p>

@@ -12,11 +12,13 @@ import {
   Sparkles,
   Undo2,
 } from "lucide-react";
+import { ChainLogo } from "@/components/ChainLogo";
 import { TokenIcon } from "@/components/TokenIcon";
 import { TransactionSheet } from "@/components/wallet/TransactionSheet";
 import { useToast } from "@/contexts/ToastContext";
 import { ApiError, api, type ActivityEntry } from "@/lib/api";
 import { features, isNear } from "@/lib/chain";
+import { chainInLabel } from "@/lib/logos";
 import { useNearPay } from "@/lib/near-wallet";
 import { dayKey, dayLabel, money, timeAgo } from "@/lib/format";
 import { MASK, useAmountsHidden } from "@/lib/privacy";
@@ -220,7 +222,7 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
                 : "border-[#b91c34]/25 bg-[#b91c34]/[0.08] text-[#b91c34]"
           }`}
         >
-          <Icon kind={entry.kind} waiting={waiting} returned={returned} />
+          <Icon kind={entry.kind} waiting={waiting} returned={returned} counterparty={entry.counterparty} />
         </span>
 
         <TokenIcon asset={entry.amount.asset} size={30} />
@@ -300,12 +302,17 @@ function Icon({
   kind,
   waiting,
   returned,
+  counterparty,
 }: {
   kind: ActivityEntry["kind"];
   waiting: boolean;
   returned: boolean;
+  counterparty?: string;
 }) {
   if (returned) return <Undo2 size={16} strokeWidth={2.3} />;
+  // A cash-out to another chain ("0x5a…eAed on Base") shows that chain's mark.
+  const chain = kind === "cashout" ? chainInLabel(counterparty) : null;
+  if (chain) return <ChainLogo blockchain={chain} name={counterparty ?? chain} size={22} />;
   if (kind === "cashout") return <Banknote size={16} strokeWidth={2.3} />;
   if (kind === "swap") return <Repeat size={16} strokeWidth={2.3} />;
   if (kind === "claim") return <Sparkles size={16} strokeWidth={2.3} />;
