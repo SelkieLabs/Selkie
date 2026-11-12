@@ -258,6 +258,169 @@ html.lenis {
 .td-preview.bad b {
   color: #f0a58f;
 }
+/* ---------- the hero's start button ---------- */
+.td-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 34px;
+}
+.td-go {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px 10px 10px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #9fe0cb, var(--sg) 55%, #5fbfa3);
+  color: var(--abyss);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.25) inset,
+    0 18px 40px -14px rgba(127, 209, 185, 0.65);
+  transition:
+    transform 220ms var(--ease),
+    box-shadow 220ms var(--ease);
+  animation: td-goglow 3.2s ease-in-out infinite;
+}
+.td-go:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.35) inset,
+    0 24px 50px -14px rgba(127, 209, 185, 0.8);
+}
+.td-go:active {
+  transform: translateY(1px) scale(0.985);
+}
+.td-go .x {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--abyss);
+  color: var(--foam);
+  flex: none;
+}
+.td-go .t {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 6px;
+}
+.td-go .t b {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.td-go .t small {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  opacity: 0.72;
+}
+.td-go .arr {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: rgba(7, 19, 28, 0.12);
+  transition: transform 260ms var(--ease);
+  flex: none;
+}
+.td-go:hover .arr {
+  transform: translateX(4px);
+}
+/* a band of light that sweeps across every few seconds */
+.td-go .sheen {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: td-gosheen 4.2s var(--ease) infinite;
+}
+/* a ring that breathes out of the button, like a ripple */
+.td-go::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 0 rgba(127, 209, 185, 0.5);
+  animation: td-goring 3.2s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes td-gosheen {
+  0%,
+  55% {
+    transform: translateX(-120%);
+  }
+  85%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+@keyframes td-goring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(127, 209, 185, 0.45);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 14px rgba(127, 209, 185, 0);
+  }
+}
+@keyframes td-goglow {
+  50% {
+    filter: brightness(1.06);
+  }
+}
+.td-howbtn {
+  padding: 16px 20px;
+  border-radius: 16px;
+}
+.td-howbtn svg {
+  transition: transform 220ms var(--ease);
+}
+.td-howbtn:hover svg {
+  transform: translateY(3px);
+}
+@media (max-width: 560px) {
+  .td-cta-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .td-go,
+  .td-howbtn {
+    width: 100%;
+  }
+}
+/* the pass's handle rising into place each time it changes */
+.td-swap {
+  animation: td-swap 520ms var(--ease) both;
+}
+@keyframes td-swap {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .td-go,
+  .td-go .sheen,
+  .td-go::after,
+  .td-swap {
+    animation: none;
+  }
+}
+
 .td-built {
   margin-top: 28px;
   font-family: "Geist Mono", ui-monospace, monospace;

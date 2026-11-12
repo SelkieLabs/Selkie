@@ -1,11 +1,11 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, Menu, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowRight, Menu, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useAuth } from "@/contexts/useAuth";
 import { NEAR_NETWORK } from "@/lib/chain";
 import { Caustics } from "./Caustics";
-import { HandleForm } from "./HandleForm";
+import { XLogo } from "@/components/Mark";
 import { chapterScroll, formatDepth, previewAccount, scrollToY, setScrollLock, useDepth, useInView } from "./hooks";
 import { Kelp, Motes } from "./Sea";
 
@@ -218,9 +218,16 @@ function FloatingPass({ handle }: { handle: string }) {
               <span>Selkie pass</span>
               <span>№ 001</span>
             </div>
-            <div className="av">{shown.slice(0, 1).toUpperCase()}</div>
-            <div className="name">@{shown}</div>
-            <div className="acct">{account}</div>
+            {/* keyed, so each new handle rises into place */}
+            <div className="av td-swap" key={`a${shown}`}>
+              {shown.slice(0, 1).toUpperCase()}
+            </div>
+            <div className="name td-swap" key={`n${shown}`}>
+              @{shown}
+            </div>
+            <div className="acct td-swap" key={`c${shown}`}>
+              {account}
+            </div>
             <div className="keys">
               <span>keys on this account</span>
               <span className="td-stamp">1 · theirs</span>
@@ -271,11 +278,21 @@ function LiveBlock({ active }: { active: boolean }) {
   );
 }
 
+// Handles the pass cycles through, so it shows "any handle" without a box to type in.
+const PASS_HANDLES = ["amaka", "tunde", "kofi", "ife", "zainab"];
+
 export function Hero() {
-  const { problem } = useAuth();
-  const [handle, setHandle] = useState("");
+  const { problem, signIn } = useAuth();
+  const [turn, setTurn] = useState(0);
   const ref = useRef<HTMLElement>(null);
   const onScreen = useInView(ref);
+
+  useEffect(() => {
+    if (!onScreen || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setTurn((t) => (t + 1) % PASS_HANDLES.length), 2600);
+    return () => window.clearInterval(id);
+  }, [onScreen]);
+  const handle = PASS_HANDLES[turn];
 
   return (
     <header className="td-hero" ref={ref} data-depth="0">
@@ -334,7 +351,25 @@ export function Hero() {
             They need no wallet and no app. The money waits until they sign in with X.
           </p>
           <div data-td-reveal style={{ "--d": "420ms" } as CSSProperties}>
-            <HandleForm onHandle={setHandle} />
+            <div className="td-cta-row">
+              <button className="td-go" onClick={signIn}>
+                <span className="sheen" aria-hidden="true" />
+                <span className="x" aria-hidden="true">
+                  <XLogo size={17} />
+                </span>
+                <span className="t">
+                  <b>Get started</b>
+                  <small>Sign in with X · free</small>
+                </span>
+                <span className="arr" aria-hidden="true">
+                  <ArrowRight size={19} />
+                </span>
+              </button>
+              <button className="td-btn td-btn-ghost td-howbtn" onClick={() => chapterScroll(0)}>
+                See how it works
+                <ArrowDown size={16} />
+              </button>
+            </div>
             {problem && (
               <p className="td-problem" role="alert">
                 <AlertTriangle size={16} />
