@@ -6,6 +6,7 @@ import { Avatar } from "@/components/Layout";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
+import { useConfirm } from "@/contexts/useConfirm";
 import { ApiError, api, type MoneyRequest } from "@/lib/api";
 import { features, isNear } from "@/lib/chain";
 import { DOLLAR, cleanAmount, money, timeAgo, usd } from "@/lib/format";
@@ -75,6 +76,7 @@ export function RequestsPanel({
   onChanged: () => void;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const nearPay = useNearPay();
   const [platform, setPlatform] = useState<Platform>("x");
   // An ask link from the X bot fills the form once; nothing is sent until they confirm.
@@ -262,21 +264,38 @@ export function RequestsPanel({
                     who={`@${request.fromHandle.username}`}
                   >
                     <button
-                      onClick={() =>
+                      onClick={async () => {
+                        const yes = await confirm({
+                          tone: "danger",
+                          title: `Turn down @${request.fromHandle.username}?`,
+                          body: `They asked you for ${amountOf(request)}. They will see it was turned down, and it cannot be undone.`,
+                          confirm: "Turn it down",
+                        });
+                        if (!yes) return;
                         void act(
                           request.id,
                           () => api.declineRequest(request.id),
                           "Turned down.",
                           "That did not go through. It is still waiting for your answer.",
-                        )
-                      }
+                        );
+                      }}
                       disabled={busyId === request.id}
                       className="btn btn-dim btn-sm flex-1 sm:flex-none"
                     >
                       <X size={15} strokeWidth={2.6} /> No
                     </button>
                     <button
-                      onClick={() =>
+                      onClick={async () => {
+                        const yes = await confirm({
+                          title: `Pay @${request.fromHandle.username} ${amountOf(request)}?`,
+                          confirm: `Pay ${amountOf(request)}`,
+                          rows: [
+                            { label: "To", value: `@${request.fromHandle.username}` },
+                            { label: "Amount", value: amountOf(request) },
+                            ...(request.note ? [{ label: "For", value: request.note }] : []),
+                          ],
+                        });
+                        if (!yes) return;
                         void act(
                           request.id,
                           // On NEAR the payer's own key signs it, for exactly what was asked.
@@ -286,8 +305,8 @@ export function RequestsPanel({
                               : api.payRequest(request.id),
                           `Paid @${request.fromHandle.username}.`,
                           "That did not send. Your money is safe. Try again.",
-                        )
-                      }
+                        );
+                      }}
                       disabled={busyId === request.id}
                       className="btn btn-gold btn-sm flex-1 sm:flex-none"
                     >
@@ -314,14 +333,21 @@ export function RequestsPanel({
                   <Row key={request.id} request={request} who={`@${request.toHandle.username}`}>
                     {request.status === "pending" ? (
                       <button
-                        onClick={() =>
+                        onClick={async () => {
+                          const yes = await confirm({
+                            tone: "danger",
+                            title: "Withdraw this request?",
+                            body: `@${request.toHandle.username} will no longer be able to pay it. Ask again any time.`,
+                            confirm: "Withdraw it",
+                          });
+                          if (!yes) return;
                           void act(
                             request.id,
                             () => api.cancelRequest(request.id),
                             "Withdrawn.",
                             "That did not go through. They can still see it.",
-                          )
-                        }
+                          );
+                        }}
                         disabled={busyId === request.id}
                         className="btn btn-dim btn-sm flex-1 sm:flex-none"
                       >

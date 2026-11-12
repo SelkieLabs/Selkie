@@ -17,6 +17,7 @@ import {
 import { ChainLogo, CoinOnChain } from "@/components/ChainLogo";
 import { AddressCode, CopyButton } from "@/components/wallet/AddressBits";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
+import { useConfirm } from "@/contexts/useConfirm";
 import { ApiError, api, type ChainAsset, type IntentsQuote, type IntentsStatus } from "@/lib/api";
 import { cleanAmount } from "@/lib/format";
 import { addressPlaceholder, assetName, chainAddressProblem, inAbout, useChainAssets } from "@/lib/other-chain";
@@ -289,6 +290,7 @@ export function IntentsProgress({
  */
 export function AddFromChain() {
   const chains = useChainAssets();
+  const confirm = useConfirm();
   const [asset, setAsset] = useState<ChainAsset | null>(null);
   const [amount, setAmount] = useState("");
   const [refund, setRefund] = useState("");
@@ -400,7 +402,24 @@ export function AddFromChain() {
           {error && <p className="mt-4 text-sm font-semibold text-[#a11d34]">{error}</p>}
 
           {quote && !quote.preview ? (
-            <button onClick={() => void ask(true)} disabled={busy !== null} className="btn btn-gold mt-6 w-full">
+            <button
+              onClick={async () => {
+                const yes = await confirm({
+                  title: `Only send ${quote.asset.symbol} on ${quote.asset.chainName}`,
+                  confirm: "Show the address",
+                  rows: [
+                    { label: "Send", value: `${quote.amountInFormatted} ${quote.asset.symbol}` },
+                    { label: "From", value: quote.asset.chainName },
+                    { label: "You get about", value: `${quote.amountOutFormatted} USDC` },
+                  ],
+                  body: "The address is good for about 10 minutes. Another coin or another chain sent to it can be lost.",
+                  note: "If the swap can't finish, NEAR Intents sends it back to your refund address.",
+                });
+                if (yes) void ask(true);
+              }}
+              disabled={busy !== null}
+              className="btn btn-gold mt-6 w-full"
+            >
               {busy === "address" ? <Loader2 size={16} className="animate-spin" /> : null}
               I&apos;m ready to send: show the address
             </button>

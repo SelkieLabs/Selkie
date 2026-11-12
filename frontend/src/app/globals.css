@@ -909,6 +909,19 @@
   border: 2px solid rgba(150, 28, 48, 0.45);
 }
 
+.modal-icon-gold {
+  color: var(--gold-ink, #8a5a12);
+  background: rgba(217, 168, 92, 0.18);
+  border-color: rgba(176, 124, 40, 0.5);
+}
+/* Confirmations answer a question the person just asked: snappier than a sheet. */
+.confirm-overlay {
+  animation-duration: 140ms;
+}
+.confirm-modal {
+  animation: modal-pop 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
 /* The account menu: a chunk that drops from the handle pill. */
 .menu {
   position: absolute;

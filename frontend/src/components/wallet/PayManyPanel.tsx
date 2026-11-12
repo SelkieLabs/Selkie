@@ -6,6 +6,7 @@ import { Avatar } from "@/components/Layout";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
+import { useConfirm } from "@/contexts/useConfirm";
 import { MAX_PAY_MANY } from "@selkie/chain-near/browser";
 import { ApiError, api, newIdempotencyKey, type BatchResult } from "@/lib/api";
 import { isNear } from "@/lib/chain";
@@ -37,6 +38,7 @@ export function PayManyPanel({
   onSent: () => void;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const nearPay = useNearPay();
   const [step, setStep] = useState<Step>("compose");
   const [platform, setPlatform] = useState<Platform>("x");
@@ -221,7 +223,20 @@ export function PayManyPanel({
         {error && <p className="mt-4 text-sm font-semibold text-[#a11d34]">{error}</p>}
 
         <button
-          onClick={() => void send()}
+          onClick={async () => {
+            const people = `${handles.length} ${handles.length === 1 ? "person" : "people"}`;
+            const yes = await confirm({
+              title: `Send ${usd(total)} to ${people}?`,
+              confirm: `Send ${usd(total)}`,
+              rows: [
+                { label: "Each gets", value: usd(amount) },
+                { label: "People", value: String(handles.length) },
+                { label: "Total", value: usd(total) },
+              ],
+              body: "One signature pays everyone. Anyone not on Selkie yet gets theirs when they sign in.",
+            });
+            if (yes) void send();
+          }}
           disabled={sending}
           className="btn btn-gold mt-6 w-full"
         >

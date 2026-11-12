@@ -8,6 +8,7 @@ import { PlatformLogo } from "@/components/Mark";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
+import { useConfirm } from "@/contexts/useConfirm";
 import {
   ApiError,
   api,
@@ -82,6 +83,7 @@ export function SendPanel({
   onSent: () => void;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const nearPay = useNearPay();
   const target = useAccountCheck();
   const [step, setStep] = useState<Step>("compose");
@@ -284,7 +286,18 @@ export function SendPanel({
         {error && <p className="mt-4 text-center text-sm font-semibold text-[#a11d34]">{error}</p>}
 
         <button
-          onClick={() => void send()}
+          onClick={async () => {
+            const yes = await confirm({
+              title: `Send ${usd(amount)}?`,
+              confirm: `Send ${usd(amount)}`,
+              rows: [
+                { label: "To", value: ADDRESS.short(cleanAddress) },
+                { label: "Amount", value: usd(amount) },
+              ],
+              body: "Money sent to an address cannot be pulled back. Check it is the right one.",
+            });
+            if (yes) void send();
+          }}
           disabled={sending || target.blocked}
           className="btn btn-gold mt-7 w-full"
         >
@@ -359,7 +372,20 @@ export function SendPanel({
         {error && <p className="mt-4 text-center text-sm font-semibold text-[#a11d34]">{error}</p>}
 
         <button
-          onClick={() => void send()}
+          onClick={async () => {
+            const yes = await confirm({
+              title: `Send ${usd(amount)} to @${recipient.handle.username}?`,
+              confirm: `Send ${usd(amount)}`,
+              rows: [
+                { label: "To", value: `@${recipient.handle.username}` },
+                { label: "Amount", value: usd(amount) },
+              ],
+              body: recipient.onSelkie
+                ? "It lands in their account straight away."
+                : `It waits for @${recipient.handle.username} until they sign in. If they never do, you can take it back.`,
+            });
+            if (yes) void send();
+          }}
           disabled={sending || recipient.isYou}
           className="btn btn-gold mt-7 w-full"
         >

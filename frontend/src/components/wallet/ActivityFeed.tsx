@@ -16,6 +16,7 @@ import { ChainLogo } from "@/components/ChainLogo";
 import { TokenIcon } from "@/components/TokenIcon";
 import { TransactionSheet } from "@/components/wallet/TransactionSheet";
 import { useToast } from "@/contexts/ToastContext";
+import { useConfirm } from "@/contexts/useConfirm";
 import { ApiError, api, type ActivityEntry } from "@/lib/api";
 import { features, isNear } from "@/lib/chain";
 import { chainInLabel } from "@/lib/logos";
@@ -153,6 +154,7 @@ export function ActivityFeed({
 
 function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const nearPay = useNearPay();
   const hidden = useAmountsHidden();
   const [returning, setReturning] = useState(false);
@@ -173,6 +175,17 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
   const takeBack = async () => {
     const claimRef = entry.claimRef;
     if (!claimRef) return;
+    const amount = `${money(entry.amount.amount)} ${entry.amount.asset}`;
+    const yes = await confirm({
+      title: `Take back ${amount}?`,
+      confirm: "Take it back",
+      rows: [
+        ...(entry.counterparty ? [{ label: "It was for", value: entry.counterparty }] : []),
+        { label: "Comes back", value: amount },
+      ],
+      body: "It was never claimed, so it comes back to your account and the link stops working.",
+    });
+    if (!yes) return;
     setReturning(true);
     try {
       // On NEAR only the sender's own key can take it back; Selkie relays it.

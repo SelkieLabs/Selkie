@@ -20,6 +20,7 @@ import { ContractWarning } from "@/components/wallet/ContractWarning";
 import { AssetSelect, IntentsProgress, PreviewNote } from "@/components/wallet/OtherChain";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
 import { useToast } from "@/contexts/ToastContext";
+import { useConfirm } from "@/contexts/useConfirm";
 import { ADDRESS } from "@/lib/address";
 import { ApiError, api, type ChainAsset, type IntentsQuote, type SendResult } from "@/lib/api";
 import { NEAR_NETWORK, isNear } from "@/lib/chain";
@@ -73,6 +74,7 @@ const COUNTRIES = [
 
 export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: () => void }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const nearPay = useNearPay();
   const target = useAccountCheck();
   const [step, setStep] = useState<Step>("where");
@@ -223,7 +225,18 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
         quote={chainQuote}
         address={chainAddress}
         onBack={() => setStep("details")}
-        onConfirm={() => void cashOutToChain()}
+        onConfirm={async () => {
+          const yes = await confirm({
+            title: `Send ${money(chainQuote.amountInFormatted)} to ${chainQuote.asset.chainName}?`,
+            confirm: `Send to ${chainQuote.asset.chainName}`,
+            rows: [
+              { label: "To", value: shortChainAddress(chainAddress) },
+              { label: "You get about", value: `${chainQuote.amountOutFormatted} ${chainQuote.asset.symbol}` },
+            ],
+            body: "Sends to another chain cannot be pulled back. Check the address is yours and on the right chain.",
+          });
+          if (yes) void cashOutToChain();
+        }}
         sending={sending}
         error={error}
       />
@@ -243,7 +256,22 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
         accountName={accountName}
         address={cleanAddress}
         onBack={() => setStep("details")}
-        onConfirm={live ? () => void cashOut() : () => setStep("soon")}
+        onConfirm={
+          live
+            ? async () => {
+                const yes = await confirm({
+                  title: `Send ${usd(amount)} out?`,
+                  confirm: `Send ${usd(amount)}`,
+                  rows: [
+                    { label: "To", value: ADDRESS.short(cleanAddress) },
+                    { label: "Amount", value: usd(amount) },
+                  ],
+                  body: "Money sent to another account cannot be pulled back.",
+                });
+                if (yes) void cashOut();
+              }
+            : () => setStep("soon")
+        }
         sending={sending}
         error={error}
         contract={

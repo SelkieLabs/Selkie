@@ -5,6 +5,7 @@ import { PrivyProvider } from "@privy-io/react-auth";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { features } from "@/lib/chain";
+import { ConfirmProvider } from "@/contexts/ConfirmContext";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 
@@ -50,7 +51,9 @@ export function Providers({ children }: { children: ReactNode }) {
       }}
     >
       <AuthProvider>
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <ConfirmProvider>{children}</ConfirmProvider>
+        </ToastProvider>
       </AuthProvider>
     </PrivyProvider>
   );
