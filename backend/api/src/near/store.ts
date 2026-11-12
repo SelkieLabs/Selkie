@@ -54,7 +54,19 @@ export type PaymentIntent =
       bank?: BankCashOut;
     }
   | { kind: "many"; amount: Money; items: ManyItem[] }
-  | { kind: "refund"; claimRef: string; amount: Money };
+  | { kind: "refund"; claimRef: string; amount: Money }
+  | PocketIntent;
+
+/**
+ * The owner's own changes to their X pocket, signed by their key. `amount` is
+ * what moves (zero for a new daily limit); `dailyCap` is set when the limit changes.
+ */
+export interface PocketIntent {
+  kind: "pocket";
+  action: "top_up" | "withdraw" | "set_cap";
+  amount: Money;
+  dailyCap?: Money;
+}
 
 /** A cash-out to another chain, as the quote that priced it described it. */
 export interface IntentsCashOut {

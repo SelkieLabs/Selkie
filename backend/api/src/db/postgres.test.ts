@@ -8,6 +8,7 @@ import { ActivityNotFoundError } from "../activity/store";
 import { PostgresUserStore } from "../identity/postgres-store";
 import { IdentityAlreadyLinkedError } from "../identity/store";
 import { PostgresIdempotencyStore } from "../idempotency/postgres-store";
+import { PostgresBotSendStore } from "../near/postgres-store";
 import { PostgresRequestStore } from "../requests/postgres-store";
 import { PostgresSigners } from "../wallets/postgres";
 import { Seal } from "./seal";
@@ -802,6 +803,22 @@ describe("Postgres storage", { skip }, () => {
       await signers.create();
       await signers.create();
       assert.equal(await signers.count(), before + 2);
+    });
+  });
+
+  describe("bot sends from an X pocket (NEAR)", () => {
+    it("lets exactly one of many racing calls claim a tweet, and gives the rest its answer", async () => {
+      const store = new PostgresBotSendStore(db.pool);
+      const tweetId = String(Date.now());
+      const claims = await Promise.all(Array.from({ length: 8 }, () => store.begin(tweetId, "7001")));
+      assert.equal(claims.filter((claim) => claim === null).length, 1, "one claim, however many race");
+      assert.ok(claims.every((claim) => claim === null || claim.result === null), "the rest see it still running");
+
+      await store.finish(tweetId, { status: "over-cap", leftToday: "0.5", message: "Over" });
+      assert.deepEqual(await store.begin(tweetId, "7001"), {
+        senderXUserId: "7001",
+        result: { status: "over-cap", leftToday: "0.5", message: "Over" },
+      });
     });
   });
 

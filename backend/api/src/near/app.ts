@@ -39,6 +39,13 @@ import { BankDesk, paycrestErrorStatus, registerBankRoutes } from "./bank";
 import { IntentsDesk, intentsErrorStatus, registerIntentsRoutes } from "./intents";
 import { PaycrestError, type PaycrestClient } from "./paycrest";
 import { CONTRACT_WARNING, NOT_AN_ACCOUNT, NearPayments, type PrepareBody } from "./payments";
+import {
+  InMemoryBotSendStore,
+  PocketDesk,
+  registerPocketRoutes,
+  type BotSendStore,
+  type PocketChain,
+} from "./pocket";
 import { Refusal } from "./refusal";
 import { registerNearRequestRoutes } from "./requests";
 import type { NearAccountStore, PrepareStore } from "./store";
@@ -66,6 +73,15 @@ export interface NearAppDeps {
    * 1Click. Without it, the bank screens say they are switched off.
    */
   paycrest?: PaycrestClient;
+  /**
+   * The X pocket contract (NEAR_POCKET_CONTRACT). Without it everything pocket
+   * is off: GET /near/pocket says so, and the relayer pays for no pocket call.
+   */
+  pocket?: PocketChain;
+  /** SELKIE_BOT_SECRET. With a pocket that can send, it opens POST /near/bot/send. */
+  botSecret?: string | null;
+  /** One answer per tweet for the bot route. In memory if not given. */
+  botSends?: BotSendStore;
   /** Tests shorten how long outside money must hold before it is written down. */
   watch?: { settleAfterMs?: number; now?: () => number };
 }
@@ -118,7 +134,13 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
   });
   const xLookup = deps.xLookup ?? noXLookup;
   const requests = deps.requests ?? new InMemoryRequestStore();
-  const policy = relayPolicy({ usdc: config.usdcContract, escrow: config.escrowContract });
+  // The pocket's owner-signed calls, and only those: `pocket_send` belongs to
+  // the bot's own key, and `set_bot` to the contract's owner.
+  const policy = relayPolicy({
+    usdc: config.usdcContract,
+    escrow: config.escrowContract,
+    extra: deps.pocket ? { [deps.pocket.contract]: ["pocket_withdraw", "pocket_set_cap"] } : undefined,
+  });
   const desk = deps.intents ? new IntentsDesk(deps.intents, config) : null;
   const bank = deps.paycrest ? new BankDesk(deps.paycrest, desk, config) : null;
   const payments = new NearPayments({
@@ -132,7 +154,11 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     activity,
     requests,
     xLookup,
+    pocket: deps.pocket ?? null,
   });
+  const pocketDesk = deps.pocket
+    ? new PocketDesk({ pocket: deps.pocket, chain, accounts: deps.accounts, users: deps.users, identity, activity, watch })
+    : null;
 
   async function requireUser(request: FastifyRequest, reply: Reply): Promise<User | null> {
     const token = bearerToken(request.headers.authorization);
@@ -361,6 +387,12 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
   registerEmailRoutes(app, { service: deps.email ?? null, requireUser, limited: capped("auth") });
   registerIntentsRoutes(app, { desk, requireUser, limited: capped("money") });
   registerBankRoutes(app, { desk: bank, requireUser, limited: capped("money") });
+  registerPocketRoutes(app, {
+    desk: pocketDesk,
+    botSecret: deps.botSecret ?? null,
+    sends: deps.botSends ?? new InMemoryBotSendStore(),
+    requireUser,
+  });
   // Let notices already on their way finish before the process exits.
   app.addHook("onClose", async () => {
     await Promise.all(notifiers.map((notifier) => notifier.settled()));

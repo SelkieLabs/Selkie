@@ -17,6 +17,9 @@ import {
   holdTransfer,
   isValidAccountId,
   payManyCall,
+  pocketSetCap,
+  pocketTopUp,
+  pocketWithdraw,
   recipientKeyFor,
   refundCall,
   toBaseUnits,
@@ -35,8 +38,9 @@ import type { RequestStore } from "../requests/store";
 import type { BalanceWatch } from "./balance-watch";
 import type { BankDesk } from "./bank";
 import type { IntentsDesk } from "./intents";
+import { POCKET_PARTY, type PocketChain } from "./pocket";
 import { Refusal } from "./refusal";
-import type { ManyItem, NearAccountStore, PaymentIntent } from "./store";
+import type { ManyItem, NearAccountStore, PaymentIntent, PocketIntent } from "./store";
 import type { XUserLookup } from "./x-lookup";
 
 const NOTE_MAX = 120;
@@ -82,6 +86,12 @@ export interface PrepareBody {
     accountName?: string;
     maxSend?: string;
   };
+  /**
+   * The owner's X pocket: move USDC in (optionally setting the daily limit),
+   * take it back out (no amount = all of it), or change the daily limit.
+   * Decimal USDC.
+   */
+  pocket?: { action?: string; amount?: string; dailyCap?: string };
 }
 
 export interface PaymentPlan {
@@ -125,6 +135,8 @@ export interface NearPaymentsDeps {
   intents?: IntentsDesk | null;
   /** Paycrest, for cash-outs to a bank. Null where it is not wired in. */
   bank?: BankDesk | null;
+  /** The X pocket contract. Null where NEAR_POCKET_CONTRACT is unset. */
+  pocket?: PocketChain | null;
 }
 
 export class NearPayments {
@@ -137,6 +149,7 @@ export class NearPayments {
   // ---- before signing ------------------------------------------------------
 
   async plan(user: User, body: PrepareBody): Promise<PaymentPlan> {
+    if (body.pocket !== undefined) return this.planPocket(user, body.pocket ?? {});
     if (body.refundId !== undefined) return this.planRefund(user, String(body.refundId));
     if (body.requestId !== undefined) return this.planRequest(user, String(body.requestId));
     if (body.toMany !== undefined) return this.planMany(user, body);
@@ -194,7 +207,11 @@ export class NearPayments {
     const toAccount = String(body.toAccount ?? "").trim().toLowerCase();
     if (!isValidAccountId(toAccount)) throw new Refusal(400, NOT_AN_ACCOUNT);
     if (toAccount === user.address) throw new Refusal(400, "That's your own account. Pick another one.");
-    if (toAccount === this.config.usdcContract || toAccount === this.config.escrowContract) {
+    if (
+      toAccount === this.config.usdcContract ||
+      toAccount === this.config.escrowContract ||
+      toAccount === this.deps.pocket?.contract
+    ) {
       throw new Refusal(400, "That is a contract, not somebody's account. Money sent there is lost.");
     }
     const units = toPositiveBaseUnits(String(body.amount ?? ""), USDC_DECIMALS);
@@ -388,6 +405,65 @@ export class NearPayments {
     return this.planSend(user, { to: found.fromHandle.username, amount: found.amount.amount, note: found.note }, id);
   }
 
+  /**
+   * The owner's X pocket. Amounts are checked against the chain now, so the
+   * person is told before signing rather than by a failed transaction after.
+   */
+  private async planPocket(user: User, body: NonNullable<PrepareBody["pocket"]>): Promise<PaymentPlan> {
+    const pocket = this.deps.pocket;
+    if (!pocket) throw new Refusal(503, "Sending from X is switched off here.");
+    const limit = (value: unknown) =>
+      value === undefined || value === null || value === "" ? undefined : toBaseUnits(String(value), USDC_DECIMALS);
+
+    switch (body.action) {
+      case "top_up": {
+        const units = toPositiveBaseUnits(String(body.amount ?? ""), USDC_DECIMALS);
+        await this.ensureBalance(user, units);
+        const dailyCap = limit(body.dailyCap);
+        return {
+          call: pocketTopUp(this.config.usdcContract, pocket.contract, {
+            amount: units.toString(),
+            ...(dailyCap !== undefined ? { dailyCap: dailyCap.toString() } : {}),
+          }),
+          intent: {
+            kind: "pocket",
+            action: "top_up",
+            amount: usdc(units),
+            ...(dailyCap !== undefined ? { dailyCap: usdc(dailyCap) } : {}),
+          },
+        };
+      }
+      case "withdraw": {
+        const balance = BigInt((await pocket.get(user.address))?.balance ?? "0");
+        if (balance === 0n) throw new Refusal(409, "Your X pocket is empty.");
+        // "All of it" is named exactly, as it stands now, so the feed says what
+        // left. A bot send in between makes it fail cleanly, never half-true.
+        const units =
+          body.amount === undefined || body.amount === ""
+            ? balance
+            : toPositiveBaseUnits(String(body.amount), USDC_DECIMALS);
+        if (units > balance) throw new Refusal(409, `Your X pocket has $${fromBaseUnits(balance, USDC_DECIMALS)}.`);
+        return {
+          call: pocketWithdraw(pocket.contract, { amount: units.toString() }),
+          intent: { kind: "pocket", action: "withdraw", amount: usdc(units) },
+        };
+      }
+      case "set_cap": {
+        const dailyCap = limit(body.dailyCap);
+        if (dailyCap === undefined) throw new Refusal(400, "Enter a daily limit, or 0 to pause sending from X.");
+        if (!(await pocket.get(user.address))) {
+          throw new Refusal(409, "Top up your X pocket first. The daily limit comes with it.");
+        }
+        return {
+          call: pocketSetCap(pocket.contract, { dailyCap: dailyCap.toString() }),
+          intent: { kind: "pocket", action: "set_cap", amount: usdc(0n), dailyCap: usdc(dailyCap) },
+        };
+      }
+      default:
+        throw new Refusal(400, "Choose top up, withdraw or change the daily limit.");
+    }
+  }
+
   /** Take back money that waited for someone who never came. */
   private async planRefund(user: User, claimRef: string): Promise<PaymentPlan> {
     if (!/^\d{1,20}$/.test(claimRef)) throw new Refusal(400, "We lost track of that payment.");
@@ -425,6 +501,7 @@ export class NearPayments {
     const explorer = this.deps.chain.txUrl(ref);
     const fail = (message: string) => new Refusal(409, message, { ref, explorer });
     if (outcome.failure) throw fail(explainFailure(outcome.failure));
+    if (intent.kind === "pocket") return this.settlePocket(user, intent, ref, explorer);
     const from = userHandles(user)[0];
     const holds = outcome.events.filter((event) => event.event === "hold").flatMap((event) => event.data);
     const amount = toBaseUnits(intent.amount.amount, USDC_DECIMALS);
@@ -563,6 +640,29 @@ export class NearPayments {
         if (found) await this.deps.activity.settle(user.id, found.id, "returned", ref);
         return { status: "returned", ref, explorer, waitingToBeClaimed: false, message: "It's back in your balance." };
       }
+    }
+  }
+
+  /** The pocket is not a person: its feed lines name it, and only the owner's balance moves. */
+  private async settlePocket(user: User, intent: PocketIntent, ref: string, explorer: string): Promise<Settled> {
+    const done = (message: string): Settled => ({ status: "confirmed", ref, explorer, waitingToBeClaimed: false, message });
+    const units = toBaseUnits(intent.amount.amount, USDC_DECIMALS);
+    const pocket = { counterparty: POCKET_PARTY };
+    switch (intent.action) {
+      case "top_up":
+        await this.deps.watch.expect(user.address, -units);
+        await this.record(user.id, entry("send", intent.amount, "confirmed", ref, pocket));
+        return done(`$${intent.amount.amount} is in your X pocket.`);
+      case "withdraw":
+        await this.deps.watch.expect(user.address, units);
+        await this.record(user.id, entry("receive", intent.amount, "confirmed", ref, pocket));
+        return done("It's back in your balance.");
+      case "set_cap":
+        return done(
+          intent.dailyCap && intent.dailyCap.amount !== "0"
+            ? `Your X pocket can send up to $${intent.dailyCap.amount} a day.`
+            : "Sending from X is paused.",
+        );
     }
   }
 

@@ -12,7 +12,8 @@ import { PostgresPushStore } from "../push/postgres-store";
 import { PostgresRequestStore } from "../requests/postgres-store";
 import { buildNearApp } from "./app";
 import { PaycrestClient } from "./paycrest";
-import { PostgresNearAccountStore, PostgresPrepareStore } from "./postgres-store";
+import { botSecretFromEnv, nearPocket, pocketConfigFromEnv } from "./pocket";
+import { PostgresBotSendStore, PostgresNearAccountStore, PostgresPrepareStore } from "./postgres-store";
 import { XApiUserLookup, noXLookup } from "./x-lookup";
 
 /**
@@ -30,6 +31,10 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
 
   const config = nearConfigFromEnv(env);
   const chain = new NearChain(config);
+  // Both optional, both checked now rather than on the first tweet.
+  const pocketConfig = pocketConfigFromEnv(env);
+  const pocket = pocketConfig ? nearPocket(chain, pocketConfig) : undefined;
+  const botSecret = botSecretFromEnv(env);
 
   const pool = openPool(databaseUrl);
   await migrate(pool, (message) => console.log(message));
@@ -103,6 +108,11 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
       network: env.PAYCREST_NETWORK || "base",
       refundAddress: env.PAYCREST_REFUND_ADDRESS || undefined,
     }),
+    // The X pocket: off without NEAR_POCKET_CONTRACT; the bot route also needs
+    // the bot's key and SELKIE_BOT_SECRET.
+    pocket,
+    botSecret,
+    botSends: new PostgresBotSendStore(pool),
   });
 
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
@@ -132,6 +142,13 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
       : env.PAYCREST_API_KEY && env.PAYCREST_REFUND_ADDRESS
         ? `bank cash-out on (Paycrest, USDC on ${env.PAYCREST_NETWORK || "base"})`
         : "bank cash-out: preview only (set PAYCREST_API_KEY and PAYCREST_REFUND_ADDRESS)",
+  );
+  console.log(
+    !pocket
+      ? "X pocket off (set NEAR_POCKET_CONTRACT)"
+      : pocket.send && botSecret
+        ? `X pocket on (${pocket.contract}); the bot sends from it as ${pocketConfig?.botAccount}`
+        : `X pocket on (${pocket.contract}); bot sends off (set NEAR_POCKET_BOT_ACCOUNT, NEAR_POCKET_BOT_KEY and SELKIE_BOT_SECRET)`,
   );
   console.log(push ? "push notifications on" : "push notifications off (npm run push:keys, then restart)");
   console.log(

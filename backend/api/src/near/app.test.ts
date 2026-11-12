@@ -9,10 +9,16 @@
 import assert from "node:assert/strict";
 import { createHmac, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { beforeEach, describe, test } from "node:test";
+import { MIN_BOT_SECRET_LENGTH } from "@selkie/core";
 import {
   IntentsError,
   PREVIEW_ACCOUNT,
+  TGAS,
   fromBaseUnits,
+  pocketSetCap,
+  pocketTopUp,
+  pocketWithdraw,
+  preparedCall,
   type NearChain,
   type OneClickClient,
   type OneClickQuote,
@@ -1340,3 +1346,378 @@ describe("Cash out to a bank: Paycrest, paid through NEAR Intents", () => {
     assert.equal(res.statusCode, 503);
   });
 });
+
+describe("The X pocket: a tweet pays from a small, capped balance", () => {
+  const BOT_SECRET = "b".repeat(MIN_BOT_SECRET_LENGTH);
+  const ada = person("7001", "ada_p");
+  const bayo = person("7002", "bayo_p");
+  let tweet = 1_000_000;
+
+  async function build(options: { pocket?: boolean; canSend?: boolean; secret?: string | null } = {}) {
+    await app.close();
+    app = await buildNearApp({
+      ...appDeps,
+      ...(options.pocket === false ? {} : { pocket: chain.pocketChain({ canSend: options.canSend }) }),
+      botSecret: options.secret === undefined ? BOT_SECRET : options.secret,
+    });
+  }
+
+  const pocketOf = async (who: Person) => {
+    const res = await app.inject({ method: "GET", url: "/near/pocket", headers: auth(who) });
+    assert.equal(res.statusCode, 200, res.body);
+    return res.json();
+  };
+  const pocketPrepare = (who: Person, pocket: Record<string, unknown>) => prepare(who, { pocket });
+  const pocketPay = (who: Person, pocket: Record<string, unknown>) => pay(who, { pocket });
+
+  /** What the bot sends when somebody tweets "@SelkiePay send 2 to @bayo_p". */
+  function botSend(body: Record<string, unknown> = {}, headers: Record<string, string> = { "x-selkie-bot-secret": BOT_SECRET }) {
+    return app.inject({
+      method: "POST",
+      url: "/near/bot/send",
+      headers,
+      payload: {
+        tweetId: String(++tweet),
+        senderXUserId: ada.subject,
+        senderHandle: ada.username,
+        to: bayo.username,
+        amount: "2",
+        ...body,
+      },
+    });
+  }
+
+  /** Ada and Bayo on Selkie, Ada with $20 and a pocket topped up as asked. */
+  async function twoPeople(topUp?: { amount: string; dailyCap?: string }) {
+    await signIn(ada);
+    await signIn(bayo);
+    chain.fund(ada.account!, 20n * DOLLAR);
+    if (topUp) {
+      const res = await pocketPay(ada, { action: "top_up", ...topUp });
+      assert.equal(res.statusCode, 200, res.body);
+    }
+  }
+
+  /** A delegate the web app never offers, signed by the user's own key, smuggled into the prepare store. */
+  async function relayForged(who: Person, receiverId: string, methodName: string, args: object) {
+    const user = (await signIn(who)).user;
+    const key = (await accounts.findByXUserId(who.subject))!.publicKey;
+    const delegate = await chain.prepare(who.account!, key, {
+      receiverId,
+      calls: [preparedCall(methodName, args, 30n * TGAS, 1n)],
+    });
+    const record = await appDeps.prepares.create({
+      userId: user.id,
+      delegate,
+      intent: { kind: "pocket", action: "set_cap", amount: { amount: "0", asset: "USDC" } },
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const signedDelegate = await signFor(who, delegate);
+    return app.inject({
+      method: "POST",
+      url: "/near/relay",
+      headers: auth(who),
+      payload: { prepareId: record.id, signedDelegate },
+    });
+  }
+
+  describe("switched off (no NEAR_POCKET_CONTRACT)", () => {
+    beforeEach(() => build({ pocket: false }));
+
+    test("GET /near/pocket says so, prepares are refused and the bot route is not there", async () => {
+      await twoPeople();
+      assert.deepEqual(await pocketOf(ada), { enabled: false, contract: null, bot: "SelkiePay", pocket: null });
+      const top = await pocketPrepare(ada, { action: "top_up", amount: "5" });
+      assert.equal(top.statusCode, 503);
+      assert.equal((await botSend()).statusCode, 404);
+    });
+
+    test("the relayer pays for no pocket call", async () => {
+      await twoPeople();
+      const res = await relayForged(ada, "pocket.test", "pocket_withdraw", { amount: "1" });
+      assert.equal(res.statusCode, 400, res.body);
+      assert.equal(chain.relayed.length, 0);
+    });
+  });
+
+  describe("switched on", () => {
+    beforeEach(() => build());
+
+    test("GET /near/pocket needs a sign-in, and shows no pocket before the first top-up", async () => {
+      await twoPeople();
+      assert.equal((await app.inject({ method: "GET", url: "/near/pocket" })).statusCode, 401);
+      assert.deepEqual(await pocketOf(ada), { enabled: true, contract: "pocket.test", bot: "SelkiePay", pocket: null });
+    });
+
+    test("a top-up signs exactly USDC.ft_transfer_call to the pocket, and shows in dollars", async () => {
+      await twoPeople();
+      const prepared = await pocketPrepare(ada, { action: "top_up", amount: "12.5", dailyCap: "5" });
+      assert.equal(prepared.statusCode, 200, prepared.body);
+      const { delegate, intent } = prepared.json();
+      assert.equal(delegate.receiverId, "usdc.test");
+      assert.deepEqual(delegate.calls, pocketTopUp("usdc.test", "pocket.test", { amount: "12500000", dailyCap: "5000000" }).calls);
+      assert.equal(intent.kind, "pocket");
+
+      const res = await pocketPay(ada, { action: "top_up", amount: "12.5", dailyCap: "5" });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.equal(res.json().status, "confirmed");
+      assert.deepEqual((await pocketOf(ada)).pocket, { balance: "12.5", dailyCap: "5", spentToday: "0", leftToday: "5" });
+      assert.equal(await chain.usdcBalance(ada.account!), 7_500_000n);
+
+      const [line] = await feed(ada);
+      assert.equal(line!.kind, "send");
+      assert.equal(line!.counterparty, "your X pocket");
+      assert.equal(line!.amount.amount, "12.5");
+      // Selkie moved it, so it is never "money from outside": only the faucet's $20 is.
+      await settle(ada);
+      assert.deepEqual(outsideLines(await fromOutside(ada)), ["receive 20"]);
+    });
+
+    test("a top-up with no daily limit gets the default of 10 a day", async () => {
+      await twoPeople();
+      const { delegate } = (await pocketPrepare(ada, { action: "top_up", amount: "3" })).json();
+      assert.deepEqual(delegate.calls, pocketTopUp("usdc.test", "pocket.test", { amount: "3000000" }).calls);
+      await pocketPay(ada, { action: "top_up", amount: "3" });
+      assert.deepEqual((await pocketOf(ada)).pocket, { balance: "3", dailyCap: "10", spentToday: "0", leftToday: "3" });
+    });
+
+    test("a top-up bigger than the balance is refused before anything is signed", async () => {
+      await twoPeople();
+      assert.equal((await pocketPrepare(ada, { action: "top_up", amount: "25" })).statusCode, 409);
+      assert.equal((await pocketPrepare(ada, { action: "top_up", amount: "0" })).statusCode, 400);
+    });
+
+    test("withdraw some, then all of it, each signing exactly pocket_withdraw", async () => {
+      await twoPeople({ amount: "10" });
+
+      const some = (await pocketPrepare(ada, { action: "withdraw", amount: "4" })).json();
+      assert.equal(some.delegate.receiverId, "pocket.test");
+      assert.deepEqual(some.delegate.calls, pocketWithdraw("pocket.test", { amount: "4000000" }).calls);
+      assert.equal((await pocketPay(ada, { action: "withdraw", amount: "4" })).statusCode, 200);
+      assert.equal((await pocketOf(ada)).pocket.balance, "6");
+      assert.equal(await chain.usdcBalance(ada.account!), 14n * DOLLAR);
+
+      // "All" is named exactly, as it stands when prepared.
+      const all = (await pocketPrepare(ada, { action: "withdraw" })).json();
+      assert.deepEqual(all.delegate.calls, pocketWithdraw("pocket.test", { amount: "6000000" }).calls);
+      const res = await pocketPay(ada, { action: "withdraw" });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.equal((await pocketOf(ada)).pocket.balance, "0");
+      assert.equal(await chain.usdcBalance(ada.account!), 20n * DOLLAR);
+      const [line] = await feed(ada);
+      assert.equal(line!.kind, "receive");
+      assert.equal(line!.counterparty, "your X pocket");
+      assert.equal(line!.amount.amount, "6");
+
+      assert.equal((await pocketPrepare(ada, { action: "withdraw" })).statusCode, 409, "nothing left");
+      await settle(ada);
+      assert.deepEqual(outsideLines(await fromOutside(ada)), ["receive 20"]);
+    });
+
+    test("withdrawing more than the pocket holds is refused", async () => {
+      await twoPeople({ amount: "3" });
+      const res = await pocketPrepare(ada, { action: "withdraw", amount: "5" });
+      assert.equal(res.statusCode, 409);
+      assert.match(res.json().error, /\$3/);
+    });
+
+    test("change the daily limit, signing exactly pocket_set_cap", async () => {
+      await twoPeople();
+      assert.equal((await pocketPrepare(ada, { action: "set_cap", dailyCap: "5" })).statusCode, 409, "no pocket yet");
+
+      await pocketPay(ada, { action: "top_up", amount: "8" });
+      const { delegate } = (await pocketPrepare(ada, { action: "set_cap", dailyCap: "2.5" })).json();
+      assert.equal(delegate.receiverId, "pocket.test");
+      assert.deepEqual(delegate.calls, pocketSetCap("pocket.test", { dailyCap: "2500000" }).calls);
+      const res = await pocketPay(ada, { action: "set_cap", dailyCap: "2.5" });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.deepEqual((await pocketOf(ada)).pocket, { balance: "8", dailyCap: "2.5", spentToday: "0", leftToday: "2.5" });
+
+      assert.equal((await pocketPrepare(ada, { action: "set_cap" })).statusCode, 400);
+      assert.equal((await pocketPrepare(ada, { action: "spend_it_all" })).statusCode, 400);
+    });
+
+    test("the relayer still refuses every other pocket method", async () => {
+      await twoPeople({ amount: "10" });
+      const before = chain.relayed.length;
+      for (const [method, args] of [
+        ["pocket_send", { owner: ada.account, to: bayo.account, amount: "1000000" }],
+        ["set_bot", { bot: ada.account }],
+        ["ft_on_transfer", { sender_id: ada.account, amount: "1000000", msg: '{"kind":"top_up"}' }],
+      ] as const) {
+        const res = await relayForged(ada, "pocket.test", method, args);
+        assert.equal(res.statusCode, 400, `${method}: ${res.body}`);
+      }
+      assert.equal(chain.relayed.length, before);
+      assert.equal((await pocketOf(ada)).pocket.balance, "10");
+
+      // The same smuggling path with an allowed method does go through, so the
+      // refusals above are the relay policy and not the route.
+      const allowed = await relayForged(ada, "pocket.test", "pocket_set_cap", { daily_cap: "3000000" });
+      assert.equal(allowed.statusCode, 200, allowed.body);
+      assert.equal((await pocketOf(ada)).pocket.dailyCap, "3");
+    });
+
+    test("paying the pocket contract as if it were a person is refused", async () => {
+      await twoPeople();
+      chain.addContractAccount("pocket.test");
+      const res = await prepare(ada, { toAccount: "pocket.test", amount: "1", toContract: true });
+      assert.equal(res.statusCode, 400);
+    });
+  });
+
+  describe("POST /near/bot/send", () => {
+    test("is not there without the bot secret, or without a bot key", async () => {
+      await build({ secret: null });
+      await twoPeople({ amount: "10" });
+      assert.equal((await botSend()).statusCode, 404);
+      await build({ canSend: false });
+      assert.equal((await botSend()).statusCode, 404);
+      assert.equal(chain.pocketSends.length, 0);
+    });
+
+    describe("with the pocket and the secret", () => {
+      beforeEach(() => build());
+
+      test("refuses a wrong or missing secret, and nothing moves", async () => {
+        await twoPeople({ amount: "10" });
+        assert.equal((await botSend({}, { "x-selkie-bot-secret": "c".repeat(MIN_BOT_SECRET_LENGTH) })).statusCode, 401);
+        assert.equal((await botSend({}, { "x-selkie-bot-secret": BOT_SECRET.slice(1) })).statusCode, 401);
+        assert.equal((await botSend({}, {})).statusCode, 401);
+        assert.equal(chain.pocketSends.length, 0);
+        assert.equal((await pocketOf(ada)).pocket.balance, "10");
+      });
+
+      test("refuses a body it cannot read", async () => {
+        await twoPeople({ amount: "10" });
+        assert.equal((await botSend({ tweetId: "" })).statusCode, 400);
+        assert.equal((await botSend({ senderXUserId: "ada" })).statusCode, 400);
+        assert.equal((await botSend({ to: "" })).statusCode, 400);
+        assert.equal((await botSend({ amount: "-1" })).statusCode, 400);
+        assert.equal((await botSend({ amount: "0" })).statusCode, 400);
+        assert.equal(chain.pocketSends.length, 0);
+      });
+
+      test("sent: straight from the pocket to their account, a line on each side", async () => {
+        await twoPeople({ amount: "10", dailyCap: "5" });
+        const res = await botSend({ amount: "2" });
+        assert.equal(res.statusCode, 200, res.body);
+        const body = res.json();
+        assert.deepEqual(body, {
+          status: "sent",
+          txHash: body.txHash,
+          explorerUrl: `https://explorer.test/transactions/${body.txHash}`,
+          amount: "2",
+          to: "bayo_p",
+          toAccount: bayo.account,
+          leftToday: "3",
+        });
+        assert.equal(await chain.usdcBalance(bayo.account!), 2n * DOLLAR);
+        assert.equal(await chain.usdcBalance(ada.account!), 10n * DOLLAR, "the account itself is untouched");
+        assert.deepEqual((await pocketOf(ada)).pocket, { balance: "8", dailyCap: "5", spentToday: "2", leftToday: "3" });
+        assert.equal(chain.pocketSends[0]!.memo, "Sent from X");
+
+        const [sent] = await feed(ada);
+        assert.equal(sent!.kind, "send");
+        assert.equal(sent!.counterparty, "@bayo_p");
+        assert.equal(sent!.status, "confirmed");
+        const [got] = await feed(bayo);
+        assert.equal(got!.kind, "receive");
+        assert.equal(got!.counterparty, "@ada_p");
+        assert.equal(got!.amount.amount, "2");
+        // Selkie moved it, so Bayo's feed never calls it "from outside".
+        await settle(bayo);
+        assert.equal((await fromOutside(bayo)).length, 0);
+      });
+
+      test("a note in the tweet goes on chain as the memo", async () => {
+        await twoPeople({ amount: "10" });
+        assert.equal((await botSend({ note: "for lunch" })).json().status, "sent");
+        assert.equal(chain.pocketSends[0]!.memo, "for lunch");
+      });
+
+      test("no-account: the tweeter never signed in", async () => {
+        await twoPeople({ amount: "10" });
+        const body = (await botSend({ senderXUserId: "7999" })).json();
+        assert.equal(body.status, "no-account");
+        assert.equal(chain.pocketSends.length, 0);
+      });
+
+      test("not-on-selkie: the pocket only pays people already on Selkie", async () => {
+        await twoPeople({ amount: "10" });
+        assert.equal((await botSend({ to: "@nobody_here" })).json().status, "not-on-selkie");
+        assert.equal(chain.pocketSends.length, 0);
+      });
+
+      test("no-pocket: never topped up", async () => {
+        await twoPeople();
+        assert.equal((await botSend()).json().status, "no-pocket");
+      });
+
+      test("low-balance: says what is left today", async () => {
+        await twoPeople({ amount: "3" });
+        assert.deepEqual(pick((await botSend({ amount: "5" })).json()), { status: "low-balance", leftToday: "3" });
+        assert.equal(chain.pocketSends.length, 0);
+      });
+
+      test("over-cap: says what is left today, and tomorrow the limit is back", async () => {
+        await twoPeople({ amount: "10", dailyCap: "2" });
+        assert.equal((await botSend({ amount: "1.5" })).json().leftToday, "0.5");
+        assert.deepEqual(pick((await botSend({ amount: "1" })).json()), { status: "over-cap", leftToday: "0.5" });
+        chain.pocketDayOffset = 1;
+        assert.equal((await botSend({ amount: "1" })).json().status, "sent");
+        assert.equal(await chain.usdcBalance(bayo.account!), 2_500_000n);
+      });
+
+      test("failed: the transfer did not go, nothing changes and nothing is written", async () => {
+        await twoPeople({ amount: "10" });
+        const linesBefore = (await feed(ada)).length;
+        chain.failNextPocketSend = true;
+        const body = (await botSend()).json();
+        assert.equal(body.status, "failed");
+        assert.ok(body.message);
+        assert.equal((await pocketOf(ada)).pocket.balance, "10");
+        assert.equal(await chain.usdcBalance(bayo.account!), 0n);
+        assert.equal((await feed(ada)).length, linesBefore);
+        assert.equal((await feed(bayo)).length, 0);
+      });
+
+      test("paying yourself is refused", async () => {
+        await twoPeople({ amount: "10" });
+        assert.equal((await botSend({ to: "ada_p" })).json().status, "failed");
+        assert.equal(chain.pocketSends.length, 0);
+      });
+
+      test("the same tweet twice gets the first answer and pays once", async () => {
+        await twoPeople({ amount: "10" });
+        const once = await botSend({ tweetId: "555" });
+        const twice = await botSend({ tweetId: "555" });
+        assert.equal(once.json().status, "sent");
+        assert.deepEqual(twice.json(), once.json());
+        assert.equal(chain.pocketSends.length, 1);
+        assert.equal(await chain.usdcBalance(bayo.account!), 2n * DOLLAR);
+        assert.equal((await feed(bayo)).length, 1);
+
+        // Somebody else naming the same tweet gets nothing.
+        assert.equal((await botSend({ tweetId: "555", senderXUserId: bayo.subject, to: "ada_p" })).statusCode, 409);
+      });
+
+      test("a repeat keeps the first answer even after things change", async () => {
+        await twoPeople();
+        assert.equal((await botSend({ tweetId: "777" })).json().status, "no-pocket");
+        await pocketPay(ada, { action: "top_up", amount: "10" });
+        assert.equal((await botSend({ tweetId: "777" })).json().status, "no-pocket");
+        assert.equal(chain.pocketSends.length, 0);
+      });
+    });
+  });
+});
+
+function outsideLines(entries: { kind: string; amount: { amount: string } }[]) {
+  return entries.map((entry) => `${entry.kind} ${entry.amount.amount}`);
+}
+
+/** A bot-send answer without its words, which are the bot's to choose. */
+function pick(body: { status: string; leftToday?: string }) {
+  return { status: body.status, leftToday: body.leftToday };
+}

@@ -1,6 +1,37 @@
 import { randomUUID } from "node:crypto";
 import { iso, type Queryable } from "../db/pool";
+import type { BotSendRecord, BotSendResult, BotSendStore } from "./pocket";
 import type { NearAccountRecord, NearAccountStore, PrepareRecord, PrepareStore } from "./store";
+
+export class PostgresBotSendStore implements BotSendStore {
+  constructor(private readonly db: Queryable) {}
+
+  async begin(tweetId: string, senderXUserId: string): Promise<BotSendRecord | null> {
+    // One statement claims the tweet: of two calls racing for it, exactly one
+    // gets a row back and goes on to pay.
+    const claimed = await this.db.query(
+      `insert into near_bot_sends (tweet_id, sender_x_user_id) values ($1, $2)
+         on conflict (tweet_id) do nothing returning tweet_id`,
+      [tweetId, senderXUserId],
+    );
+    if (claimed.rows.length > 0) return null;
+    const { rows } = await this.db.query<{ sender_x_user_id: string; result: string | null }>(
+      "select sender_x_user_id, result from near_bot_sends where tweet_id = $1",
+      [tweetId],
+    );
+    const row = rows[0];
+    // Not ours to claim either way; never read as "go ahead and pay".
+    if (!row) return { senderXUserId: "", result: null };
+    return { senderXUserId: row.sender_x_user_id, result: row.result ? (JSON.parse(row.result) as BotSendResult) : null };
+  }
+
+  async finish(tweetId: string, result: BotSendResult): Promise<void> {
+    await this.db.query("update near_bot_sends set result = $2, finished_at = now() where tweet_id = $1", [
+      tweetId,
+      JSON.stringify(result),
+    ]);
+  }
+}
 
 interface AccountRow {
   x_user_id: string;

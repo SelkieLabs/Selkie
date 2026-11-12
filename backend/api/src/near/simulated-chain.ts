@@ -9,23 +9,38 @@
  *
  * Never used outside tests.
  */
-import type {
-  AccountKind,
-  AccessKeySummary,
-  Call,
-  EscrowEvent,
-  NearChain,
-  NearServerConfig,
-  PaymentView,
-  PreparedDelegate,
-  TxOutcome,
+import {
+  DEFAULT_POCKET_CAP_UNITS,
+  isHandleAccount,
+  type AccountKind,
+  type AccessKeySummary,
+  type Call,
+  type EscrowEvent,
+  type NearChain,
+  type NearServerConfig,
+  type PaymentView,
+  type PocketView,
+  type PreparedDelegate,
+  type TxOutcome,
 } from "@selkie/chain-near";
+import type { PocketChain, PocketSendOutcome } from "./pocket";
 
 /** Typed off NearChain so the backend never imports a NEAR SDK itself. */
 type SignedDelegate = Parameters<NearChain["relay"]>[0];
 
 const USDC = "usdc.test";
 const ESCROW = "escrow.test";
+const POCKET = "pocket.test";
+const DAY_MS = 86_400_000;
+
+/** One owner's pocket, as the pocket contract stores it. */
+interface SimulatedPocket {
+  balance: bigint;
+  dailyCap: bigint;
+  spent: bigint;
+  /** The UTC day `spent` belongs to. */
+  day: number;
+}
 
 export class SimulatedNearChain {
   readonly config = {
@@ -44,10 +59,18 @@ export class SimulatedNearChain {
   /** accountId -> public keys on it. Accounts that exist on chain. */
   readonly accounts = new Map<string, string[]>();
   readonly balances = new Map<string, bigint>();
-  /** The escrow is registered on USDC at deploy, as on testnet. */
-  readonly registered = new Set<string>([ESCROW]);
+  /** The escrow and the pocket are registered on USDC at deploy, as on testnet. */
+  readonly registered = new Set<string>([ESCROW, POCKET]);
   readonly contracts = new Set<string>();
   readonly payments = new Map<string, PaymentView>();
+  /** The pocket contract's state: owner -> pocket. */
+  readonly pockets = new Map<string, SimulatedPocket>();
+  /** Every pocket_send the bot's key signed. */
+  readonly pocketSends: { owner: string; to: string; amount: string; memo?: string }[] = [];
+  /** Days added to the pocket's clock, so a test can move to tomorrow. */
+  pocketDayOffset = 0;
+  /** Make the next pocket_send's transfer fail, as if the callback had to put it back. */
+  failNextPocketSend = false;
   /** Every delegate the relayer submitted, for tests that care about its shape. */
   readonly relayed: SignedDelegate[] = [];
   #nextPayment = 1;
@@ -148,13 +171,14 @@ export class SimulatedNearChain {
     return { txHash: this.#hash(), events, failure: null };
   }
 
-  /** Run the signed actions against USDC or the escrow. A failure undoes the whole receipt. */
+  /** Run the signed actions against USDC, the escrow or the pocket. A failure undoes the whole receipt. */
   async relay(signed: SignedDelegate): Promise<TxOutcome> {
     this.relayed.push(signed);
     const { senderId, receiverId, actions } = signed.delegateAction;
     const snapshot = {
       balances: new Map(this.balances),
       payments: new Map([...this.payments].map(([id, p]) => [id, { ...p }])),
+      pockets: new Map([...this.pockets].map(([owner, p]) => [owner, { ...p }])),
       next: this.#nextPayment,
     };
     const events: EscrowEvent[] = [];
@@ -169,6 +193,14 @@ export class SimulatedNearChain {
           events.push(...this.#hold(senderId, BigInt(args.amount!), args.msg!));
         } else if (receiverId === ESCROW && call.methodName === "refund") {
           events.push(this.#refund(senderId, String(args.id)));
+        } else if (receiverId === USDC && call.methodName === "ft_transfer_call" && args.receiver_id === POCKET) {
+          this.#topUp(senderId, BigInt(args.amount!), args.msg!);
+        } else if (receiverId === POCKET && call.methodName === "pocket_withdraw") {
+          this.#withdraw(senderId, args.amount);
+        } else if (receiverId === POCKET && call.methodName === "pocket_set_cap") {
+          const pocket = this.pockets.get(senderId);
+          if (!pocket) throw new Error("no pocket");
+          pocket.dailyCap = BigInt(args.daily_cap!);
         } else {
           throw new Error(`not simulated: ${receiverId}.${call.methodName}`);
         }
@@ -178,6 +210,8 @@ export class SimulatedNearChain {
       for (const [k, v] of snapshot.balances) this.balances.set(k, v);
       this.payments.clear();
       for (const [k, v] of snapshot.payments) this.payments.set(k, v);
+      this.pockets.clear();
+      for (const [k, v] of snapshot.pockets) this.pockets.set(k, v);
       this.#nextPayment = snapshot.next;
       return { txHash: this.#hash(), events: [], failure: error instanceof Error ? error.message : String(error) };
     }
@@ -190,6 +224,91 @@ export class SimulatedNearChain {
 
   accountUrl(accountId: string): string {
     return `${this.config.explorerUrl}/accounts/${accountId}`;
+  }
+
+  // ---- the pocket contract ---------------------------------------------------
+
+  /** The pocket as the server sees it: views always, bot sends unless `canSend` is false. */
+  pocketChain(options: { canSend?: boolean } = {}): PocketChain {
+    return {
+      contract: POCKET,
+      get: async (owner) => this.pocketView(owner),
+      send: options.canSend === false ? undefined : async (input) => this.pocketSend(input),
+    };
+  }
+
+  /** `get_pocket`: spent resets on a new UTC day; left is the smaller of balance and cap left. */
+  pocketView(owner: string): PocketView | null {
+    const pocket = this.pockets.get(owner);
+    if (!pocket) return null;
+    const spent = pocket.day === this.#today() ? pocket.spent : 0n;
+    const capLeft = pocket.dailyCap > spent ? pocket.dailyCap - spent : 0n;
+    return {
+      balance: pocket.balance.toString(),
+      dailyCap: pocket.dailyCap.toString(),
+      spentToday: spent.toString(),
+      leftToday: (pocket.balance < capLeft ? pocket.balance : capLeft).toString(),
+    };
+  }
+
+  /** `pocket_send`, signed by the bot key: the contract's rules, then the transfer. */
+  async pocketSend(input: { owner: string; to: string; amount: string; memo?: string }): Promise<PocketSendOutcome> {
+    this.pocketSends.push({ ...input });
+    const txHash = this.#hash();
+    const refuse = (failure: string): PocketSendOutcome => ({ txHash, ok: false, failure });
+    const pocket = this.pockets.get(input.owner);
+    if (!pocket) return refuse("no pocket");
+    if (!isHandleAccount(input.to, this.config.handleParent) || input.to === input.owner) {
+      return refuse("can only send to a Selkie handle account");
+    }
+    const amount = BigInt(input.amount);
+    if (pocket.day !== this.#today()) {
+      pocket.day = this.#today();
+      pocket.spent = 0n;
+    }
+    if (amount > pocket.balance) return refuse("not enough in the pocket");
+    if (pocket.spent + amount > pocket.dailyCap) return refuse("over the daily cap");
+    if (this.failNextPocketSend) {
+      this.failNextPocketSend = false;
+      return refuse("the transfer failed and the pocket was restored");
+    }
+    try {
+      this.#move(POCKET, input.to, amount);
+    } catch (error) {
+      return refuse(error instanceof Error ? error.message : String(error));
+    }
+    pocket.balance -= amount;
+    pocket.spent += amount;
+    return { txHash, ok: true, failure: null };
+  }
+
+  #today(): number {
+    return Math.floor(Date.now() / DAY_MS) + this.pocketDayOffset;
+  }
+
+  /** The pocket's ft_on_transfer: a msg it cannot read is refunded, nothing created. */
+  #topUp(sender: string, amount: bigint, rawMsg: string): void {
+    let msg: { kind?: string; daily_cap?: string };
+    try {
+      msg = JSON.parse(rawMsg);
+    } catch {
+      return;
+    }
+    if (msg.kind !== "top_up") return;
+    this.#move(sender, POCKET, amount);
+    const pocket = this.pockets.get(sender) ?? { balance: 0n, dailyCap: DEFAULT_POCKET_CAP_UNITS, spent: 0n, day: this.#today() };
+    pocket.balance += amount;
+    if (msg.daily_cap !== undefined) pocket.dailyCap = BigInt(msg.daily_cap);
+    this.pockets.set(sender, pocket);
+  }
+
+  #withdraw(owner: string, amount: string | undefined): void {
+    const pocket = this.pockets.get(owner);
+    if (!pocket) throw new Error("no pocket");
+    const units = amount === undefined ? pocket.balance : BigInt(amount);
+    if (units > pocket.balance) throw new Error("not enough in the pocket");
+    pocket.balance -= units;
+    this.#move(POCKET, owner, units);
   }
 
   #move(from: string, to: string, amount: bigint): void {
