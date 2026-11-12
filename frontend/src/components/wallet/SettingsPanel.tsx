@@ -60,7 +60,7 @@ export function SettingsPanel({ user }: { user: User }) {
             ))}
           </ul>
         ) : (
-          <p className="mt-5 rounded-2xl border-2 border-dashed border-pen/15 p-4 text-[15px] text-pen/60">
+          <p className="mt-5 rounded-2xl border border-dashed border-pen/15 p-4 text-[15px] text-pen/60">
             You have no payable handle yet. Add one and anything already waiting for it lands
             straight away.
           </p>
@@ -154,13 +154,13 @@ function NotificationsPanel() {
       />
       <div className="mt-5 space-y-6">
         <section>
-          <h3 className="text-[13px] font-bold uppercase tracking-[0.08em] text-pen/45">On this device</h3>
+          <h3 className="text-[13px] font-medium text-pen/45">On this device</h3>
           <div className="mt-2.5">
             <PushNotices />
           </div>
         </section>
         <section>
-          <h3 className="text-[13px] font-bold uppercase tracking-[0.08em] text-pen/45">By email</h3>
+          <h3 className="text-[13px] font-medium text-pen/45">By email</h3>
           <div className="mt-2.5">
             <EmailNotices />
           </div>
@@ -339,7 +339,7 @@ function EmailNotices() {
 function HandleRow({ handle }: { handle: Handle }) {
   const provider = PROVIDERS[handle.platform];
   return (
-    <li className="flex items-center gap-3 rounded-2xl border-2 border-pen/12 bg-card-bright/60 p-3.5">
+    <li className="flex items-center gap-3 rounded-2xl border border-pen/12 bg-card-bright/60 p-3.5">
       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#2f7d3f]/12 text-[#2f7d3f]">
         <ShieldCheck size={17} strokeWidth={2.4} />
       </span>
@@ -360,7 +360,7 @@ function IdentityRow({ identity }: { identity: Identity }) {
   const provider = PROVIDERS[identity.provider];
   const name = identity.displayName ?? identity.username;
   return (
-    <li className="flex items-center gap-3 rounded-2xl border-2 border-pen/12 bg-card-bright/60 p-3.5">
+    <li className="flex items-center gap-3 rounded-2xl border border-pen/12 bg-card-bright/60 p-3.5">
       {identity.avatarUrl ? (
         <img
           src={identity.avatarUrl}
@@ -406,7 +406,7 @@ function AddressRow({ address }: { address: string }) {
 
   return (
     <div className="mt-5">
-      <p className="break-all rounded-2xl border-2 border-pen/12 bg-card-bright/60 p-3.5 font-mono text-[13px] leading-relaxed text-pen/75">
+      <p className="break-all rounded-2xl border border-pen/12 bg-card-bright/60 p-3.5 font-mono text-[13px] leading-relaxed text-pen/75">
         {address}
       </p>
       <div className="mt-3 flex flex-wrap gap-2.5">

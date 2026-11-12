@@ -94,7 +94,7 @@ export function ConvertSheet({
     return (
       <Sheet title="Converted" onClose={onClose}>
         <div className="flex flex-col items-center text-center">
-          <span className="grid h-14 w-14 place-items-center rounded-full border-2 border-[#2f7d3f]/40 bg-[#2f7d3f]/12 text-[#2f7d3f]">
+          <span className="grid h-14 w-14 place-items-center rounded-full border border-[#2f7d3f]/40 bg-[#2f7d3f]/12 text-[#2f7d3f]">
             <Check size={26} strokeWidth={2.6} />
           </span>
           <p className="mt-5 flex items-center gap-2.5 font-display text-2xl font-bold tracking-tight">
@@ -117,7 +117,7 @@ export function ConvertSheet({
         Turn {from} into {to}
       </h2>
 
-      <div className="mt-6 rounded-2xl border-2 border-pen/15 bg-card-bright p-4">
+      <div className="mt-6 rounded-2xl border border-pen/15 bg-card-bright p-4">
         <div className="flex items-center justify-between">
           <span className="label">You convert</span>
           <div className="flex gap-1.5">
@@ -151,10 +151,10 @@ export function ConvertSheet({
         <ArrowDown size={18} strokeWidth={2.4} />
       </div>
 
-      <div className="rounded-2xl border-2 border-pen/15 bg-pen/[0.04] p-4">
+      <div className="rounded-2xl border border-pen/15 bg-pen/[0.04] p-4">
         <div className="flex items-center justify-between">
           <span className="label">You get</span>
-          <span className="flex items-center gap-1.5 rounded-full border-2 border-pen/15 bg-card-bright py-1 pl-1 pr-2.5 text-[13px] font-bold">
+          <span className="flex items-center gap-1.5 rounded-full border border-pen/15 bg-card-bright py-1 pl-1 pr-2.5 text-[13px] font-bold">
             <TokenIcon asset={to} size={20} />
             {to}
           </span>

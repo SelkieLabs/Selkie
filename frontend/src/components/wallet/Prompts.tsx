@@ -23,7 +23,7 @@ export function CreateAccountGate() {
   return (
     <div className="flex min-h-[80vh] items-center justify-center px-5">
       <div className="chunk w-full max-w-md p-8 text-center">
-        <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-gold/20 text-gold-ink">
+        <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-sg/[0.12] text-sg">
           <Sparkles size={24} strokeWidth={2.2} />
         </span>
         <h1 className="mt-5 font-display text-[1.7rem] font-bold leading-tight tracking-tight">
@@ -50,7 +50,7 @@ export function CreateAccountGate() {
 
         <button
           onClick={() => void signOut()}
-          className="mt-5 text-[13px] font-bold text-pen/55 underline underline-offset-4 transition-colors hover:text-pen"
+          className="mt-5 text-[13px] font-semibold text-pen/55 underline underline-offset-4 transition-colors duration-150 hover:text-pen"
         >
           Use a different account
         </button>
@@ -82,10 +82,10 @@ export function ClaimCelebration({ claimed }: { claimed: ClaimOutcome[] }) {
   return (
     <Sheet title="Money was waiting for you" onClose={dismissClaimed}>
       <div className="flex flex-col items-center text-center">
-        <span className="grid h-14 w-14 place-items-center rounded-full bg-gold/20 text-gold-ink">
+        <span className="grid h-14 w-14 place-items-center rounded-full bg-[#d9a441]/15 text-[#d9a441]">
           <Sparkles size={24} strokeWidth={2.2} />
         </span>
-        <p className="mt-5 font-display text-[2rem] font-bold leading-none tracking-tight">
+        <p className="mt-5 font-mono text-[2rem] font-medium leading-none tracking-[-0.03em] text-[#d9a441]">
           {lines.join(" + ")}
         </p>
         <p className="mt-3 text-[15px] leading-relaxed text-pen/65">
@@ -117,7 +117,7 @@ export function MergePrompt() {
   return (
     <Sheet title="Bring your other wallet here" onClose={busy ? undefined : dismissMerge}>
       <div className="flex flex-col items-center text-center">
-        <span className="grid h-14 w-14 place-items-center rounded-full bg-gold/20 text-gold-ink">
+        <span className="grid h-14 w-14 place-items-center rounded-full bg-sg/[0.12] text-sg">
           <Merge size={22} strokeWidth={2.2} />
         </span>
         <p className="mt-5 font-display text-2xl font-bold tracking-tight">
@@ -149,7 +149,7 @@ export function LinkHandleBanner() {
   const { linkX, linkTelegram } = useAuth();
 
   return (
-    <div className="chunk-gold mt-6 flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+    <div className="chunk-gold flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
       <div className="flex-1">
         <p className="font-display text-[17px] font-bold tracking-tight">
           {isNear ? "Add your X handle so people can pay you" : "Add a handle so people can pay you"}
@@ -210,7 +210,7 @@ export function NotifyNudge() {
       <button
         onClick={dismiss}
         aria-label="Not now"
-        className="absolute right-3 top-3 rounded-full p-1.5 text-pen/40 transition hover:bg-pen/[0.06] hover:text-pen/70"
+        className="absolute right-3 top-3 rounded-full p-1.5 text-pen/40 transition-colors duration-150 hover:bg-pen/[0.06] hover:text-pen/70"
       >
         <X size={16} strokeWidth={2.4} />
       </button>

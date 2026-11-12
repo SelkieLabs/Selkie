@@ -19,10 +19,10 @@ export function ContractWarning({
   return (
     <div
       role="alert"
-      className="mt-5 w-full max-w-md rounded-xl bg-[#a11d34]/[0.07] p-3.5 text-left text-[14px] leading-relaxed text-pen/75"
+      className="mt-5 w-full max-w-md rounded-xl bg-[#f28b9b]/[0.07] p-3.5 text-left text-[14px] leading-relaxed text-pen/75"
     >
       <p className="flex items-start gap-2.5">
-        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[#a11d34]" />
+        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[#f28b9b]" />
         <span>
           <strong className="text-pen">This is a smart contract, not a wallet.</strong> Most contracts,
           staking pools for one, cannot send USDC back out, so money sent to{" "}
@@ -34,7 +34,7 @@ export function ContractWarning({
           type="checkbox"
           checked={accepted}
           onChange={(e) => onAccept(e.target.checked)}
-          className="mt-[3px] h-4 w-4 shrink-0 accent-[#a11d34]"
+          className="mt-[3px] h-4 w-4 shrink-0 accent-[#f28b9b]"
         />
         <span>I know this contract accepts USDC. Pay it anyway.</span>
       </label>

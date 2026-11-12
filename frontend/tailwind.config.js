@@ -6,15 +6,17 @@ export default {
       colors: {
         ink: "#08070c",
         panel: "#0e0c14",
-        ivory: "#f4f1ea",
-        // An object, not a string, so `bg-card-bright` resolves. It is used all
-        // over the wallet for the lighter surface inside a panel, and as a flat
-        // string Tailwind emitted nothing for it.
+        // ivory, card and pen are the names the wallet was built with (ivory
+        // panels, pen ink). Tide keeps the names and changes what they mean:
+        // they read CSS variables set in globals.css, so `text-pen/60` is now
+        // foam on ink and every panel follows without a rewrite.
+        ivory: "rgb(var(--c-ivory) / <alpha-value>)",
+        // An object, not a string, so `bg-card-bright` resolves.
         card: {
-          DEFAULT: "#f8f4ea",
-          bright: "#fffdf4",
+          DEFAULT: "rgb(var(--c-card) / <alpha-value>)",
+          bright: "rgb(var(--c-card-bright) / <alpha-value>)",
         },
-        pen: "#131a21",
+        pen: "rgb(var(--c-pen) / <alpha-value>)",
         muted: "#a8a294",
         sea: {
           light: "#071522",
@@ -25,7 +27,9 @@ export default {
           light: "#f6dfa4",
           DEFAULT: "#d9a85c",
           deep: "#c9964b",
-          ink: "#8f6526",
+          // Accent text inside a panel. Tide keeps gold for money that
+          // arrived, so this follows the sea-glass accent instead.
+          ink: "rgb(var(--c-gold-ink) / <alpha-value>)",
         },
         // Tide: the abyss the landing dives through, foam for text on it,
         // sea-glass as the one accent, and the app's calm inks (0 darkest).
@@ -48,7 +52,7 @@ export default {
         },
       },
       animation: {
-        rise: "rise 700ms cubic-bezier(0.16,1,0.3,1) both",
+        rise: "rise 420ms cubic-bezier(0.22,1,0.36,1) both",
       },
     },
   },

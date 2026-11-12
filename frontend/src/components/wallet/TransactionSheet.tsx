@@ -66,7 +66,7 @@ export function TransactionSheet({
     <Sheet title="Payment details" onClose={onClose}>
       <div className="flex flex-col items-center text-center">
         <span
-          className={`grid h-14 w-14 place-items-center rounded-2xl border-2 ${
+          className={`grid h-14 w-14 place-items-center rounded-2xl border ${
             returned || failed
               ? "border-pen/15 bg-pen/[0.05] text-pen/45"
               : incoming
@@ -100,7 +100,7 @@ export function TransactionSheet({
         <Status waiting={waiting} returned={returned} failed={failed} incoming={incoming} />
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-2xl border-2 border-pen/15">
+      <div className="mt-6 overflow-hidden rounded-2xl border border-pen/15">
         {handle && (
           <Line label={incoming ? "From" : "To"}>
             <span className="flex items-center gap-2">
@@ -155,7 +155,7 @@ export function TransactionSheet({
 
 function Line({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-t-2 border-pen/[0.07] px-4 py-3 first:border-t-0">
+    <div className="flex items-center justify-between gap-4 border-t border-pen/[0.07] px-4 py-3 first:border-t-0">
       <span className="shrink-0 text-[13px] font-bold text-pen/45">{label}</span>
       <span className="min-w-0 truncate text-right text-[14px] font-semibold">{children}</span>
     </div>
@@ -206,23 +206,23 @@ function Status({
 }) {
   if (returned) {
     return (
-      <Pill className="bg-pen/[0.09] text-pen/60">
+      <Pill className="">
         <Undo2 size={12} strokeWidth={2.6} /> Back with you
       </Pill>
     );
   }
   if (failed) {
-    return <Pill className="bg-[#a11d34]/10 text-[#a11d34]">Did not go through</Pill>;
+    return <Pill className="st-bad">Did not go through</Pill>;
   }
   if (waiting && !incoming) {
     return (
-      <Pill className="bg-gold/20 text-gold-ink">
+      <Pill className="st-wait">
         <Clock size={12} strokeWidth={2.6} /> Waiting to be claimed
       </Pill>
     );
   }
   return (
-    <Pill className="bg-[#2f7d3f]/12 text-[#2f7d3f]">
+    <Pill className="st-in">
       <Check size={12} strokeWidth={2.8} /> Done
     </Pill>
   );
@@ -231,7 +231,7 @@ function Status({
 function Pill({ children, className }: { children: React.ReactNode; className: string }) {
   return (
     <span
-      className={`mt-2.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-bold ${className}`}
+      className={`st mt-2.5 ${className}`}
     >
       {children}
     </span>

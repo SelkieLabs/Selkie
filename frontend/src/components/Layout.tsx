@@ -7,12 +7,21 @@ import { LoaderMark, Mark, Wordmark } from "./Mark";
 import { SignOutModal } from "./SignOutModal";
 import { useAuth } from "@/contexts/useAuth";
 import type { User } from "@/lib/api";
+import { isNear } from "@/lib/chain";
 import { avatarOf, handleOf } from "@/lib/user";
 
-export function Shell({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
-  return (
-    <div className={`mx-auto w-full px-5 sm:px-8 ${wide ? "max-w-6xl" : "max-w-2xl"}`}>{children}</div>
-  );
+export function Shell({
+  children,
+  wide = false,
+  app = false,
+}: {
+  children: ReactNode;
+  wide?: boolean;
+  /** The wallet: rail, main column and a side column, so it gets the most room. */
+  app?: boolean;
+}) {
+  const width = app ? "max-w-[88rem]" : wide ? "max-w-6xl" : "max-w-2xl";
+  return <div className={`mx-auto w-full px-4 sm:px-8 ${width}`}>{children}</div>;
 }
 
 /** A face, or the next best thing. Never a blank circle. */
@@ -31,13 +40,13 @@ export function Avatar({
       src={src}
       alt=""
       referrerPolicy="no-referrer"
-      className="rounded-full border-2 border-pen object-cover"
+      className="shrink-0 rounded-full object-cover ring-1 ring-pen/10"
       style={{ width: size, height: size }}
     />
   ) : (
     <span
-      className="grid place-items-center rounded-full border-2 border-pen bg-gradient-to-br from-gold-light to-gold-deep font-display font-bold text-pen"
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
+      className="grid shrink-0 place-items-center rounded-full bg-deep font-display font-extrabold text-sg"
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.4) }}
       aria-hidden="true"
     >
       {initial}
@@ -72,17 +81,20 @@ function AccountPill({ user }: { user: User }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="chunk chunk-pop flex items-center gap-2.5 py-1.5 pl-2 pr-3.5"
+        aria-label={`Account: ${handle}`}
+        className="flex items-center gap-1.5 rounded-full p-0.5 pr-1.5 transition-colors duration-150 hover:bg-pen/[0.06]"
       >
-        <Avatar name={handle} src={avatarOf(user)} size={30} />
-        <span className="font-display text-sm font-bold">{handle}</span>
-        <ChevronDown size={15} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        <Avatar name={handle} src={avatarOf(user)} size={36} />
+        <ChevronDown
+          size={15}
+          className={`text-pen/50 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
       </button>
 
       {open && (
         <div className="menu" role="menu">
-          <p className="px-3 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-pen/45">
-            Signed in as {handle}
+          <p className="px-3 pb-1.5 pt-2 text-[12.5px] text-pen/45">
+            Signed in as <span className="font-semibold text-pen/80">{handle}</span>
           </p>
           <Link href="/wallet/home" onClick={() => setOpen(false)} className="menu-item" role="menuitem">
             <Wallet size={16} /> Your wallet
@@ -104,7 +116,7 @@ function AccountPill({ user }: { user: User }) {
               setOpen(false);
               setConfirmOut(true);
             }}
-            className="menu-item text-[#a11d34]"
+            className="menu-item text-[#f28b9b] hover:text-[#f28b9b]"
             role="menuitem"
           >
             <LogOut size={16} /> Sign out
@@ -117,7 +129,7 @@ function AccountPill({ user }: { user: User }) {
   );
 }
 
-export function Header() {
+export function Header({ app = false }: { app?: boolean }) {
   const { user, status, signIn } = useAuth();
   const [scrolled, setScrolled] = useState(false);
 
@@ -128,29 +140,38 @@ export function Header() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Floating pills at the top of the page; once content slides underneath, the
-  // bar grows a blurred dark strip so the pills never fight the page. (The
-  // sign-out modal is portaled to <body>, so backdrop-filter here cannot clip it.)
+  // Sits on the water at the top; once content slides underneath, it grows a
+  // blurred ink strip so the account chip never fights the page. (The
+  // sign-out modal is portaled to <body>, so backdrop-filter cannot clip it.)
   return (
     <header
-      className={`sticky top-0 z-40 transition-all duration-300 ${
+      className={`sticky top-0 z-40 border-b transition-[background-color,border-color,padding] duration-300 ${
         scrolled
-          ? "border-b border-ivory/[0.08] bg-sea-deep/55 py-2.5 shadow-[0_14px_34px_rgba(1,4,8,0.45)] backdrop-blur-xl"
-          : "border-b border-transparent bg-transparent pb-0 pt-4"
+          ? "border-pen/[0.07] bg-tide-0/75 py-2.5 backdrop-blur-xl"
+          : "border-transparent bg-transparent pb-1 pt-4"
       }`}
     >
-      <Shell wide>
-        <div className="flex items-center justify-between gap-4">
-          {/* No pill: the mark sits straight on the water. */}
+      <Shell wide={!app} app={app}>
+        <div className="flex items-center justify-between gap-3">
           <Wordmark />
           {/* Signed in, not merely "we still have a user object". Those came
               apart on sign out, and the pill went on showing somebody's name on
               a page they had just left. Read the state that decides, not the
               leftovers of the state before it. */}
           {status === "ready" && user ? (
-            <AccountPill user={user} />
+            <div className="flex min-w-0 items-center gap-2.5">
+              {/* Where the money lives, named after the handle: on NEAR that
+                  name is the whole point, so it sits in the bar. */}
+              {isNear && (
+                <span className="acct-chip hidden sm:inline-flex" title={user.address}>
+                  <i />
+                  <span className="truncate">{user.address}</span>
+                </span>
+              )}
+              <AccountPill user={user} />
+            </div>
           ) : status === "loading" ? (
-            <span className="h-10 w-28 rounded-xl bg-ivory/[0.06]" aria-hidden="true" />
+            <span className="skel h-10 w-28 rounded-full" aria-hidden="true" />
           ) : (
             <button onClick={signIn} className="btn btn-dim btn-sm">
               Sign in
@@ -166,10 +187,10 @@ export function Footer() {
   return (
     <footer className="mt-28 pb-10">
       <Shell wide>
-        <div className="flex flex-col items-center justify-between gap-4 text-sm text-ivory/55 sm:flex-row">
+        <div className="flex flex-col items-center justify-between gap-4 text-sm text-pen/50 sm:flex-row">
           <span className="flex items-center gap-2.5">
             <Mark size={18} />
-            <span className="font-display font-bold text-ivory/85">Selkie</span>
+            <span className="font-display font-extrabold text-pen/85">Selkie</span>
           </span>
           <nav className="flex items-center gap-6">
             <Link href="/docs" className="font-semibold transition-colors hover:text-ivory">
@@ -191,7 +212,7 @@ export function Footer() {
   );
 }
 
-/** Full-screen branded loader: the echo mark pulsing over a sweeping gold bar. */
+/** Full-screen branded loader: the echo mark pulsing over a sweeping sea-glass bar. */
 export function Spinner() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-5">

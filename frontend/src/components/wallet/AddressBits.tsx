@@ -57,7 +57,7 @@ export function AddressCode({
           margin: 1,
           width: 460,
           errorCorrectionLevel: "M",
-          color: { dark: "#131a21", light: "#fffdf4" },
+          color: { dark: "#07131c", light: "#e9f1ee" },
         }),
       )
       .then((url) => live && setSrc(url))
@@ -68,11 +68,12 @@ export function AddressCode({
   }, [address]);
 
   return (
-    <div className="grid h-[164px] w-[164px] shrink-0 place-items-center overflow-hidden rounded-2xl border-2 border-pen bg-card-bright p-2">
+    // Light behind the code even on ink: scanners read dark on light best.
+    <div className="grid h-[164px] w-[164px] shrink-0 place-items-center overflow-hidden rounded-2xl bg-[#e9f1ee] p-2">
       {src ? (
         <img src={src} alt={alt} className="h-full w-full" />
       ) : (
-        <QrCode size={34} className="animate-pulse text-pen/25" strokeWidth={1.6} />
+        <QrCode size={34} className="text-abyss/30" strokeWidth={1.6} />
       )}
     </div>
   );
