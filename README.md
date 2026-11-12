@@ -22,7 +22,7 @@ Built at **NEAR HACKATHON** (realworld track). Runs on NEAR testnet.
    whether the two lists overlap. It needs no secrets and no Selkie server.
 3. Open https://explorer.testnet.near.org/accounts/selkiepay.x.selkiepay.testnet.
    You see the same single full-access key.
-4. Run `npm test`. You see `# pass 458`, `# fail 0`. Tests that need Postgres skip
+4. Run `npm test`. You see `# pass 461`, `# fail 0`. Tests that need Postgres skip
    when `DATABASE_URL_TEST` is unset.
 5. Run `npm run test:contracts:near` (needs Rust). You see
    `test result: ok. 35 passed`.
@@ -198,7 +198,7 @@ Limits, stated plainly:
 
 | Command | Proves |
 | --- | --- |
-| `npm test` | 458 tests. These cover amounts, account names, recipient keys, building and verifying delegate actions, the relay policy, RPC failover, and the 1Click client. The NEAR API also runs end to end on a simulated chain with real ed25519 signatures. |
+| `npm test` | 461 tests. These cover amounts, account names, recipient keys, building and verifying delegate actions, the relay policy, RPC failover, and the 1Click client. The NEAR API also runs end to end on a simulated chain with real ed25519 signatures. |
 | `npm run test:contracts:near` | 35 escrow tests: hold and claim, hold_many, wrong token, bad msg refunded, non-oracle claim refused, double claim paid once, refund rules, and a failed transfer restoring the payment |
 | `npm run test:live:near` | the whole money path on real testnet (needs 0.02 test USDC) |
 | `npm run prove:keys -- <account>` | whether Selkie holds any key to an account, read from the chain |
