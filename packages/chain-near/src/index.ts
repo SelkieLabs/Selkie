@@ -13,6 +13,7 @@ export * from "./escrow";
 export * from "./intents";
 export * from "./keys";
 export * from "./names";
+export * from "./pocket";
 export * from "./recipient";
 export * from "./relayer";
 export { publicKeyFromImplicit } from "./browser";
