@@ -260,7 +260,8 @@ function Figures({ pocket, figure }: { pocket: Pocket; figure: (value: string) =
         <div className="col-span-2 sm:col-span-1">
           <dt className="label">In your pocket</dt>
           <dd className="mt-1.5 font-mono text-[2rem] font-medium leading-none tracking-[-0.03em] tabular-nums">
-            {figure(pocket.balance)} <span className="text-[14px] tracking-normal text-pen/45">USDC</span>
+            {figure(pocket.balance)}
+            <span className="ml-1.5 text-[14px] tracking-normal text-pen/45">USDC</span>
           </dd>
         </div>
         <div>
@@ -391,8 +392,10 @@ function TopUpForm({
       <Hint bad={badLimit}>
         {badLimit
           ? "A daily limit has to be more than zero."
-          : pocket
-            ? `Leave it empty to keep ${usd(current)} a day.`
+          : limit !== ""
+            ? `Now ${usd(current)} a day.`
+            : pocket
+              ? `Leave it empty to keep ${usd(current)} a day.`
             : `Leave it empty for ${usd(current)} a day.`}
       </Hint>
 
