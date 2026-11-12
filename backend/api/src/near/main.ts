@@ -11,6 +11,7 @@ import { PushNotifier, webPushSender } from "../push/notifier";
 import { PostgresPushStore } from "../push/postgres-store";
 import { PostgresRequestStore } from "../requests/postgres-store";
 import { buildNearApp } from "./app";
+import { PaycrestClient } from "./paycrest";
 import { PostgresNearAccountStore, PostgresPrepareStore } from "./postgres-store";
 import { XApiUserLookup, noXLookup } from "./x-lookup";
 
@@ -93,6 +94,15 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
       baseUrl: env.ONECLICK_API_URL || "https://1click.chaindefuser.com",
       jwt: env.ONECLICK_JWT || undefined,
     }),
+    // Banks, rates and name checks are public; orders need the key and a
+    // refund address. Secrets stay in this process.
+    paycrest: new PaycrestClient({
+      baseUrl: env.PAYCREST_API_URL || "https://api.paycrest.io",
+      apiKey: env.PAYCREST_API_KEY || undefined,
+      apiSecret: env.PAYCREST_API_SECRET || undefined,
+      network: env.PAYCREST_NETWORK || "base",
+      refundAddress: env.PAYCREST_REFUND_ADDRESS || undefined,
+    }),
   });
 
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
@@ -115,6 +125,13 @@ export async function mainNear(env: NodeJS.ProcessEnv = process.env): Promise<vo
     config.network === "mainnet"
       ? "NEAR Intents on (1Click)"
       : "NEAR Intents: previews only (1Click is mainnet; testnet shows live quotes, moves nothing)",
+  );
+  console.log(
+    config.network !== "mainnet"
+      ? "bank cash-out: preview only on testnet (banks, rates, name check)"
+      : env.PAYCREST_API_KEY && env.PAYCREST_REFUND_ADDRESS
+        ? `bank cash-out on (Paycrest, USDC on ${env.PAYCREST_NETWORK || "base"})`
+        : "bank cash-out: preview only (set PAYCREST_API_KEY and PAYCREST_REFUND_ADDRESS)",
   );
   console.log(push ? "push notifications on" : "push notifications off (npm run push:keys, then restart)");
   console.log(

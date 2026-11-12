@@ -50,6 +50,8 @@ export type PaymentIntent =
       recipientUserId?: string;
       /** Set when the transfer is a NEAR Intents deposit: money leaving for another chain. */
       intents?: IntentsCashOut;
+      /** Set when that deposit pays a Paycrest order: money leaving for a bank account. */
+      bank?: BankCashOut;
     }
   | { kind: "many"; amount: Money; items: ManyItem[] }
   | { kind: "refund"; claimRef: string; amount: Money };
@@ -62,6 +64,22 @@ export interface IntentsCashOut {
   /** Where it lands on the other chain. */
   address: string;
   amountOutFormatted: string;
+}
+
+/** A cash-out to a bank account: a Paycrest order, paid through NEAR Intents. */
+export interface BankCashOut {
+  orderId: string;
+  depositAddress: string;
+  currency: string;
+  institutionName: string;
+  /** Only the last four digits are kept. */
+  accountLast4: string;
+  accountName: string;
+  /** USDC the Paycrest order is for (what leaves is `amount`, a little more). */
+  orderAmount: string;
+  rate: string;
+  /** About what arrives, in `currency`. */
+  fiatAmount: string;
 }
 
 export interface PrepareRecord {

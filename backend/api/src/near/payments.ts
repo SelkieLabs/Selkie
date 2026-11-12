@@ -33,6 +33,7 @@ import type { User } from "../identity/types";
 import { userHandles } from "../identity/types";
 import type { RequestStore } from "../requests/store";
 import type { BalanceWatch } from "./balance-watch";
+import type { BankDesk } from "./bank";
 import type { IntentsDesk } from "./intents";
 import { Refusal } from "./refusal";
 import type { ManyItem, NearAccountStore, PaymentIntent } from "./store";
@@ -70,6 +71,17 @@ export interface PrepareBody {
   toContract?: boolean;
   /** Cash out to another chain through NEAR Intents: this asset, to this address. */
   toChain?: { assetId?: string; address?: string };
+  /**
+   * Cash out to a bank account through Paycrest. `amount` is what the bank
+   * order is for; `maxSend` is the most the person agreed to send for it.
+   */
+  toBank?: {
+    currency?: string;
+    institution?: string;
+    accountIdentifier?: string;
+    accountName?: string;
+    maxSend?: string;
+  };
 }
 
 export interface PaymentPlan {
@@ -88,6 +100,15 @@ export interface Settled {
   results?: { handle: string; sent: boolean; waitingToBeClaimed?: boolean }[];
   /** A cash-out to another chain: where to follow it. */
   intents?: { depositAddress: string };
+  /** A cash-out to a bank: where to follow it, and what it says. */
+  bank?: {
+    orderId: string;
+    depositAddress: string;
+    currency: string;
+    fiatAmount: string;
+    institutionName: string;
+    accountLast4: string;
+  };
 }
 
 export interface NearPaymentsDeps {
@@ -102,6 +123,8 @@ export interface NearPaymentsDeps {
   xLookup: XUserLookup;
   /** NEAR Intents, for cash-outs to other chains. Null where 1Click is not configured. */
   intents?: IntentsDesk | null;
+  /** Paycrest, for cash-outs to a bank. Null where it is not wired in. */
+  bank?: BankDesk | null;
 }
 
 export class NearPayments {
@@ -117,6 +140,7 @@ export class NearPayments {
     if (body.refundId !== undefined) return this.planRefund(user, String(body.refundId));
     if (body.requestId !== undefined) return this.planRequest(user, String(body.requestId));
     if (body.toMany !== undefined) return this.planMany(user, body);
+    if (body.toBank !== undefined) return this.planBankCashOut(user, body);
     if (body.toChain !== undefined) return this.planChainCashOut(user, body);
     if (body.toAccount !== undefined) return this.planTransfer(user, body);
     return this.planSend(user, body);
@@ -240,6 +264,58 @@ export class NearPayments {
           symbol: quote.asset.symbol,
           address,
           amountOutFormatted: quote.amountOutFormatted,
+        },
+      },
+    };
+  }
+
+  /**
+   * USDC out to a bank account. A Paycrest order is made now, then a NEAR
+   * Intents quote that lands exactly what the order asks for at the address it
+   * gave. What gets signed is one ft_transfer of the quote's input to its
+   * deposit address; if the swap cannot fill, 1Click refunds that to the
+   * person's own NEAR account.
+   */
+  private async planBankCashOut(user: User, body: PrepareBody): Promise<PaymentPlan> {
+    const desk = this.deps.bank;
+    if (!desk) throw new Refusal(503, "Cash out to a bank is switched off here.");
+    const units = toPositiveBaseUnits(String(body.amount ?? ""), USDC_DECIMALS);
+    // A first look before anything is made at Paycrest: the order alone is this much.
+    await this.ensureBalance(user, units);
+    const target = body.toBank ?? {};
+    const plan = await desk.openOrder(user, {
+      currency: target.currency,
+      institution: target.institution,
+      accountIdentifier: target.accountIdentifier,
+      accountName: target.accountName,
+      units,
+      maxSend: target.maxSend,
+    });
+    const { quote, order } = plan;
+    const sending = BigInt(quote.amountIn);
+    await this.ensureBalance(user, sending);
+    if (!isValidAccountId(quote.depositAddress)) {
+      throw new Refusal(502, "NEAR Intents sent a deposit address that is not a NEAR account. Nothing moved.");
+    }
+    await this.deps.chain.registerForUsdc(quote.depositAddress);
+    const account = String(target.accountIdentifier ?? "").replace(/\D/g, "");
+    return {
+      call: directTransfer(this.config.usdcContract, { to: quote.depositAddress, amount: quote.amountIn }),
+      intent: {
+        kind: "transfer",
+        toAccount: quote.depositAddress,
+        amount: usdc(sending),
+        purpose: "cashout",
+        bank: {
+          orderId: order.id,
+          depositAddress: quote.depositAddress,
+          currency: String(target.currency ?? "").toUpperCase(),
+          institutionName: plan.institutionName,
+          accountLast4: account.slice(-4),
+          accountName: String(target.accountName ?? "").trim(),
+          orderAmount: fromBaseUnits(units, USDC_DECIMALS),
+          rate: order.rate ?? "",
+          fiatAmount: plan.fiatAmount,
         },
       },
     };
@@ -387,6 +463,27 @@ export class NearPayments {
         await watch.expect(user.address, -amount);
         // A no-op unless the account is a Selkie one.
         await watch.expect(intent.toAccount, amount);
+        const bank = intent.bank;
+        if (bank) {
+          await this.deps.intents?.depositSent({ txHash: ref, depositAddress: bank.depositAddress, nearSenderAccount: user.address });
+          const where = `${bank.institutionName} ••${bank.accountLast4}`;
+          await this.record(user.id, entry("cashout", intent.amount, "confirmed", ref, { counterparty: where }));
+          return {
+            status: "confirmed",
+            ref,
+            explorer,
+            waitingToBeClaimed: false,
+            message: `On its way: about ${bank.fiatAmount} ${bank.currency} to ${where}.`,
+            bank: {
+              orderId: bank.orderId,
+              depositAddress: bank.depositAddress,
+              currency: bank.currency,
+              fiatAmount: bank.fiatAmount,
+              institutionName: bank.institutionName,
+              accountLast4: bank.accountLast4,
+            },
+          };
+        }
         const via = intent.intents;
         if (via) {
           await this.deps.intents?.depositSent({ txHash: ref, depositAddress: via.depositAddress, nearSenderAccount: user.address });

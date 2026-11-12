@@ -35,7 +35,9 @@ import type { PushNotifier } from "../push/notifier";
 import { registerPushRoutes } from "../push/routes";
 import { InMemoryPushStore, type PushStore } from "../push/store";
 import { InMemoryRequestStore, type RequestStore } from "../requests/store";
+import { BankDesk, paycrestErrorStatus, registerBankRoutes } from "./bank";
 import { IntentsDesk, intentsErrorStatus, registerIntentsRoutes } from "./intents";
+import { PaycrestError, type PaycrestClient } from "./paycrest";
 import { CONTRACT_WARNING, NOT_AN_ACCOUNT, NearPayments, type PrepareBody } from "./payments";
 import { Refusal } from "./refusal";
 import { registerNearRequestRoutes } from "./requests";
@@ -58,6 +60,12 @@ export interface NearAppDeps {
   email?: EmailService;
   /** NEAR Intents (1Click). Without it, the other-chain screens say they are switched off. */
   intents?: OneClickClient;
+  /**
+   * Paycrest, for cash-out to a bank. Banks, rates and the name check work
+   * without its key; orders also need the key, a refund address, mainnet and
+   * 1Click. Without it, the bank screens say they are switched off.
+   */
+  paycrest?: PaycrestClient;
   /** Tests shorten how long outside money must hold before it is written down. */
   watch?: { settleAfterMs?: number; now?: () => number };
 }
@@ -112,8 +120,10 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
   const requests = deps.requests ?? new InMemoryRequestStore();
   const policy = relayPolicy({ usdc: config.usdcContract, escrow: config.escrowContract });
   const desk = deps.intents ? new IntentsDesk(deps.intents, config) : null;
+  const bank = deps.paycrest ? new BankDesk(deps.paycrest, desk, config) : null;
   const payments = new NearPayments({
     intents: desk,
+    bank,
     watch,
     chain,
     identity,
@@ -350,6 +360,7 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
   });
   registerEmailRoutes(app, { service: deps.email ?? null, requireUser, limited: capped("auth") });
   registerIntentsRoutes(app, { desk, requireUser, limited: capped("money") });
+  registerBankRoutes(app, { desk: bank, requireUser, limited: capped("money") });
   // Let notices already on their way finish before the process exits.
   app.addHook("onClose", async () => {
     await Promise.all(notifiers.map((notifier) => notifier.settled()));
@@ -400,6 +411,7 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     if (error instanceof Refusal) return reply.code(error.status).send({ error: error.message, ...error.extra });
     if (error instanceof NearAccountError) return reply.code(400).send({ error: error.message });
     if (error instanceof IntentsError) return reply.code(intentsErrorStatus(error)).send({ error: error.message });
+    if (error instanceof PaycrestError) return reply.code(paycrestErrorStatus(error)).send({ error: error.message });
     if (error instanceof AmountError) return reply.code(400).send({ error: "Enter an amount above zero, up to 6 decimal places." });
     if (error instanceof RelayRefusedError) {
       console.warn("[relay]", error.message);

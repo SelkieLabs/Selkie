@@ -7,7 +7,7 @@
  * signature that does not match what was prepared fails exactly as it would.
  */
 import assert from "node:assert/strict";
-import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+import { createHmac, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { beforeEach, describe, test } from "node:test";
 import {
   IntentsError,
@@ -34,6 +34,7 @@ import { PushNotifier } from "../push/notifier";
 import { InMemoryPushStore } from "../push/store";
 import { SimulatedNearChain } from "./simulated-chain";
 import { InMemoryNearAccountStore, InMemoryPrepareStore } from "./store";
+import { PaycrestClient } from "./paycrest";
 
 const DOLLAR = 1_000_000n;
 
@@ -991,5 +992,351 @@ describe("NEAR Intents: other chains in and out", () => {
       assert.equal(res.statusCode, 409, res.body);
       assert.equal(oneClick.quotes.length, 0);
     });
+  });
+});
+
+describe("Cash out to a bank: Paycrest, paid through NEAR Intents", () => {
+  const NEAR_USDC = { assetId: "nep141:usdc.test", decimals: 6, blockchain: "near", symbol: "USDC", contractAddress: "usdc.test" };
+  const BASE_USDC = { assetId: "nep141:base-usdc.omft.near", decimals: 6, blockchain: "base", symbol: "USDC", contractAddress: "0x8335" };
+  const DEPOSIT = "b".repeat(64);
+  const SECRET = "paycrest-test-secret";
+
+  /** 1Click for this route: exact-output quotes cost 0.2% more than what lands. */
+  class FakeOneClick {
+    quotes: OneClickQuoteRequest[] = [];
+    submitted: unknown[] = [];
+    swap: OneClickStatus["status"] = "PROCESSING";
+    async tokens(): Promise<OneClickToken[]> {
+      return [NEAR_USDC, BASE_USDC];
+    }
+    async quote(request: OneClickQuoteRequest): Promise<OneClickQuote> {
+      this.quotes.push(request);
+      const amountIn = request.swapType === "EXACT_OUTPUT" ? (BigInt(request.amount) * 1002n) / 1000n : BigInt(request.amount);
+      return {
+        amountIn: amountIn.toString(),
+        amountInFormatted: fromBaseUnits(amountIn, 6),
+        amountOut: request.amount,
+        amountOutFormatted: fromBaseUnits(request.amount, 6),
+        timeEstimate: 25,
+        depositAddress: request.dry ? undefined : DEPOSIT,
+      };
+    }
+    async status(): Promise<OneClickStatus> {
+      return { status: this.swap, swapDetails: {} };
+    }
+    async submitDeposit(input: unknown): Promise<void> {
+      this.submitted.push(input);
+    }
+  }
+
+  interface FakeOrder {
+    id: string;
+    status: string;
+    rate: string;
+    amount: string;
+    reference: string;
+    providerAccount: Record<string, string>;
+  }
+
+  /** Paycrest's API as the docs describe it, answered from memory. */
+  function fakePaycrest() {
+    const state = {
+      orders: new Map<string, FakeOrder>(),
+      bodies: [] as Record<string, unknown>[],
+      refuse: null as string | null,
+    };
+    const json = (status: number, body: unknown) =>
+      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    const fetch = (async (url: string | URL, init?: RequestInit) => {
+      const path = new URL(String(url)).pathname;
+      const method = init?.method ?? "GET";
+      if (method === "GET" && path === "/v2/institutions/NGN") {
+        return json(200, {
+          status: "success",
+          message: "OK",
+          data: [
+            { name: "Guaranty Trust Bank", code: "GTBINGLA", type: "bank" },
+            { name: "Access Bank", code: "ABNGNGLA", type: "bank" },
+          ],
+        });
+      }
+      if (method === "POST" && path === "/v2/verify-account") {
+        const body = JSON.parse(String(init?.body));
+        if (body.accountIdentifier === "0000000000") return json(400, { status: "error", message: "Account could not be verified", data: null });
+        return json(200, { status: "success", message: "Account name was resolved successfully", data: "ANA OKAFOR" });
+      }
+      if (method === "GET" && path.startsWith("/v2/rates/base/USDC/")) {
+        return json(200, { status: "success", message: "Rate fetched successfully", data: { sell: { rate: "1398.05", providerIds: ["p1"] } } });
+      }
+      if (method === "POST" && path === "/v2/sender/orders") {
+        assert.equal((init?.headers as Record<string, string>)["API-Key"], "paycrest-test-key");
+        const body = JSON.parse(String(init?.body));
+        state.bodies.push(body);
+        if (state.refuse) return json(403, { status: "error", message: state.refuse, data: null });
+        const id = `order-${state.orders.size + 1}`;
+        const order: FakeOrder = {
+          id,
+          status: "initiated",
+          rate: "1398.05",
+          amount: body.amount,
+          reference: body.reference,
+          providerAccount: {
+            network: "base",
+            receiveAddress: "0xPaycrestReceive",
+            validUntil: new Date(Date.now() + 15 * 60_000).toISOString(),
+            amountToTransfer: (Number(body.amount) + 0.05).toFixed(2),
+            currency: "USDC",
+          },
+        };
+        state.orders.set(id, order);
+        return json(201, { status: "success", message: "Payment order initiated successfully", data: order });
+      }
+      const found = path.match(/^\/v2\/sender\/orders\/(.+)$/);
+      if (method === "GET" && found) {
+        const order = state.orders.get(found[1]!);
+        return order ? json(200, { status: "success", data: order }) : json(404, { status: "error", message: "Payment order not found", data: null });
+      }
+      return json(404, { status: "error", message: `no route ${method} ${path}`, data: null });
+    }) as typeof globalThis.fetch;
+    return { state, fetch };
+  }
+
+  let oneClick: FakeOneClick;
+  let paycrest: ReturnType<typeof fakePaycrest>;
+  const ana = person("9101", "ana_b");
+  const tunde = person("9102", "tunde_b");
+
+  async function build(network: "testnet" | "mainnet", keyed: boolean) {
+    (chain.config as { network: string }).network = network;
+    oneClick = new FakeOneClick();
+    paycrest = fakePaycrest();
+    await app.close();
+    app = await buildNearApp({
+      ...appDeps,
+      intents: oneClick as unknown as OneClickClient,
+      paycrest: new PaycrestClient({
+        fetch: paycrest.fetch,
+        network: "base",
+        ...(keyed ? { apiKey: "paycrest-test-key", apiSecret: SECRET, refundAddress: "0xSelkieRefund" } : {}),
+      }),
+    });
+  }
+
+  const post = (who: Person, url: string, payload: object) => app.inject({ method: "POST", url, headers: auth(who), payload });
+  const toBank = (extra: Record<string, unknown> = {}) => ({
+    amount: "10",
+    toBank: { currency: "NGN", institution: "GTBINGLA", accountIdentifier: "0123456789", accountName: "ANA OKAFOR", maxSend: "10.40", ...extra },
+  });
+
+  describe("on testnet: real banks, rates and names, nothing sent", () => {
+    beforeEach(() => build("testnet", true));
+
+    test("banks, the name check and a rate all work, labelled as a preview", async () => {
+      await signIn(ana);
+      const banks = await app.inject({ method: "GET", url: "/near/bank/institutions?currency=NGN", headers: auth(ana) });
+      assert.equal(banks.statusCode, 200, banks.body);
+      assert.deepEqual(banks.json().institutions.map((bank: { code: string }) => bank.code), ["GTBINGLA", "ABNGNGLA"]);
+
+      const name = await post(ana, "/near/bank/verify", { currency: "NGN", institution: "GTBINGLA", accountIdentifier: "0123 456 789" });
+      assert.equal(name.statusCode, 200, name.body);
+      assert.deepEqual(name.json(), { institution: "GTBINGLA", institutionName: "Guaranty Trust Bank", accountName: "ANA OKAFOR" });
+      const wrong = await post(ana, "/near/bank/verify", { currency: "NGN", institution: "GTBINGLA", accountIdentifier: "0000000000" });
+      assert.equal(wrong.statusCode, 400);
+      assert.equal(wrong.json().error, "Account could not be verified", "Paycrest's own words");
+
+      const quote = await post(ana, "/near/bank/quote", { currency: "NGN", amount: "10" });
+      assert.equal(quote.statusCode, 200, quote.body);
+      const view = quote.json();
+      assert.equal(view.payoutsOn, false);
+      assert.match(view.note, /mainnet/);
+      assert.equal(view.rate, "1398.05");
+      assert.equal(view.fiatAmount, "13980.50");
+      assert.equal(view.sendAbout, "10.02");
+      assert.equal(view.sendAtMost, "10.27", "slack covers Paycrest's fee, which only the order knows");
+      const [dry] = oneClick.quotes;
+      assert.equal(dry!.dry, true);
+      assert.equal(dry!.swapType, "EXACT_OUTPUT");
+      assert.equal(dry!.refundTo, PREVIEW_ACCOUNT);
+    });
+
+    test("pressing send makes no Paycrest order and moves nothing", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 20n * DOLLAR);
+      const res = await prepare(ana, toBank());
+      assert.equal(res.statusCode, 409);
+      assert.match(res.json().error, /mainnet/);
+      assert.equal(paycrest.state.bodies.length, 0);
+    });
+  });
+
+  describe("on mainnet with no Paycrest key", () => {
+    beforeEach(() => build("mainnet", false));
+
+    test("rates still show, and the app is told bank payouts are not on yet", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 20n * DOLLAR);
+      const quote = (await post(ana, "/near/bank/quote", { currency: "NGN", amount: "10" })).json();
+      assert.equal(quote.payoutsOn, false);
+      assert.match(quote.note, /aren't switched on yet/);
+      const res = await prepare(ana, toBank());
+      assert.equal(res.statusCode, 409);
+      assert.match(res.json().error, /aren't switched on yet/);
+    });
+  });
+
+  describe("on mainnet with Paycrest on", () => {
+    beforeEach(() => build("mainnet", true));
+
+    test("one signature pays the Paycrest order through an exact-output swap", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 20n * DOLLAR);
+      const res = await pay(ana, toBank());
+      assert.equal(res.statusCode, 200, res.body);
+      const body = res.json();
+      assert.equal(body.status, "confirmed");
+      assert.equal(body.message, "On its way: about 13980.50 NGN to Guaranty Trust Bank ••6789.");
+      assert.deepEqual(body.bank, {
+        orderId: "order-1",
+        depositAddress: DEPOSIT,
+        currency: "NGN",
+        fiatAmount: "13980.50",
+        institutionName: "Guaranty Trust Bank",
+        accountLast4: "6789",
+      });
+
+      const [order] = paycrest.state.bodies;
+      assert.equal(order!.amount, "10");
+      assert.deepEqual(order!.source, { type: "crypto", currency: "USDC", network: "base", refundAddress: "0xSelkieRefund" });
+      assert.deepEqual((order!.destination as { recipient: unknown }).recipient, {
+        institution: "GTBINGLA",
+        accountIdentifier: "0123456789",
+        accountName: "ANA OKAFOR",
+        memo: "Selkie cash out",
+      });
+
+      const swap = oneClick.quotes.at(-1)!;
+      assert.equal(swap.swapType, "EXACT_OUTPUT");
+      assert.equal(swap.dry, false);
+      assert.equal(swap.amount, "10050000", "exactly what Paycrest asked for, fee included");
+      assert.equal(swap.recipient, "0xPaycrestReceive");
+      assert.equal(swap.refundTo, ana.account, "a swap that cannot fill comes back to the person");
+      assert.equal(swap.destinationAsset, BASE_USDC.assetId);
+      const validUntil = Date.parse(paycrest.state.orders.get("order-1")!.providerAccount.validUntil!);
+      assert.ok(Date.parse(swap.deadline) <= validUntil - 2 * 60_000, "the swap is done before Paycrest's order runs out");
+
+      // 10.05 * 1.002 = 10.0701 left; nothing more.
+      assert.equal(chain.balances.get(DEPOSIT), 10_070_100n);
+      assert.equal(chain.balances.get(ana.account!), 20n * DOLLAR - 10_070_100n);
+      assert.deepEqual(oneClick.submitted, [{ txHash: body.ref, depositAddress: DEPOSIT, nearSenderAccount: ana.account }]);
+      const [entry] = await feed(ana);
+      assert.equal(entry!.kind, "cashout");
+      assert.equal(entry!.counterparty, "Guaranty Trust Bank ••6789");
+      assert.equal(entry!.amount.amount, "10.0701");
+    });
+
+    test("Paycrest's refusal is shown in its words, and nothing is quoted or signed", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 20n * DOLLAR);
+      paycrest.state.refuse = "Complete your business verification to start initiating payment orders";
+      const res = await prepare(ana, toBank());
+      assert.equal(res.statusCode, 400);
+      assert.equal(res.json().error, "Complete your business verification to start initiating payment orders");
+      assert.equal(oneClick.quotes.length, 0);
+      assert.equal(chain.balances.get(ana.account!), 20n * DOLLAR);
+    });
+
+    test("a price above what the person agreed to is refused before signing", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 20n * DOLLAR);
+      const res = await prepare(ana, toBank({ maxSend: "10.05" }));
+      assert.equal(res.statusCode, 409);
+      assert.match(res.json().error, /price moved: it now takes 10\.0701 USDC/);
+    });
+
+    test("bad details are refused before Paycrest is asked", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 20n * DOLLAR);
+      for (const extra of [{ currency: "USD" }, { institution: "NOTABANK" }, { accountIdentifier: "12ab" }, { accountName: "  " }, { maxSend: "" }]) {
+        const res = await prepare(ana, toBank(extra));
+        assert.equal(res.statusCode, 400, `${JSON.stringify(extra)}: ${res.body}`);
+      }
+      assert.equal(paycrest.state.bodies.length, 0);
+      const poor = await prepare(ana, { ...toBank(), amount: "50" });
+      assert.equal(poor.statusCode, 409, "more than the balance");
+      assert.equal(paycrest.state.bodies.length, 0);
+    });
+
+    test("status joins the swap and Paycrest, and only the person who cashed out can read it", async () => {
+      await signIn(ana);
+      await signIn(tunde);
+      chain.fund(ana.account!, 20n * DOLLAR);
+      const { bank } = (await pay(ana, toBank())).json();
+      const read = (who: Person) =>
+        app.inject({ method: "GET", url: `/near/bank/status?orderId=${bank.orderId}&depositAddress=${bank.depositAddress}`, headers: auth(who) });
+
+      let status = (await read(ana)).json();
+      assert.equal(status.stage, "swapping");
+      assert.equal(status.done, false);
+
+      oneClick.swap = "SUCCESS";
+      paycrest.state.orders.get(bank.orderId)!.status = "deposited";
+      assert.equal((await read(ana)).json().stage, "paying");
+
+      paycrest.state.orders.get(bank.orderId)!.status = "settled";
+      status = (await read(ana)).json();
+      assert.equal(status.stage, "paid");
+      assert.equal(status.done, true);
+      assert.equal(status.paycrest.fiatAmount, "13980.50");
+
+      assert.equal((await read(tunde)).statusCode, 404, "someone else's order is not there for them");
+      const junk = await app.inject({ method: "GET", url: "/near/bank/status?orderId=../../x", headers: auth(ana) });
+      assert.equal(junk.statusCode, 400);
+    });
+
+    test("a failed swap reads as money back in the person's account", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 20n * DOLLAR);
+      const { bank } = (await pay(ana, toBank())).json();
+      oneClick.swap = "REFUNDED";
+      const status = (
+        await app.inject({ method: "GET", url: `/near/bank/status?orderId=${bank.orderId}&depositAddress=${bank.depositAddress}`, headers: auth(ana) })
+      ).json();
+      assert.equal(status.stage, "back-to-you");
+      assert.equal(status.done, true);
+    });
+
+    test("webhooks count only with Paycrest's signature over the raw body", async () => {
+      await signIn(ana);
+      chain.fund(ana.account!, 20n * DOLLAR);
+      const { bank } = (await pay(ana, toBank())).json();
+      const raw = JSON.stringify({ event: "payment_order.settled", webhookVersion: "2", data: { id: bank.orderId, status: "settled" } });
+      const hook = (signature: string) =>
+        app.inject({
+          method: "POST",
+          url: "/near/bank/webhook",
+          headers: { "content-type": "application/json", "x-paycrest-signature": signature },
+          payload: raw,
+        });
+
+      const forged = await hook(createHmac("sha256", "not-the-secret").update(raw).digest("hex"));
+      assert.equal(forged.statusCode, 401);
+      const good = await hook(createHmac("sha256", SECRET).update(raw).digest("hex"));
+      assert.equal(good.statusCode, 200, good.body);
+
+      // Paycrest's API still says initiated; the signed webhook is ahead of it.
+      const status = (
+        await app.inject({ method: "GET", url: `/near/bank/status?orderId=${bank.orderId}&depositAddress=${bank.depositAddress}`, headers: auth(ana) })
+      ).json();
+      assert.equal(status.stage, "paid");
+
+      // Every other route still reads JSON as JSON.
+      assert.equal((await post(ana, "/near/bank/quote", { currency: "NGN", amount: "1" })).statusCode, 200);
+    });
+  });
+
+  test("with no Paycrest at all, the bank routes say they are off", async () => {
+    await signIn(ana);
+    const res = await app.inject({ method: "GET", url: "/near/bank/institutions?currency=NGN", headers: auth(ana) });
+    assert.equal(res.statusCode, 503);
   });
 });

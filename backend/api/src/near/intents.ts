@@ -20,6 +20,7 @@ import {
   PREVIEW_ACCOUNT,
   TERMINAL_STATUSES,
   chainAssets,
+  exactOutputRequest,
   fromBaseUnits,
   nearUsdc,
   quoteRequest,
@@ -28,6 +29,7 @@ import {
   type NearPublicConfig,
   type OneClickClient,
   type OneClickQuote,
+  type OneClickToken,
 } from "@selkie/chain-near";
 import type { User } from "../identity/types";
 import { Refusal } from "./refusal";
@@ -103,6 +105,44 @@ export class IntentsDesk {
       originTxs: (details.originChainTxHashes ?? []).map((tx) => tx.explorerUrl).filter(Boolean),
       destinationTxs: (details.destinationChainTxHashes ?? []).map((tx) => tx.explorerUrl).filter(Boolean),
     };
+  }
+
+  /**
+   * USDC on another chain (by 1Click's chain name) and Selkie's USDC on NEAR,
+   * as 1Click lists them. Exactly one USDC on that chain, or none: a lookalike
+   * would pay out a token nobody asked for.
+   */
+  async usdcOn(blockchain: string): Promise<{ asset: OneClickToken; usdc: OneClickToken }> {
+    const tokens = await this.client.tokens();
+    const usdc = nearUsdc(tokens, this.config.usdcContract, this.config.network);
+    if (!usdc) throw new Refusal(503, "NEAR Intents does not list Selkie's USDC right now. Try again later.");
+    const matches = tokens.filter((token) => token.blockchain === blockchain && token.symbol === "USDC");
+    if (matches.length !== 1) throw new Refusal(503, "NEAR Intents does not list one clear USDC on that chain right now.");
+    return { asset: matches[0]!, usdc };
+  }
+
+  /**
+   * A quote that lands exactly `amountOut` (base units of `asset`) at
+   * `recipient`, for paying something with a set price. Committed quotes are
+   * mainnet only and refund to the person's own NEAR account.
+   */
+  async exactOut(
+    user: User,
+    input: { asset: OneClickToken; usdc: OneClickToken; amountOut: bigint; recipient: string; dry: boolean; deadline?: number },
+  ): Promise<OneClickQuote> {
+    if (!input.dry && !this.live) throw new Refusal(409, MAINNET_ONLY);
+    return this.client.quote(
+      exactOutputRequest({
+        asset: input.asset,
+        usdc: input.usdc,
+        amountOut: input.amountOut,
+        nearAccount: this.live ? user.address : PREVIEW_ACCOUNT,
+        externalAddress: input.recipient,
+        dry: input.dry,
+        now: Date.now(),
+        deadline: input.deadline,
+      }),
+    );
   }
 
   /** Tells 1Click the cash-out deposit landed. Speeds it up; never fails the payment. */
