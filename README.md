@@ -1,4 +1,246 @@
-# Selkie
+# Selkie: send money to any X handle, on NEAR
+
+To pay someone in crypto you need their address, and most people don't have
+one. With Selkie you pay **@amaka** instead. If Amaka has never used NEAR, the
+dollars (USDC) wait in an escrow contract. When they sign in with that X
+account, they get a real NEAR account named after their handle,
+`amaka.x.selkiepay.testnet`, and the money moves into it. Its only key is theirs.
+Selkie pays every network fee and holds no key to anyone's account.
+
+Built at **NEAR HACKATHON** (realworld track). Runs on NEAR testnet.
+
+- Demo video: _link added at submission_
+- Hosted app: https://selkiepay.com
+
+## Check it in 2 minutes, no setup
+
+1. Run `git clone https://github.com/SelkieLabs/Selkie && cd Selkie && npm install`.
+2. Run `npm run prove:keys -- selkiepay.x.selkiepay.testnet`. You see
+   `Keys 1 on chain`, then `Result Selkie holds no key to this account.` The
+   script reads the account's keys from the chain, then reads every key on every
+   account Selkie runs (root, account creator, relayer, oracle, escrow), and checks
+   whether the two lists overlap. It needs no secrets and no Selkie server.
+3. Open https://explorer.testnet.near.org/accounts/selkiepay.x.selkiepay.testnet.
+   You see the same single full-access key.
+4. Run `npm test`. You see `# pass 458`, `# fail 0`. Tests that need Postgres skip
+   when `DATABASE_URL_TEST` is unset.
+5. Run `npm run test:contracts:near` (needs Rust). You see
+   `test result: ok. 35 passed`.
+
+## Try it on the hosted app
+
+1. Open https://selkiepay.com and sign in with X. You see your account,
+   `<your handle>.x.selkiepay.testnet`, and the line "Keys on this account: 1 —
+   yours. Selkie holds none." with a link to the explorer.
+2. Tap **Receive**, then **Open the faucet**. On faucet.circle.com pick NEAR Testnet
+   and paste your account name. Within a minute your balance goes up, and the
+   feed shows a line "from outside Selkie".
+3. Tap **Send**, type a handle that has never used Selkie, and send `1.00`. A
+   confirm window lists what you are about to sign. After you say yes, you see
+   "Sent. It is waiting for @them to claim." and a "Waiting" line in your feed.
+4. That person signs in with X on their phone. Their account is created with
+   their key as its only key, and the `1.00` is in it. On your side, the
+   "Waiting" tag leaves that feed line.
+5. If nobody claims a payment before it expires, its feed line gets a
+   **Take it back** button. Only the sender's own key can sign that refund.
+
+## Run it locally
+
+You need Node 20.6+, Postgres, Rust (rustc 1.93+ with the `wasm32-unknown-unknown`
+target), and a [Privy](https://dashboard.privy.io) app with **X** login and
+embedded wallets turned on.
+
+```bash
+git clone https://github.com/SelkieLabs/Selkie && cd Selkie
+npm install
+cp .env.example .env                        # set PRIVY_APP_ID, PRIVY_APP_SECRET
+cp frontend/.env.example frontend/.env.local   # set NEXT_PUBLIC_PRIVY_APP_ID
+createdb selkie_near
+echo 'NEAR_DATABASE_URL=postgres://localhost:5432/selkie_near' >> .env
+
+# 1. Testnet accounts. The faucet funds the root; each child gets a fresh key
+#    appended to .env (never printed). Pick a root name nobody has taken.
+NEAR_ROOT_ACCOUNT=<yourname>.testnet npm run near:setup
+#    You see "created x.<yourname>.testnet", "created escrow...", and a table of accounts.
+
+# 2. Build the escrow contract, then deploy and initialise it.
+npm run build:contracts:near
+npm run near:deploy-escrow
+
+# 3. The API in NEAR mode (runs its migrations on start).
+SELKIE_CHAIN=near PORT=4100 npx tsx --env-file=.env backend/api/src/index.ts
+curl localhost:4100/health                  # {"ok":true,"chain":"near","network":"testnet"}
+
+# 4. The web app, in another terminal.
+SELKIE_API_ORIGIN=http://localhost:4100 npm run dev:web
+#    Open http://localhost:3000 and sign in with X.
+```
+
+To run the whole money path on testnet without a browser, put 0.02 test USDC in
+your root account (faucet.circle.com, NEAR Testnet), then run
+`npm run test:live:near`. It holds money for an unclaimed handle, creates a handle
+account with a brand-new key, proves Selkie holds none of its keys, claims into
+it, and refunds a second hold.
+
+## What's new at NEAR HACKATHON
+
+Full diff of the hackathon work:
+[compare/3525dc8...main](https://github.com/SelkieLabs/Selkie/compare/3525dc8...main).
+
+1. **Selkie holds zero keys to user accounts.** Each user's key is their Privy
+   embedded NEAR wallet, created in the browser. The backend creates the account
+   with that public key as its only key and never sees the private key.
+   [`NearChain.createHandleAccount`](packages/chain-near/src/chain.ts),
+   [`identity-chain.ts`](backend/api/src/near/identity-chain.ts),
+   [`prove-keys.ts`](packages/chain-near/scripts/prove-keys.ts), and the badge in
+   [`KeyProof.tsx`](frontend/src/components/wallet/KeyProof.tsx).
+2. **A handle becomes a human-readable account.** @amaka gets
+   `amaka.x.selkiepay.testnet`. Only someone who proved that X login can get a
+   name under `x.`, so the namespace can't be squatted. Name rules and collisions
+   are in [`names.ts`](packages/chain-near/src/names.ts).
+3. **Nobody pays gas.** The browser builds a NEP-366 delegate action and signs its
+   hash with the user's Privy key. The relayer pays the fee and submits it.
+   [`browser.ts`](packages/chain-near/src/browser.ts),
+   [`delegate.ts`](packages/chain-near/src/delegate.ts),
+   [`relayer.ts`](packages/chain-near/src/relayer.ts).
+4. **Any chain in, any chain out, with NEAR Intents (1Click).** You can add USDC or
+   USDT from 10 chains, or cash out to them. On testnet these show live
+   `dry: true` prices, because 1Click runs on mainnet only.
+   [`intents.ts`](packages/chain-near/src/intents.ts),
+   [`backend/api/src/near/intents.ts`](backend/api/src/near/intents.ts),
+   [`OtherChain.tsx`](frontend/src/components/wallet/OtherChain.tsx).
+5. **Payments wait for an X user ID, not a username.** Usernames get renamed and
+   re-registered. The escrow holds money for `sha256("x-id:" + id)` when the API
+   can look the ID up (`X_BEARER_TOKEN`), and for `sha256("x:" + username)`
+   otherwise. A claim checks both.
+   [`handle.ts`](packages/core/src/domain/handle.ts),
+   [`recipient.ts`](packages/chain-near/src/recipient.ts),
+   [`x-lookup.ts`](backend/api/src/near/x-lookup.ts).
+
+Also built on NEAR during the hackathon:
+
+- **The escrow contract.** It holds `ft_transfer_call` deposits for a recipient
+  key, both single (`hold`) and batch (`hold_many`). Only the oracle can release
+  them, and the sender can take them back after expiry. It removes a payment
+  before transferring it, and restores it in a callback if the transfer fails.
+  It emits NEP-297 events. [`contracts-near/handle-escrow`](contracts-near/handle-escrow/src/lib.rs)
+- **Pay many people with one signature.** One delegate action pays Selkie users
+  directly, and holds one `hold_many` for everyone else.
+- **DAO payouts.** `npm run near:dao` turns a CSV of `@handle,amount` lines into
+  one Sputnik DAO proposal. When it runs, each handle's money waits for them.
+  [`dao-payout.ts`](packages/chain-near/scripts/dao-payout.ts)
+- **The X bot answers with links, never money.** "@SelkiePay send 5 to @amaka"
+  gets a reply with a prefilled Send link, and the sender signs it themselves.
+- **Notices when money arrives.** Web Push and email, plus feed lines for money
+  sent from outside Selkie.
+- **RPC failover.** `NEAR_RPC_URL` takes a list. A rate-limited or down endpoint
+  is skipped, but a real answer like "account does not exist" is never retried.
+  [`rpc.ts`](packages/chain-near/src/rpc.ts)
+
+## Why NEAR
+
+- **Named accounts.** A payment link can show `amaka.x.selkiepay.testnet` instead
+  of a 64-character hex string.
+- **Many keys per account, each one visible on chain.** Selkie adds exactly one
+  key, the user's, and anyone can check that.
+- **NEP-366 meta-transactions.** Users sign and Selkie pays the fee, with no
+  custody and no gas token for the user.
+- **NEP-141 `ft_transfer_call`.** It lets the escrow receive money and record who
+  it waits for in one atomic step.
+- **NEAR Intents.** One API to bring money in from, and send it out to, the
+  chains people already use.
+
+## Relayer safety
+
+`POST /near/relay` submits a signed delegate action only when all of these hold
+([`relayer.ts`](packages/chain-near/src/relayer.ts)):
+
+- The signer is the signed-in user's own account.
+- The signed bytes match a prepare record made for this user minutes ago, with
+  the same receiver, method, arguments and deposit. Each record works once.
+- The receiver is the USDC contract or the escrow. The method is `ft_transfer`,
+  `ft_transfer_call`, `storage_deposit` or `refund`.
+- A cash-out to another chain may only pay the deposit address of a 1Click quote
+  the server itself requested.
+- The deposit is at most 1 yoctoNEAR, gas is capped, and each user is rate-limited.
+
+## Trust model
+
+| Who | Can | Cannot |
+| --- | --- | --- |
+| Relayer key | pay gas for actions the user signed | create or change what the user signed |
+| Account creator (`x.`) | create a new handle account with the user's key | add a key to an existing account, move user money |
+| Oracle key (function-call key, `claim` only) | release waiting money to the account of whoever proved that X login | take money, change amounts, block a refund |
+| Escrow contract | hold money for a recipient key, refund the sender after expiry | release to anyone except through the oracle |
+| Privy | holds the user's key material (their custody model) | — Selkie turns on no server-side signers |
+
+Limits, stated plainly:
+
+- **The oracle is a trust point.** A stolen oracle key could send waiting money
+  to the wrong account. It cannot touch money already in anyone's account.
+- **Users trust Privy for key custody.**
+- **Testnet only.** The NEAR Intents flows show previews on testnet.
+- **Not built:** a naira bank cash-out.
+
+## Contracts and accounts (testnet)
+
+| Account | Role |
+| --- | --- |
+| [escrow.selkiepay.testnet](https://explorer.testnet.near.org/accounts/escrow.selkiepay.testnet) | handle-escrow contract |
+| [x.selkiepay.testnet](https://explorer.testnet.near.org/accounts/x.selkiepay.testnet) | parent of every handle account; only creates accounts |
+| [relayer.selkiepay.testnet](https://explorer.testnet.near.org/accounts/relayer.selkiepay.testnet) | pays gas for users' delegate actions |
+| [oracle-v2.selkiepay.testnet](https://explorer.testnet.near.org/accounts/oracle-v2.selkiepay.testnet) | releases waiting money; its only key can call `escrow.claim` and nothing else |
+| [selkiepay.testnet](https://explorer.testnet.near.org/accounts/selkiepay.testnet) | root; used by setup scripts only |
+| `3e2210e1…cb8af` | Circle's USDC on NEAR testnet (6 decimals) |
+| [selkie-payouts.sputnikv2.testnet](https://explorer.testnet.near.org/accounts/selkie-payouts.sputnikv2.testnet) | test DAO for payouts |
+
+## Tests
+
+| Command | Proves |
+| --- | --- |
+| `npm test` | 458 tests. These cover amounts, account names, recipient keys, building and verifying delegate actions, the relay policy, RPC failover, and the 1Click client. The NEAR API also runs end to end on a simulated chain with real ed25519 signatures. |
+| `npm run test:contracts:near` | 35 escrow tests: hold and claim, hold_many, wrong token, bad msg refunded, non-oracle claim refused, double claim paid once, refund rules, and a failed transfer restoring the payment |
+| `npm run test:live:near` | the whole money path on real testnet (needs 0.02 test USDC) |
+| `npm run prove:keys -- <account>` | whether Selkie holds any key to an account, read from the chain |
+
+## Libraries
+
+- near-api-js 7.4.0
+- near-sdk 5.29.1 (Rust)
+- @privy-io/react-auth 3.36
+- Next.js 16 and React 19
+- Tailwind CSS
+- lucide-react
+- qrcode
+- Fastify 5 and @fastify/rate-limit
+- pg
+- web-push 3.6.7
+- NEAR Intents 1Click API
+- Resend (email API)
+
+## Disclosure
+
+Selkie existed before the hackathon, as a Stellar app. The first commit,
+[`3525dc8`](https://github.com/SelkieLabs/Selkie/commit/3525dc8), tagged
+`pre-hackathon`, is that Stellar baseline: the web app, the Fastify API, the X
+bot, the Soroban escrow and the Stellar adapter. Everything NEAR was built
+during the hackathon and is in the diff above:
+
+- `contracts-near/`
+- `packages/chain-near/`
+- `backend/api/src/near/`
+- the NEAR mode of the web app
+- push and email notices
+
+The Stellar code is untouched and still runs with `SELKIE_CHAIN=stellar`. AI
+coding tools (Claude Code) were used throughout.
+
+---
+
+# Selkie on Stellar (pre-hackathon baseline)
+
+Everything below describes the Stellar build that existed before the hackathon.
+It still works with `SELKIE_CHAIN=stellar` and `NEXT_PUBLIC_SELKIE_CHAIN=stellar`.
 
 Send money to any social handle. No app, no seed phrase, and no gas for the person you pay. Selkie holds digital dollars (USDC), and turns them into local cash, airtime, data, bills, or a swap. Multi-chain by design, Stellar first.
 

@@ -3,7 +3,7 @@
 The running log the human reads between sessions: what works, what is cut, what
 is next. Newest first within each section. Brief: [CLAUDE.md](../../CLAUDE.md).
 
-## Status — Wed 11 Nov, evening Lagos
+## Status — Thu 12 Nov, Lagos
 
 The human said to go ahead without waiting after the spikes, and to make the whole UI
 NEAR (Stellar stays in the code, hidden from users).
@@ -28,6 +28,11 @@ NEAR (Stellar stays in the code, hidden from users).
 | Oracle | **rotated** to `oracle-v2.selkiepay.testnet`: claim-only key, no allowance cap (see Setup) |
 | 6.5 Copy | **done**: landing, FAQ, docs, settings, footer all NEAR |
 | Full loop on testnet | **blocked on test USDC**: fund an account from faucet.circle.com (NEAR Testnet) |
+| RPC failover (12 Nov) | **done**: rpc.testnet.near.org was switched off (answers 429 "DEPRECATED"), which broke sign-in. `NEAR_RPC_URL` now takes a list (`https://test.rpc.fastnear.com,https://near-testnet.drpc.org`); `packages/chain-near/src/rpc.ts` moves on only when an endpoint is unavailable (429/408/5xx/no answer), never on a real answer. 6 tests with fake RPCs; live `prove:keys` passed with the dead URL listed first |
+| Chain and coin logos (12 Nov) | **done**: Trust Wallet assets via jsDelivr (1Click `/v0/tokens` has no icon field); letter fallback if an image fails |
+| Confirm before signing (12 Nov) | **done**: one quick modal before every payment and one-way action (send, pay many, cash out, pay/decline/withdraw a request, take back, show a 1Click deposit address). Enter answers yes for money; Cancel is focused for one-way choices; Escape or a tap outside is no |
+| README, LICENSE, SUBMISSION (12 Nov) | **drafted**: README top is NEAR (2-minute check, hosted steps, local run, five points with files, trust model, disclosure); MIT LICENSE, holder "Selkie Labs"; `docs/hackathon/SUBMISSION.md`. Video link and second-entry question still open |
+| Hosted API | **down**: the Railway app answers "Application not found". Needs a NEAR API deploy (`SELKIE_CHAIN=near`, `NEAR_RPC_URL` with both endpoints) and Vercel `SELKIE_API_ORIGIN` pointed at it (human) |
 
 ## Escrow on testnet (6.1)
 
@@ -222,7 +227,7 @@ unknown token) + `packages/chain-near/spikes/spike-b.ts` (deploy, init, 1 USDC
 1. Human: get test USDC from faucet.circle.com (NEAR Testnet) into your account, then
    run the two-browser loop (6.4 acceptance) and try Pay many, Requests and Cash out.
 2. `npm run test:live:near` once `selkiepay.testnet` has 0.02 USDC.
-3. README top + `docs/hackathon/SUBMISSION.md`; MIT LICENSE (missing today).
+3. Deploy the NEAR API (Railway) and point Vercel's `SELKIE_API_ORIGIN` at it, so the README's hosted steps work.
 4. P1-c: one mainnet Intents run for the video (needs your OK and a few dollars).
 5. DAO payout: send test USDC to `selkie-payouts.sputnikv2.testnet`, then propose and approve.
 6. Lock the escrow (`npm run near:lock-escrow -- --yes`) once the live test passes.
