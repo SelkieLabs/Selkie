@@ -14,7 +14,7 @@ import { isNear } from "@/lib/chain";
 import { DOLLAR, cleanAmount, parseHandles, usd } from "@/lib/format";
 import { useNearPay } from "@/lib/near-wallet";
 import { PLATFORMS, PLATFORM_LABEL, type Platform } from "@/lib/platform";
-import { useHandleSuggestions } from "@/lib/useHandleSuggestions";
+import { useHandleSuggestBox } from "@/lib/useHandleSuggestions";
 
 /**
  * The server refuses more than this in one go; saying so early beats a rejection.
@@ -74,36 +74,16 @@ export function PayManyPanel({
 
   // People on Selkie matching the handle being typed (NEAR, X, from 3 letters),
   // minus anyone already on the list.
-  const [draftFocused, setDraftFocused] = useState(false);
-  const [activeSuggestion, setActiveSuggestion] = useState(-1);
-  const typed = draft.trim().replace(/^@+/, "").toLowerCase();
-  const found = useHandleSuggestions(typed, isNear && platform === "x");
-  const suggestions = found.filter(
-    (match) => !handles.includes(match.username) && !(found.length === 1 && match.username === typed),
-  );
-  const showSuggestions = draftFocused && suggestions.length > 0;
-  const pick = (username: string) => {
-    commit(username);
-    setActiveSuggestion(-1);
-  };
+  const suggest = useHandleSuggestBox({
+    id: "many-suggestions",
+    text: draft.trim().replace(/^@+/, "").toLowerCase(),
+    enabled: isNear && platform === "x",
+    exclude: handles,
+    onPick: (username) => commit(username),
+  });
 
   const onKey = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (showSuggestions && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-      event.preventDefault();
-      const step = event.key === "ArrowDown" ? 1 : -1;
-      setActiveSuggestion((i) => (i + step + suggestions.length) % suggestions.length);
-      return;
-    }
-    if (showSuggestions && event.key === "Escape") {
-      setDraftFocused(false);
-      return;
-    }
-    const chosen = showSuggestions ? suggestions[activeSuggestion] : undefined;
-    if (event.key === "Enter" && chosen) {
-      event.preventDefault();
-      pick(chosen.username);
-      return;
-    }
+    if (suggest.onKeyDown(event)) return;
     if (event.key === "Enter" || event.key === "," || event.key === " ") {
       event.preventDefault();
       commit(draft);
@@ -322,20 +302,14 @@ export function PayManyPanel({
           autoCorrect="off"
           spellCheck={false}
           value={draft}
-          role="combobox"
-          aria-expanded={showSuggestions}
-          aria-controls="many-suggestions"
-          aria-autocomplete="list"
-          aria-activedescendant={showSuggestions && activeSuggestion >= 0 ? `many-suggestions-${activeSuggestion}` : undefined}
-          onFocus={() => setDraftFocused(true)}
+          {...suggest.inputProps}
           onChange={(e) => {
             setDraft(e.target.value);
-            setActiveSuggestion(-1);
-            setDraftFocused(true);
+            suggest.typed();
           }}
           onKeyDown={onKey}
           onBlur={() => {
-            setDraftFocused(false);
+            suggest.inputProps.onBlur();
             commit(draft);
           }}
           onPaste={(e) => {
@@ -344,14 +318,7 @@ export function PayManyPanel({
           }}
         />
       </div>
-      {showSuggestions && (
-        <HandleSuggestions
-          id="many-suggestions"
-          matches={suggestions}
-          active={activeSuggestion}
-          onPick={(match) => pick(match.username)}
-        />
-      )}
+      {suggest.show && <HandleSuggestions {...suggest.listProps} />}
       </div>
       <p className="mt-2 text-[13px] font-medium text-pen/50">
         {handles.length === 0

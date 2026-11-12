@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, HandCoins, Loader2, X } from "lucide-react";
 import { Avatar } from "@/components/Layout";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
+import { HandleSuggestions } from "@/components/wallet/HandleSuggestions";
 import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
 import { useConfirm } from "@/contexts/useConfirm";
@@ -12,6 +13,7 @@ import { features, isNear } from "@/lib/chain";
 import { DOLLAR, cleanAmount, money, timeAgo, usd } from "@/lib/format";
 import { useNearPay } from "@/lib/near-wallet";
 import { takePayLink } from "@/lib/pay-link";
+import { useHandleSuggestBox } from "@/lib/useHandleSuggestions";
 import { PLATFORMS, PLATFORM_FIELD, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
 
 /** How a settled request reads once nobody has to do anything about it. */
@@ -90,6 +92,18 @@ export function RequestsPanel({
 
   const cleanFrom = from.trim().replace(/^@+/, "").toLowerCase();
   const canSubmit = canAsk && cleanFrom.length > 0 && Number(amount) > 0;
+
+  // People on Selkie matching the handle being typed (NEAR, X, from 3 letters).
+  const suggest = useHandleSuggestBox({
+    id: "ask-suggestions",
+    text: cleanFrom,
+    enabled: isNear && canAsk && platform === "x",
+    onPick: (username) => {
+      setFrom(username);
+      suggest.close();
+      document.getElementById("ask-amount")?.focus();
+    },
+  });
 
   const waiting = incoming.filter((request) => request.status === "pending");
   const answered = incoming.filter((request) => request.status !== "pending");
@@ -176,8 +190,14 @@ export function RequestsPanel({
                 spellCheck={false}
                 disabled={!canAsk}
                 value={from.replace(/^@+/, "")}
-                onChange={(e) => setFrom(e.target.value)}
+                {...suggest.inputProps}
+                onChange={(e) => {
+                  setFrom(e.target.value);
+                  suggest.typed();
+                }}
+                onKeyDown={(e) => void suggest.onKeyDown(e)}
               />
+              {suggest.show && <HandleSuggestions {...suggest.listProps} />}
             </div>
           </div>
           <div>
