@@ -420,7 +420,8 @@ html.lenis {
     grid-template-columns: 1fr auto;
     height: 64px;
   }
-  .td-nav .links {
+  .td-nav .links,
+  .td-nav .l .td-mono {
     display: none;
   }
   .td-nav .r {
