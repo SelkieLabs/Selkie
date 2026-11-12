@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/useAuth";
 import { NEAR_NETWORK } from "@/lib/chain";
 import { Caustics } from "./Caustics";
 import { XLogo } from "@/components/Mark";
-import { chapterScroll, formatDepth, previewAccount, scrollToY, setScrollLock, useDepth, useInView } from "./hooks";
+import { chapterScroll, previewAccount, scrollToY, setScrollLock, useInView } from "./hooks";
 import { Kelp, Motes } from "./Sea";
 
 const CHAPTERS = ["01 you send", "02 it waits", "03 they sign in", "04 it's theirs"];
@@ -152,7 +152,6 @@ function NavLinks({ active }: { active: string | null }) {
 
 function Nav() {
   const { signIn } = useAuth();
-  const depth = useDepth();
   const [active, setActive] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const close = useRef(() => setMenu(false)).current;
@@ -199,9 +198,6 @@ function Nav() {
       <nav className="td-nav" aria-label="Main" ref={bar}>
         <div className="l">
           <span className="td-wm">Selkie</span>
-          <span className="td-mono" aria-hidden="true">
-            depth {formatDepth(depth)}
-          </span>
         </div>
         <NavLinks active={active} />
         <div className="r">
