@@ -12,10 +12,10 @@ import type { Stage } from "@/lib/other-chain";
 
 /** The currencies Paycrest pays out in for Selkie, naira first. */
 export const BANK_CURRENCIES = [
-  { code: "NGN", country: "Nigeria", symbol: "₦", name: "Naira" },
-  { code: "KES", country: "Kenya", symbol: "KSh ", name: "Kenyan shilling" },
-  { code: "UGX", country: "Uganda", symbol: "USh ", name: "Ugandan shilling" },
-  { code: "TZS", country: "Tanzania", symbol: "TSh ", name: "Tanzanian shilling" },
+  { code: "NGN", country: "Nigeria", flag: "/flags/ng.svg", symbol: "₦", name: "Naira" },
+  { code: "KES", country: "Kenya", flag: "/flags/ke.svg", symbol: "KSh ", name: "Kenyan shilling" },
+  { code: "UGX", country: "Uganda", flag: "/flags/ug.svg", symbol: "USh ", name: "Ugandan shilling" },
+  { code: "TZS", country: "Tanzania", flag: "/flags/tz.svg", symbol: "TSh ", name: "Tanzanian shilling" },
 ] as const;
 
 export type BankCurrency = (typeof BANK_CURRENCIES)[number]["code"];

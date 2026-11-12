@@ -61,6 +61,8 @@ export function PaycrestBankFields({
               }
             }}
           >
+            {/* Decorative: the code and the hint below already name the country. */}
+            <img src={option.flag} alt="" width={18} height={18} className="co-flag" />
             {option.code}
           </button>
         ))}

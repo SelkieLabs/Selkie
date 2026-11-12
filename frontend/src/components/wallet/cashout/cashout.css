@@ -462,6 +462,17 @@ select.co-field option {
     color 160ms var(--co-ease),
     box-shadow 160ms var(--co-ease);
 }
+.co-flag {
+  width: 18px;
+  height: 18px;
+  margin: 0 7px 0 -6px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
+  object-fit: cover;
+}
+.co-chip:not([aria-pressed="true"]) .co-flag {
+  opacity: 0.85;
+}
 .co-chip:hover {
   color: var(--co-foam);
   background: var(--co-i3);
