@@ -31,7 +31,8 @@
     "near:dao": "tsx --env-file-if-exists=.env packages/chain-near/scripts/dao-payout.ts",
     "near:rotate-oracle": "tsx --env-file-if-exists=.env packages/chain-near/scripts/rotate-oracle.ts",
     "near:lock-escrow": "tsx --env-file-if-exists=.env packages/chain-near/scripts/lock-escrow.ts",
-    "build:contracts:near": "RUSTFLAGS='-C link-arg=-s --cfg near' cargo build --manifest-path contracts-near/Cargo.toml -p selkie-handle-escrow --target wasm32-unknown-unknown --release",
+    "near:deploy-pocket": "tsx --env-file-if-exists=.env packages/chain-near/scripts/deploy-pocket.ts",
+    "build:contracts:near": "RUSTFLAGS='-C link-arg=-s --cfg near' cargo build --manifest-path contracts-near/Cargo.toml -p selkie-handle-escrow -p selkie-pocket --target wasm32-unknown-unknown --release",
     "test:contracts:near": "cargo test --manifest-path contracts-near/Cargo.toml",
     "prove:keys": "tsx packages/chain-near/scripts/prove-keys.ts",
     "test:live:near": "tsx --env-file-if-exists=.env packages/chain-near/scripts/live.ts"
