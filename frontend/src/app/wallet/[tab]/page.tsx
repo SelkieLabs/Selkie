@@ -265,7 +265,7 @@ function Hello({ user }: { user: User }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pt-1">
       <h1 className="font-display text-[1.6rem] font-extrabold leading-tight tracking-[-0.035em] sm:text-[1.875rem]">
-        Good {part}, {first}
+        Good {part}, <span className="text-[#d9a441]">{first}</span>
       </h1>
       <span className="text-[13.5px] text-pen/45">{today}</span>
     </div>
