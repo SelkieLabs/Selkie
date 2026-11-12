@@ -323,6 +323,32 @@ describe("NEAR app", () => {
     });
   });
 
+  describe("suggest people while a handle is typed", () => {
+    const search = (who: Person, q: string) =>
+      app.inject({ method: "GET", url: `/handles?q=${encodeURIComponent(q)}`, headers: auth(who) });
+    const names = async (who: Person, q: string) =>
+      ((await search(who, q)).json().matches as { username: string }[]).map((m) => m.username);
+
+    test("from the third letter, start of the handle first, never yourself", async () => {
+      const amanda = person("3001", "big_amanda");
+      const amaka = person("1001", "amaka");
+      const tunde = person("2001", "tunde");
+      for (const who of [amanda, amaka, tunde]) await signIn(who);
+
+      assert.deepEqual(await names(tunde, "am"), [], "two letters is too few");
+      assert.deepEqual(await names(tunde, "@AMA"), ["amaka", "big_amanda"]);
+      assert.deepEqual(await names(amaka, "ama"), ["big_amanda"]);
+      const first = (await search(tunde, "amak")).json().matches[0];
+      assert.equal(first.nearAccount, amaka.account);
+      assert.deepEqual(await names(tunde, "a%_"), [], "wildcards are not handles");
+    });
+
+    test("needs a signed-in caller", async () => {
+      const res = await app.inject({ method: "GET", url: "/handles?q=ama" });
+      assert.equal(res.statusCode, 401);
+    });
+  });
+
   describe("look up a NEAR account before paying it", () => {
     const lookUp = (who: Person, accountId: string) =>
       app.inject({ method: "GET", url: `/near/accounts/${encodeURIComponent(accountId)}`, headers: auth(who) });

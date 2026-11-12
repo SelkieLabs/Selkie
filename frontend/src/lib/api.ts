@@ -169,6 +169,14 @@ export interface ReceiveDetails {
 
 export type RequestStatus = "pending" | "paid" | "declined" | "cancelled";
 
+/** Someone already on Selkie, offered while a handle is typed into Send. */
+export interface HandleSuggestion {
+  username: string;
+  displayName?: string;
+  avatarUrl?: string;
+  nearAccount?: string;
+}
+
 export interface MoneyRequest {
   id: string;
   fromHandle: Handle;
@@ -371,6 +379,11 @@ export const api = {
 
   async me(): Promise<Me> {
     return request("/me");
+  },
+
+  /** People on Selkie whose X handle matches what is being typed (from 3 letters, NEAR only). */
+  async searchHandles(text: string): Promise<{ matches: HandleSuggestion[] }> {
+    return request(`/handles?q=${encodeURIComponent(text.trim().replace(/^@+/, ""))}`);
   },
 
   /** Resolve a handle for the confirm screen. */

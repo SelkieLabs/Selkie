@@ -216,6 +216,35 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     };
   });
 
+  /**
+   * People on Selkie whose X handle matches what is being typed into Send.
+   *
+   * Only for a signed-in caller, only from the third character, and at most six
+   * names, so it helps finish a handle you half know without listing everyone.
+   * You are never suggested to yourself.
+   */
+  app.get("/handles", capped("handles"), async (request, reply) => {
+    const caller = await requireUser(request, reply);
+    if (!caller) return;
+    const text = String((request.query as { q?: string }).q ?? "")
+      .trim()
+      .replace(/^@+/, "")
+      .toLowerCase();
+    if (text.length < 3 || text.length > 30 || !/^[a-z0-9_]+$/.test(text)) return { matches: [] };
+    const found = await deps.users.searchHandles("x", text, 7);
+    return {
+      matches: found
+        .filter((match) => match.userId !== caller.id)
+        .slice(0, 6)
+        .map((match) => ({
+          username: match.username,
+          displayName: match.displayName,
+          avatarUrl: match.avatarUrl,
+          nearAccount: match.address,
+        })),
+    };
+  });
+
   /** Who you are about to pay, before you pay them. */
   app.get("/handles/:username", capped("handles"), async (request, reply) => {
     const caller = await requireUser(request, reply);

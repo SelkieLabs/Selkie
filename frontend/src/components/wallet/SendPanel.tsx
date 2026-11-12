@@ -6,6 +6,7 @@ import { Avatar } from "@/components/Layout";
 import { ContractWarning } from "@/components/wallet/ContractWarning";
 import { PlatformLogo } from "@/components/Mark";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
+import { HandleSuggestions } from "@/components/wallet/HandleSuggestions";
 import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
 import { useConfirm } from "@/contexts/useConfirm";
@@ -23,6 +24,7 @@ import { DOLLAR, cleanAmount, usd } from "@/lib/format";
 import { useAccountCheck } from "@/lib/near-account";
 import { useNearPay } from "@/lib/near-wallet";
 import { takePayLink } from "@/lib/pay-link";
+import { useHandleSuggestions } from "@/lib/useHandleSuggestions";
 import { PLATFORMS, PLATFORM_FIELD, PLATFORM_LABEL, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
 
 type Step = "compose" | "confirm" | "done";
@@ -115,6 +117,19 @@ export function SendPanel({
   const tooMuch = value > Number(balance);
   const destinationReady = mode === "handle" ? cleanHandle.length > 0 : addressValid;
   const canContinue = destinationReady && value > 0 && !tooMuch;
+
+  // People on Selkie matching what is typed (NEAR, X handles, from 3 letters).
+  const [handleFocused, setHandleFocused] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const found = useHandleSuggestions(cleanHandle, isNear && mode === "handle" && platform === "x");
+  const suggestions = found.length === 1 && found[0]!.username === cleanHandle ? [] : found;
+  const showSuggestions = handleFocused && suggestions.length > 0;
+  const pickSuggestion = (username: string) => {
+    setHandle(username);
+    setActiveSuggestion(-1);
+    setHandleFocused(false);
+    document.getElementById("send-amount")?.focus();
+  };
 
   const reset = () => {
     setStep("compose");
@@ -495,9 +510,46 @@ export function SendPanel({
               autoCorrect="off"
               spellCheck={false}
               value={handle.replace(/^@+/, "")}
-              onChange={(e) => setHandle(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && canContinue && void toConfirm()}
+              role="combobox"
+              aria-expanded={showSuggestions}
+              aria-controls="send-suggestions"
+              aria-autocomplete="list"
+              aria-activedescendant={showSuggestions && activeSuggestion >= 0 ? `send-suggestions-${activeSuggestion}` : undefined}
+              onFocus={() => setHandleFocused(true)}
+              onBlur={() => setHandleFocused(false)}
+              onChange={(e) => {
+                setHandle(e.target.value);
+                setActiveSuggestion(-1);
+                setHandleFocused(true);
+              }}
+              onKeyDown={(e) => {
+                if (showSuggestions && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                  e.preventDefault();
+                  const step = e.key === "ArrowDown" ? 1 : -1;
+                  setActiveSuggestion((i) => (i + step + suggestions.length) % suggestions.length);
+                  return;
+                }
+                if (showSuggestions && e.key === "Escape") {
+                  setHandleFocused(false);
+                  return;
+                }
+                const chosen = showSuggestions ? suggestions[activeSuggestion] : undefined;
+                if (e.key === "Enter" && chosen) {
+                  e.preventDefault();
+                  pickSuggestion(chosen.username);
+                  return;
+                }
+                if (e.key === "Enter" && canContinue) void toConfirm();
+              }}
             />
+            {showSuggestions && (
+              <HandleSuggestions
+                id="send-suggestions"
+                matches={suggestions}
+                active={activeSuggestion}
+                onPick={(match) => pickSuggestion(match.username)}
+              />
+            )}
           </div>
         </>
       )}

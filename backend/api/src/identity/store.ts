@@ -12,9 +12,36 @@ export interface UserStore {
   get(id: string): Promise<User | null>;
   findByIdentity(provider: IdentityProviderId, subject: string): Promise<User | null>;
   findByHandle(provider: IdentityProviderId, username: string): Promise<User | null>;
+  /** Handles on Selkie that start with, or contain, `text`. Best match first. */
+  searchHandles(provider: IdentityProviderId, text: string, limit: number): Promise<HandleMatch[]>;
   addIdentity(userId: string, identity: LinkedIdentity): Promise<User>;
   removeIdentity(userId: string, provider: IdentityProviderId, subject: string): Promise<User>;
   delete(id: string): Promise<void>;
+}
+
+/** One person the Send box can suggest while a handle is being typed. */
+export interface HandleMatch {
+  userId: string;
+  username: string;
+  displayName?: string;
+  avatarUrl?: string;
+  address?: string;
+}
+
+/**
+ * How well a handle matches what was typed: the start of the handle beats
+ * anywhere in it, which beats the display name. Shorter handles first, since
+ * "ama" is more likely @amaka than @amanda_okonkwo_2.
+ */
+export function rankHandleMatches(matches: HandleMatch[], text: string): HandleMatch[] {
+  const wanted = text.toLowerCase();
+  const score = (m: HandleMatch) => {
+    const name = m.username.toLowerCase();
+    return name.startsWith(wanted) ? 0 : name.includes(wanted) ? 1 : 2;
+  };
+  return [...matches].sort(
+    (a, b) => score(a) - score(b) || a.username.length - b.username.length || a.username.localeCompare(b.username),
+  );
 }
 
 export class UserNotFoundError extends Error {}
@@ -57,6 +84,26 @@ export class InMemoryUserStore implements UserStore {
       if (match) return structuredClone(user);
     }
     return null;
+  }
+
+  async searchHandles(provider: IdentityProviderId, text: string, limit: number): Promise<HandleMatch[]> {
+    const wanted = text.toLowerCase();
+    const found = new Map<string, HandleMatch>();
+    for (const user of this.#users.values()) {
+      for (const identity of user.identities) {
+        if (identity.provider !== provider || !identity.username) continue;
+        const name = identity.username.toLowerCase();
+        if (!name.includes(wanted) && !(identity.displayName ?? "").toLowerCase().includes(wanted)) continue;
+        found.set(name, {
+          userId: user.id,
+          username: name,
+          displayName: identity.displayName,
+          avatarUrl: identity.avatarUrl,
+          address: user.address,
+        });
+      }
+    }
+    return rankHandleMatches([...found.values()], wanted).slice(0, limit);
   }
 
   async addIdentity(userId: string, identity: LinkedIdentity): Promise<User> {

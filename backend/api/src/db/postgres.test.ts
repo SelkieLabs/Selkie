@@ -119,6 +119,21 @@ describe("Postgres storage", { skip }, () => {
       assert.notEqual(now.id, old.id);
     });
 
+    it("suggests handles as they are typed, with _ and % taken literally", async () => {
+      const users = new PostgresUserStore(db.pool);
+      // Names no other test uses: the suite shares one database.
+      const zuzu = await users.create({ address: address(), identities: [login({ username: "Zuzu_O" })] });
+      await users.create({ address: address(), identities: [login({ username: "big_zuzu" })] });
+      await users.create({ address: address(), identities: [login({ username: "zuzuxoo" })] });
+
+      const found = await users.searchHandles("x", "zuzu", 6);
+      assert.deepEqual(found.map((m) => m.username), ["zuzu_o", "zuzuxoo", "big_zuzu"]);
+      assert.equal(found[0]!.userId, zuzu.id);
+      // Unescaped, "u_o" would also match "uxo" in zuzuxoo.
+      assert.deepEqual((await users.searchHandles("x", "u_o", 6)).map((m) => m.username), ["zuzu_o"]);
+      assert.deepEqual(await users.searchHandles("x", "%", 6), []);
+    });
+
     it("refuses to let one X account belong to two wallets", async () => {
       const users = new PostgresUserStore(db.pool);
       const shared = login();

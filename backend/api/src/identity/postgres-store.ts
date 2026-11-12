@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { inTransaction, iso, type Queryable } from "../db/pool";
 import type { IdentityProviderId, LinkedIdentity, User } from "./types";
-import { IdentityAlreadyLinkedError, UserNotFoundError, type UserStore } from "./store";
+import { IdentityAlreadyLinkedError, UserNotFoundError, type HandleMatch, type UserStore } from "./store";
 
 /**
  * Users, in Postgres.
@@ -132,6 +132,42 @@ export class PostgresUserStore implements UserStore {
        group by u.id`,
       [provider, username],
     );
+  }
+
+  /**
+   * Handles that start with or contain `text`, for the Send box's suggestions.
+   * Where two rows carry one name, the newest link wins, as in findByHandle.
+   * `_` is a wildcard in LIKE and common in X handles, so it is escaped.
+   */
+  async searchHandles(provider: IdentityProviderId, text: string, limit: number): Promise<HandleMatch[]> {
+    const wanted = text.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`);
+    const { rows } = await this.#db.query<{
+      user_id: string;
+      username: string;
+      display_name: string | null;
+      avatar_url: string | null;
+      address: string | null;
+    }>(
+      `select * from (
+         select distinct on (lower(i.username))
+           i.user_id, lower(i.username) as username, i.display_name, i.avatar_url, u.address
+         from identities i
+         join users u on u.id = i.user_id
+         where i.provider = $1 and i.username is not null
+           and (lower(i.username) like $2 escape '\\' or lower(coalesce(i.display_name, '')) like $2 escape '\\')
+         order by lower(i.username), i.linked_at desc
+       ) found
+       order by (username like $3 escape '\\') desc, length(username), username
+       limit $4`,
+      [provider, `%${wanted}%`, `${wanted}%`, limit],
+    );
+    return rows.map((row) => ({
+      userId: row.user_id,
+      username: row.username,
+      displayName: row.display_name ?? undefined,
+      avatarUrl: row.avatar_url ?? undefined,
+      address: row.address ?? undefined,
+    }));
   }
 
   async addIdentity(userId: string, identity: LinkedIdentity): Promise<User> {
