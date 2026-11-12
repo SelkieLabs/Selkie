@@ -120,6 +120,11 @@ export class PaycrestClient {
     return Boolean(this.options.apiKey && this.options.refundAddress);
   }
 
+  /** Selkie's address on `network` that failed orders are returned to. */
+  get refundAddress(): string | undefined {
+    return this.options.refundAddress || undefined;
+  }
+
   get canVerifyWebhooks(): boolean {
     return Boolean(this.options.apiSecret);
   }
