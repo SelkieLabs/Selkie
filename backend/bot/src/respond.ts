@@ -1,7 +1,7 @@
 import type { BotChain } from "./config";
 import type { Command } from "./parse";
 import { SelkieApiError } from "./selkie";
-import type { SelkieClient, Sender } from "./selkie";
+import type { PocketSendResult, SelkieClient, Sender } from "./selkie";
 import { cap, lines } from "./text";
 
 /**
@@ -41,6 +41,11 @@ export interface RespondOptions {
    * Selkie with the payment filled in. Defaults to Stellar.
    */
   chain?: BotChain;
+  /**
+   * NEAR only: try the sender's X pocket before falling back to the link. On
+   * when the bot holds SELKIE_BOT_SECRET; without it every send is a link.
+   */
+  pocket?: boolean;
   /**
    * The bot's own handle, so it can tell somebody they are paying the bot.
    *
@@ -86,7 +91,9 @@ export async function respond(
           lines("🙂 That one is me!", "", "Name a friend and I will send it to them.", "", `Try: send 5 to @friend`),
         );
       }
-      if (near) return cap(sendLink(command, sender, site));
+      if (near) {
+        return cap(options.pocket ? await fromPocket(command, sender, selkie, site, options) : sendLink(command, sender, site));
+      }
       return cap(await sendMoney(command, sender, selkie, site, options));
 
     case "request":
@@ -120,6 +127,55 @@ function sendLink(command: Extract<Command, { type: "send" }>, sender: Sender, s
     "",
     "🔐 Your own key signs it. I can't move your money.",
   );
+}
+
+/**
+ * NEAR with a pocket: pay straight from it when the API can, the link when not.
+ *
+ * The API decides everything (whose pocket, who can be paid, the daily limit)
+ * and keys it on the post, so reading a tweet twice pays once. Whatever goes
+ * wrong, the reply is the link: never silence, and never a second payment,
+ * because nothing moves through a link until the person signs it themselves.
+ */
+async function fromPocket(
+  command: Extract<Command, { type: "send" }>,
+  sender: Sender,
+  selkie: SelkieClient,
+  site: Site,
+  options: RespondOptions,
+): Promise<string> {
+  const link = sendLink(command, sender, site);
+  // Paying yourself, or something other than USDC: the link reply already says why not.
+  if (command.to === sender.username || command.asset !== "USDC") return link;
+
+  let result: PocketSendResult;
+  try {
+    result = await selkie.pocketSend(sender, { to: command.to, amount: command.amount, note: command.note });
+  } catch (error) {
+    // Logged, never posted: a 401 here means the bot and the API disagree
+    // about the secret, which somebody needs to hear about.
+    options.onError?.(error);
+    return link;
+  }
+
+  switch (result.status) {
+    case "sent":
+      return lines(
+        `✅ Sent ${result.amount} USDC to @${result.to}`,
+        "⚡ Straight from your Selkie pocket",
+        `🔗 ${result.explorerUrl}`,
+      );
+    case "no-pocket":
+    case "no-account":
+      return lines(link, "", `⚡ Top up a pocket at ${site.home} to send straight from X`);
+    case "low-balance":
+    case "over-cap":
+      return lines(link, "", `Your pocket has ${result.leftToday ?? "0"} USDC left today`);
+    default:
+      // not-on-selkie: it waits for them in the escrow once the sender signs.
+      // failed: nothing left the pocket, so the link is the honest way on.
+      return link;
+  }
 }
 
 function askLink(command: Extract<Command, { type: "request" }>, sender: Sender, site: Site): string {

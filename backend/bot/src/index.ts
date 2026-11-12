@@ -24,6 +24,8 @@ async function main() {
       handle: config.x.handle,
       webUrl: config.webUrl,
       chain: config.chain,
+      // On NEAR the secret only exists to send from X pockets.
+      pocket: config.chain === "near" && Boolean(config.botSecret),
       state: new FileStateStore(config.statePath),
       pollMs: config.x.pollMs,
       activeMs: config.x.activeMs,
@@ -38,10 +40,15 @@ async function main() {
   }
 
   console.log(
-    config.chain === "near"
-      ? `Selkie bot on NEAR: replies with links to ${config.webUrl}; it never moves money`
-      : `Selkie bot talking to ${config.apiUrl}`,
+    config.chain !== "near"
+      ? `Selkie bot talking to ${config.apiUrl}`
+      : config.botSecret
+        ? `Selkie bot on NEAR: sends from X pockets through ${config.apiUrl}, links to ${config.webUrl} otherwise`
+        : `Selkie bot on NEAR: replies with links to ${config.webUrl}; it never moves money (no SELKIE_BOT_SECRET)`,
   );
+  if (config.chain === "near" && config.botSecret && config.dryRun) {
+    console.log("DRY RUN: no pocket money moves either, since no receipt would be posted.");
+  }
   if (config.dryRun) {
     console.log("DRY RUN: replies are worked out and logged, and nothing is posted.");
     console.log("Set SELKIE_BOT_DRY_RUN=0 when you want it to post for real.");

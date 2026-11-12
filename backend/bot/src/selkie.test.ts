@@ -93,3 +93,43 @@ describe("what a payment is keyed on", () => {
     assert.notEqual(calls[0]?.key, calls[1]?.key);
   });
 });
+
+describe("sending from an X pocket (NEAR)", () => {
+  it("asks /near/bot/send as the bot, with the secret, keyed on the post and its author", async () => {
+    const seen: { path: string; headers: Headers; body: unknown }[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push({ path: new URL(String(url)).pathname, headers: new Headers(init?.headers), body: JSON.parse(String(init?.body)) });
+      return new Response(JSON.stringify({ status: "no-pocket" }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    try {
+      const result = await client.pocketSend(sender("post-9"), { to: "bo", amount: "2", note: "for lunch" });
+      assert.deepEqual(result, { status: "no-pocket" });
+    } finally {
+      globalThis.fetch = original;
+    }
+
+    assert.equal(seen[0]?.path, "/near/bot/send");
+    assert.equal(seen[0]?.headers.get("x-selkie-bot-secret"), SECRET);
+    assert.equal(seen[0]?.headers.get("authorization"), null, "not made as the person: nobody's account is signed for");
+    assert.deepEqual(seen[0]?.body, {
+      tweetId: "post-9",
+      senderXUserId: "111",
+      senderHandle: "amaka",
+      to: "bo",
+      amount: "2",
+      note: "for lunch",
+    });
+  });
+
+  it("turns a refusal into the API's own words", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: "That is not the bot." }), { status: 401 })) as typeof fetch;
+    try {
+      await assert.rejects(client.pocketSend(sender("post-9"), { to: "bo", amount: "2" }), /not the bot/);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});

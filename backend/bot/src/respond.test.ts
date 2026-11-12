@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { parseCommand } from "./parse";
 import { respond } from "./respond";
 import { SelkieApiError } from "./selkie";
-import type { SelkieClient, Sender, SendResult } from "./selkie";
+import type { PocketSendResult, SelkieClient, Sender, SendResult } from "./selkie";
 import { weigh, MAX_WEIGHT } from "./text";
 
 const AMAKA: Sender = { platform: "x", subject: "111", username: "amaka", messageId: "m1" };
@@ -16,7 +16,7 @@ const settled: SendResult = {
   waitingToBeClaimed: false,
 };
 
-function selkie(overrides: Partial<Record<"send" | "request", unknown>> = {}): SelkieClient {
+function selkie(overrides: Partial<Record<"send" | "request" | "pocketSend", unknown>> = {}): SelkieClient {
   return {
     send: async () => settled,
     request: async () => ({ id: "req1" }),
@@ -311,5 +311,127 @@ describe("on NEAR, money commands come back as a link", () => {
     const note = "x".repeat(80);
     const text = (await near(`@SelkiePay send 123456.78 to @a_fifteen_chars ${note}`)) ?? "";
     assert.ok(weigh(text) <= MAX_WEIGHT, `${weigh(text)}: ${text}`);
+  });
+
+  it("never asks the API to pay from a pocket when the pocket is off", async () => {
+    const off = selkie({ pocketSend: async () => assert.fail("pocket is off") });
+    const text =
+      (await respond(parseCommand("@SelkiePay send 5 to @tunde"), AMAKA, off, {
+        webUrl: "https://selkiepay.com",
+        chain: "near",
+      })) ?? "";
+    assert.match(text, /Check it and send/);
+  });
+});
+
+describe("on NEAR with an X pocket, a send tries the pocket first", () => {
+  const EXPLORER = "https://explorer.testnet.near.org/transactions/9xQe1rLhfbT6k1c3TqZcVW5JbLJ6m7Cq2pGq5hQq4Abc";
+  const sent: PocketSendResult = {
+    status: "sent",
+    txHash: "9xQe1rLhfbT6k1c3TqZcVW5JbLJ6m7Cq2pGq5hQq4Abc",
+    explorerUrl: EXPLORER,
+    amount: "2",
+    to: "tunde",
+    toAccount: "tunde.x.selkiepay.testnet",
+    leftToday: "8",
+  };
+
+  /** A fake API that answers the pocket send as told and records what it was asked. */
+  function api(answer: PocketSendResult | Error) {
+    const asked: { sender: Sender; payment: unknown }[] = [];
+    const client = selkie({
+      send: async () => assert.fail("NEAR never pays through /payments/send"),
+      pocketSend: async (sender: Sender, payment: unknown) => {
+        asked.push({ sender, payment });
+        if (answer instanceof Error) throw answer;
+        return answer;
+      },
+    });
+    return { client, asked };
+  }
+
+  const errors: unknown[] = [];
+  const pocketReply = (text: string, client: SelkieClient) =>
+    respond(parseCommand(text), AMAKA, client, {
+      webUrl: "https://selkiepay.com",
+      self: "SelkiePay",
+      chain: "near",
+      pocket: true,
+      onError: (error) => errors.push(error),
+    });
+
+  it("sent: a receipt with the explorer link, and nothing about signing", async () => {
+    const { client, asked } = api(sent);
+    const text = (await pocketReply("@SelkiePay send 2 to @tunde for lunch", client)) ?? "";
+    assert.equal(text, `✅ Sent 2 USDC to @tunde\n⚡ Straight from your Selkie pocket\n🔗 ${EXPLORER}`);
+    // Asked as the tweet's author, keyed on the tweet.
+    assert.deepEqual(asked, [{ sender: AMAKA, payment: { to: "tunde", amount: "2", note: "for lunch" } }]);
+  });
+
+  it("no-pocket: the link, and where to top up", async () => {
+    const text = (await pocketReply("@SelkiePay send 2 to @tunde", api({ status: "no-pocket" }).client)) ?? "";
+    assert.match(text, /Check it and send: selkiepay\.com\/pay\/tunde\?amount=2/);
+    assert.match(text, /⚡ Top up a pocket at selkiepay\.com to send straight from X$/);
+  });
+
+  it("no-account: the link, and where to top up", async () => {
+    const text = (await pocketReply("@SelkiePay send 2 to @tunde", api({ status: "no-account" }).client)) ?? "";
+    assert.match(text, /Check it and send/);
+    assert.match(text, /Top up a pocket at selkiepay\.com/);
+  });
+
+  it("not-on-selkie: just the link, since it waits for them once signed", async () => {
+    const text = (await pocketReply("@SelkiePay send 2 to @tunde", api({ status: "not-on-selkie" }).client)) ?? "";
+    assert.match(text, /Check it and send/);
+    assert.doesNotMatch(text, /pocket/i);
+  });
+
+  it("low-balance: the link, and what the pocket has left today", async () => {
+    const text = (await pocketReply("@SelkiePay send 5 to @tunde", api({ status: "low-balance", leftToday: "3" }).client)) ?? "";
+    assert.match(text, /Check it and send/);
+    assert.match(text, /Your pocket has 3 USDC left today$/);
+  });
+
+  it("over-cap: the link, and what the pocket has left today", async () => {
+    const text = (await pocketReply("@SelkiePay send 5 to @tunde", api({ status: "over-cap", leftToday: "0.5" }).client)) ?? "";
+    assert.match(text, /Check it and send/);
+    assert.match(text, /Your pocket has 0\.5 USDC left today$/);
+  });
+
+  it("failed: just the link, since nothing left the pocket", async () => {
+    const text = (await pocketReply("@SelkiePay send 2 to @tunde", api({ status: "failed", message: "no" }).client)) ?? "";
+    assert.match(text, /Check it and send/);
+    assert.doesNotMatch(text, /Sent 2/);
+  });
+
+  it("an API error: the link, never silence, and the error is logged", async () => {
+    errors.length = 0;
+    for (const error of [new SelkieApiError("Selkie is not answering right now (timed out).", 503), new Error("boom")]) {
+      const text = (await pocketReply("@SelkiePay send 2 to @tunde", api(error).client)) ?? "";
+      assert.match(text, /Check it and send/);
+      assert.doesNotMatch(text, /boom|timed out/, "internals stay off the timeline");
+    }
+    assert.equal(errors.length, 2);
+  });
+
+  it("does not ask the pocket to pay yourself, the bot, or in anything but USDC", async () => {
+    const { client, asked } = api(sent);
+    assert.match((await pocketReply("@SelkiePay send 5 to @amaka", client)) ?? "", /That is you/);
+    assert.match((await pocketReply("@SelkiePay send 5 to @SelkiePay", client)) ?? "", /That one is me/);
+    assert.match((await pocketReply("@SelkiePay send 5 XLM to @tunde", client)) ?? "", /On Selkie I move USDC/);
+    assert.equal(asked.length, 0);
+  });
+
+  it("every reply fits in a tweet", async () => {
+    const note = "x".repeat(80);
+    const command = `@SelkiePay send 123456.78 to @a_fifteen_chars ${note}`;
+    for (const answer of [
+      sent,
+      { status: "no-pocket" },
+      { status: "over-cap", leftToday: "123456.78" },
+    ] as PocketSendResult[]) {
+      const text = (await pocketReply(command, api(answer).client)) ?? "";
+      assert.ok(weigh(text) <= MAX_WEIGHT, `${answer.status} ${weigh(text)}: ${text}`);
+    }
   });
 });

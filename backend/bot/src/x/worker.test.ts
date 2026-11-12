@@ -323,6 +323,61 @@ describe("a dry run", () => {
   });
 });
 
+describe("on NEAR with X pockets", () => {
+  /** An API whose pocket always pays, recording who asked for what. */
+  function pocketApi() {
+    const asked: { sender: { subject: string; username: string; messageId: string }; payment: unknown }[] = [];
+    const selkie = {
+      pocketSend: async (sender: (typeof asked)[number]["sender"], payment: unknown) => {
+        asked.push({ sender, payment });
+        return {
+          status: "sent",
+          txHash: "tx1",
+          explorerUrl: "https://explorer.testnet.near.org/transactions/tx1",
+          amount: "2",
+          to: "bo",
+          toAccount: "bo.x.selkiepay.testnet",
+          leftToday: "8",
+        };
+      },
+    } as unknown as SelkieClient;
+    return { selkie, asked };
+  }
+
+  it("pays from the author's pocket, keyed on the mention, and posts the receipt", async () => {
+    const { selkie, asked } = pocketApi();
+    const { worker, posted } = build([[mention("10", "@SelkiePay send 2 to @bo")]], {
+      state: new MemoryStateStore({ sinceId: "1" }),
+      chain: "near",
+      pocket: true,
+      selkie,
+    });
+
+    await worker.poll();
+
+    assert.equal(asked.length, 1);
+    assert.equal(asked[0]?.sender.subject, "author-amaka", "the author's X id, read off X itself");
+    assert.equal(asked[0]?.sender.messageId, "10");
+    assert.match(posted[0]?.text ?? "", /^✅ Sent 2 USDC to @bo/);
+  });
+
+  it("moves no pocket money in a dry run, where no receipt would be posted", async () => {
+    const { selkie, asked } = pocketApi();
+    const { worker, logs } = build([[mention("10", "@SelkiePay send 2 to @bo")]], {
+      state: new MemoryStateStore({ sinceId: "1" }),
+      chain: "near",
+      pocket: true,
+      dryRun: true,
+      selkie,
+    });
+
+    await worker.poll();
+
+    assert.equal(asked.length, 0);
+    assert.ok(logs.some((line) => line.includes("[dry run]") && line.includes("Check it and send")));
+  });
+});
+
 describe("when things go wrong", () => {
   it("keeps going when a reply will not post", async () => {
     const fake = fakeX([[mention("10", "@SelkiePay send 5 to @bo")]], { failReply: true });

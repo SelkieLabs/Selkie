@@ -86,10 +86,19 @@ describe("posting for real", () => {
 });
 
 describe("on NEAR", () => {
-  it("needs no bot secret, because it never acts for anyone", () => {
+  it("needs no bot secret: without one it only ever replies with links", () => {
     const config = loadBotConfig({ ...BASE, SELKIE_CHAIN: "near", SELKIE_BOT_SECRET: undefined });
     assert.equal(config.chain, "near");
     assert.equal(config.botSecret, "");
+  });
+
+  it("keeps a secret it is given, which lets it send from X pockets", () => {
+    const config = loadBotConfig({ ...BASE, SELKIE_CHAIN: "near" });
+    assert.equal(config.botSecret, BASE.SELKIE_BOT_SECRET);
+  });
+
+  it("still refuses a secret short enough to guess", () => {
+    assert.throws(() => loadBotConfig({ ...BASE, SELKIE_CHAIN: "near", SELKIE_BOT_SECRET: "short" }));
   });
 
   it("is Stellar unless told otherwise, and still demands the secret there", () => {

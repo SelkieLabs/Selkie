@@ -45,6 +45,8 @@ export interface XWorkerOptions {
   webUrl: string;
   /** On NEAR, money commands are answered with a link instead of moving money. */
   chain?: BotChain;
+  /** On NEAR, a "send" tries the sender's X pocket first (needs the bot secret). */
+  pocket?: boolean;
   state: StateStore;
   /** The slowest it will poll, used when X reports no quota to work from. */
   pollMs?: number;
@@ -91,6 +93,7 @@ export class XWorker {
       activeMs: 3_000,
       dryRun: false,
       chain: "stellar",
+      pocket: false,
       log: console.log,
       sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
       ...options,
@@ -254,6 +257,9 @@ export class XWorker {
       {
         webUrl: this.#options.webUrl,
         chain: this.#options.chain,
+        // A dry run posts no receipt, so it must not pay from a pocket either:
+        // money moving with no reply is worse than no money moving.
+        pocket: this.#options.pocket && !this.dryRun,
         self: this.#options.handle,
         onError: (error) => this.#options.log(`unexpected: ${describe(error)}`),
       },

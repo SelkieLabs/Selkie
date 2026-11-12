@@ -41,6 +41,18 @@ export interface Balance {
   asset: string;
 }
 
+/** How long a pocket send may take: the API answers once NEAR has finalised it. */
+const POCKET_SEND_TIMEOUT_MS = 60_000;
+
+/** What the API did with a "send" from somebody's X pocket (NEAR). Amounts are decimal USDC. */
+export type PocketSendResult =
+  | { status: "sent"; txHash: string; explorerUrl: string; amount: string; to: string; toAccount: string; leftToday: string }
+  | {
+      status: "no-account" | "no-pocket" | "not-on-selkie" | "low-balance" | "over-cap" | "failed";
+      leftToday?: string;
+      message?: string;
+    };
+
 export interface Me {
   user: { id: string; address: string; handles: { platform: string; username: string }[] };
   balances: Balance[];
@@ -132,6 +144,35 @@ export class SelkieClient {
     });
   }
 
+  /**
+   * NEAR: pay from the sender's X pocket, because they tweeted.
+   *
+   * Not made as the person, unlike everything above: on NEAR nobody's account
+   * can be signed for. The secret proves the request is the bot's, and the API
+   * pays only from this X user's own pocket, only to people on Selkie, only up
+   * to their daily limit. Keyed on the post, so reading it twice pays once.
+   */
+  async pocketSend(
+    sender: Sender,
+    payment: { to: string; amount: string; note?: string },
+  ): Promise<PocketSendResult> {
+    return this.#fetch(
+      "POST",
+      "/near/bot/send",
+      { "x-selkie-bot-secret": this.#botSecret },
+      {
+        tweetId: sender.messageId,
+        senderXUserId: sender.subject,
+        senderHandle: sender.username,
+        to: payment.to,
+        amount: payment.amount,
+        ...(payment.note ? { note: payment.note } : {}),
+      },
+      // The API waits for the transfer to be final before it answers. Giving up
+      // early would mean a link reply for money that did move.
+      Math.max(this.#timeoutMs, POCKET_SEND_TIMEOUT_MS),
+    );
+  }
 
   async #call<T>(
     sender: Sender,
@@ -146,12 +187,23 @@ export class SelkieClient {
     );
 
     const headers: Record<string, string> = { authorization: `Bearer ${token}` };
-    if (body !== undefined) headers["content-type"] = "application/json";
     if (options.idempotencyKey) headers["idempotency-key"] = options.idempotencyKey;
+    return this.#fetch(method, path, headers, body);
+  }
+
+  async #fetch<T>(
+    method: string,
+    path: string,
+    given: Record<string, string>,
+    body?: unknown,
+    timeoutMs = this.#timeoutMs,
+  ): Promise<T> {
+    const headers = { ...given };
+    if (body !== undefined) headers["content-type"] = "application/json";
 
     // A hung request must not stall the poll loop behind it, or one slow call
     // silently stops the bot answering anybody.
-    const abort = AbortSignal.timeout(this.#timeoutMs);
+    const abort = AbortSignal.timeout(timeoutMs);
 
     let response: Response;
     try {
