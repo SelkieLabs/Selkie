@@ -4,6 +4,7 @@ import { useState, type KeyboardEvent } from "react";
 import { ArrowLeft, Check, Clock, Loader2, X } from "lucide-react";
 import { Avatar } from "@/components/Layout";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
+import { HandleSuggestions } from "@/components/wallet/HandleSuggestions";
 import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
 import { useConfirm } from "@/contexts/useConfirm";
@@ -13,6 +14,7 @@ import { isNear } from "@/lib/chain";
 import { DOLLAR, cleanAmount, parseHandles, usd } from "@/lib/format";
 import { useNearPay } from "@/lib/near-wallet";
 import { PLATFORMS, PLATFORM_LABEL, type Platform } from "@/lib/platform";
+import { useHandleSuggestions } from "@/lib/useHandleSuggestions";
 
 /**
  * The server refuses more than this in one go; saying so early beats a rejection.
@@ -70,7 +72,38 @@ export function PayManyPanel({
     setDraft("");
   };
 
+  // People on Selkie matching the handle being typed (NEAR, X, from 3 letters),
+  // minus anyone already on the list.
+  const [draftFocused, setDraftFocused] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const typed = draft.trim().replace(/^@+/, "").toLowerCase();
+  const found = useHandleSuggestions(typed, isNear && platform === "x");
+  const suggestions = found.filter(
+    (match) => !handles.includes(match.username) && !(found.length === 1 && match.username === typed),
+  );
+  const showSuggestions = draftFocused && suggestions.length > 0;
+  const pick = (username: string) => {
+    commit(username);
+    setActiveSuggestion(-1);
+  };
+
   const onKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (showSuggestions && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      setActiveSuggestion((i) => (i + step + suggestions.length) % suggestions.length);
+      return;
+    }
+    if (showSuggestions && event.key === "Escape") {
+      setDraftFocused(false);
+      return;
+    }
+    const chosen = showSuggestions ? suggestions[activeSuggestion] : undefined;
+    if (event.key === "Enter" && chosen) {
+      event.preventDefault();
+      pick(chosen.username);
+      return;
+    }
     if (event.key === "Enter" || event.key === "," || event.key === " ") {
       event.preventDefault();
       commit(draft);
@@ -261,6 +294,7 @@ export function PayManyPanel({
       <label className="label mt-5 block" htmlFor="many-handles">
         Their {PLATFORM_LABEL[platform]} handles
       </label>
+      <div className="relative">
       <div
         className="mt-2 flex min-h-[3rem] flex-wrap items-center gap-2 rounded-xl border-2 border-pen bg-card-bright p-2 focus-within:border-[#b8871f] focus-within:shadow-[0_0_0_4px_rgba(217,168,92,0.3)]"
         onClick={() => document.getElementById("many-handles")?.focus()}
@@ -288,14 +322,36 @@ export function PayManyPanel({
           autoCorrect="off"
           spellCheck={false}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          role="combobox"
+          aria-expanded={showSuggestions}
+          aria-controls="many-suggestions"
+          aria-autocomplete="list"
+          aria-activedescendant={showSuggestions && activeSuggestion >= 0 ? `many-suggestions-${activeSuggestion}` : undefined}
+          onFocus={() => setDraftFocused(true)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setActiveSuggestion(-1);
+            setDraftFocused(true);
+          }}
           onKeyDown={onKey}
-          onBlur={() => commit(draft)}
+          onBlur={() => {
+            setDraftFocused(false);
+            commit(draft);
+          }}
           onPaste={(e) => {
             e.preventDefault();
             commit(e.clipboardData.getData("text"));
           }}
         />
+      </div>
+      {showSuggestions && (
+        <HandleSuggestions
+          id="many-suggestions"
+          matches={suggestions}
+          active={activeSuggestion}
+          onPick={(match) => pick(match.username)}
+        />
+      )}
       </div>
       <p className="mt-2 text-[13px] font-medium text-pen/50">
         {handles.length === 0
