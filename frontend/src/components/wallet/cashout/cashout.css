@@ -1,0 +1,1053 @@
+/*
+ * Tide, for moving money out (and in from other chains).
+ *
+ * Calm ink so the numbers read first. Sea-glass marks what you can act on and
+ * where you are; gold appears only on money that has arrived for you. One
+ * easing curve throughout, and nothing moves for people who asked it not to.
+ */
+
+.co {
+  --co-foam: #e9f1ee;
+  --co-foam-2: rgba(233, 241, 236, 0.72);
+  --co-foam-3: rgba(233, 241, 236, 0.5);
+  --co-line: rgba(233, 241, 236, 0.08);
+  --co-line-2: rgba(233, 241, 236, 0.14);
+  --co-sg: #7fd1b9;
+  --co-sg-light: #a8e3d1;
+  --co-gold: #d9a441;
+  --co-abyss: #07131c;
+  --co-i0: #0b0d14;
+  --co-i1: #11141c;
+  --co-i2: #1a1e28;
+  --co-i3: #232836;
+  --co-bad: #f2a08e;
+  --co-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --co-ring: var(--co-i1);
+
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  background: var(--co-i1);
+  color: var(--co-foam);
+  box-shadow:
+    inset 0 0 0 1px var(--co-line),
+    0 30px 60px -40px rgba(0, 0, 0, 0.85);
+  padding: 20px;
+  font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+}
+@media (min-width: 640px) {
+  .co {
+    padding: 28px;
+  }
+}
+/* A little light from the surface, at the top of the card only. */
+.co::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 220px;
+  pointer-events: none;
+  background: radial-gradient(60% 100% at 30% 0%, rgba(22, 68, 87, 0.32), rgba(22, 68, 87, 0));
+}
+.co > * {
+  position: relative;
+}
+
+/* Chain marks sit on a ring the colour of whatever is behind them. */
+.co .ring-card-bright {
+  --tw-ring-color: var(--co-ring);
+}
+
+/* ---------- heading ---------- */
+.co-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--co-foam-3);
+}
+.co-kicker i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--co-sg);
+}
+.co-title {
+  margin-top: 6px;
+  font-family: "Bricolage Grotesque", "Geist", sans-serif;
+  font-weight: 800;
+  font-size: 28px;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+@media (min-width: 640px) {
+  .co-title {
+    font-size: 32px;
+  }
+}
+.co-blurb {
+  margin-top: 8px;
+  max-width: 34rem;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--co-foam-2);
+}
+.co-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--co-foam-3);
+}
+
+/* ---------- where you are ---------- */
+.co-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+}
+.co-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0 22px;
+}
+.co-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  color: var(--co-foam-3);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: default;
+}
+.co-step > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.co-step b {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-weight: 500;
+  margin-right: 6px;
+  color: inherit;
+  opacity: 0.7;
+}
+/* On the narrowest phones the names matter more than the numbers. */
+@media (max-width: 380px) {
+  .co-step b {
+    display: none;
+  }
+}
+.co-step-bar {
+  position: relative;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--co-line);
+  overflow: hidden;
+}
+.co-step-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--co-sg);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 450ms var(--co-ease);
+}
+.co-step[data-state="done"] {
+  color: var(--co-foam-2);
+  cursor: pointer;
+}
+.co-step[data-state="done"] .co-step-bar::after {
+  transform: scaleX(1);
+  background: rgba(127, 209, 185, 0.45);
+}
+.co-step[data-state="done"]:hover {
+  color: var(--co-foam);
+}
+.co-step[data-state="now"] {
+  color: var(--co-foam);
+}
+.co-step[data-state="now"] .co-step-bar::after {
+  transform: scaleX(1);
+}
+.co-step:focus-visible {
+  outline: 2px solid var(--co-sg);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+/* What you picked so far. Tap one to change it. */
+.co-trail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+.co-steps + .co-trail {
+  margin: -6px 0 22px;
+}
+.co-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  max-width: 100%;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--co-i2);
+  box-shadow: inset 0 0 0 1px var(--co-line);
+  color: var(--co-foam-2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 160ms var(--co-ease),
+    color 160ms var(--co-ease);
+  --co-ring: var(--co-i2);
+}
+.co-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.co-pill:hover {
+  background: var(--co-i3);
+  color: var(--co-foam);
+  --co-ring: var(--co-i3);
+}
+.co-pill .co-mono {
+  color: var(--co-foam);
+}
+
+/* ---------- choices ---------- */
+.co-choices {
+  display: grid;
+  gap: 10px;
+}
+.co-choice {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  width: 100%;
+  padding: 14px;
+  border: 0;
+  border-radius: 18px;
+  background: rgba(233, 241, 236, 0.025);
+  box-shadow: inset 0 0 0 1px var(--co-line);
+  color: var(--co-foam);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    box-shadow 180ms var(--co-ease),
+    background-color 180ms var(--co-ease),
+    transform 180ms var(--co-ease);
+}
+.co-choice:hover {
+  background: rgba(127, 209, 185, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(127, 209, 185, 0.45);
+  transform: translateY(-1px);
+}
+.co-choice:active {
+  transform: translateY(0);
+}
+.co-choice:focus-visible {
+  outline: 2px solid var(--co-sg);
+  outline-offset: 3px;
+}
+.co-choice[aria-pressed="true"] {
+  background: rgba(127, 209, 185, 0.07);
+  box-shadow: inset 0 0 0 1.5px var(--co-sg);
+}
+.co-choice-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: var(--co-i2);
+  color: var(--co-foam-2);
+  --co-ring: var(--co-i2);
+  transition: color 180ms var(--co-ease);
+}
+.co-choice:hover .co-choice-icon {
+  color: var(--co-sg);
+}
+.co-choice-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.co-choice-what {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--co-foam-2);
+}
+.co-choice-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--co-foam-3);
+}
+.co-choice-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.co-choice-meta .co-soon {
+  color: var(--co-foam-2);
+  border: 1px dashed var(--co-line-2);
+  border-radius: 6px;
+  padding: 1px 7px;
+}
+.co-choice-arrow {
+  color: var(--co-foam-3);
+  transition:
+    transform 180ms var(--co-ease),
+    color 180ms var(--co-ease);
+}
+.co-choice:hover .co-choice-arrow {
+  color: var(--co-sg);
+  transform: translateX(2px);
+}
+
+/* ---------- fields ---------- */
+.co-field {
+  --co-ring: var(--co-i0);
+  width: 100%;
+  min-height: 50px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--co-i0);
+  box-shadow: inset 0 0 0 1px var(--co-line-2);
+  color: var(--co-foam);
+  font-size: 15px;
+  font-weight: 500;
+  transition: box-shadow 160ms var(--co-ease);
+}
+textarea.co-field {
+  padding: 13px 14px;
+  resize: none;
+}
+.co-field::placeholder {
+  color: rgba(233, 241, 236, 0.32);
+  font-weight: 400;
+}
+.co-field:focus,
+.co-field:focus-within,
+.co-field[aria-expanded="true"] {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(127, 209, 185, 0.6),
+    0 0 0 4px rgba(127, 209, 185, 0.1);
+}
+.co-field[aria-invalid="true"] {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(242, 160, 142, 0.6),
+    0 0 0 4px rgba(242, 160, 142, 0.08);
+}
+select.co-field {
+  appearance: none;
+  padding-right: 40px;
+}
+/* Component CSS lands after Tailwind's utilities, so variants are classes
+   here rather than utilities on the element. */
+.co-field.co-mono {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.co-field.co-trigger {
+  padding-right: 44px;
+}
+.co-field.co-box {
+  min-height: 0;
+  padding: 12px 14px;
+}
+.co-field.co-num {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+}
+select.co-field option {
+  background: var(--co-i1);
+  color: var(--co-foam);
+}
+
+/* The amount: the one big number on the screen. */
+.co-amount {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 88px;
+  padding: 0 18px;
+  cursor: text;
+}
+.co-amount .co-cur {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-weight: 700;
+  font-size: 34px;
+  color: var(--co-foam-3);
+}
+.co-amount input {
+  /* A percentage width stops the input's natural size (20 characters at 44px)
+     from setting the card's minimum width on a phone. */
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--co-foam);
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-weight: 800;
+  font-size: 44px;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.co-amount input::placeholder {
+  color: rgba(233, 241, 236, 0.22);
+}
+.co-amount .co-unit {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  color: var(--co-foam-3);
+}
+@media (max-width: 380px) {
+  .co-amount input {
+    font-size: 36px;
+  }
+}
+
+.co-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.co-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--co-i2);
+  box-shadow: inset 0 0 0 1px var(--co-line);
+  color: var(--co-foam-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 160ms var(--co-ease),
+    color 160ms var(--co-ease),
+    box-shadow 160ms var(--co-ease);
+}
+.co-chip:hover {
+  color: var(--co-foam);
+  background: var(--co-i3);
+}
+.co-chip[aria-pressed="true"] {
+  background: rgba(127, 209, 185, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(127, 209, 185, 0.55);
+  color: var(--co-sg-light);
+}
+.co-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- buttons ---------- */
+.co-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 52px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--co-sg);
+  color: var(--co-abyss);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 160ms var(--co-ease),
+    transform 160ms var(--co-ease),
+    opacity 160ms var(--co-ease);
+}
+.co-btn:hover {
+  background: #96dcc7;
+}
+.co-btn:active {
+  transform: scale(0.985);
+}
+.co-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+.co-btn:focus-visible,
+.co-ghost:focus-visible,
+.co-chip:focus-visible,
+.co-pill:focus-visible,
+.co-link:focus-visible {
+  outline: 2px solid var(--co-sg);
+  outline-offset: 3px;
+}
+.co-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 48px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--co-line-2);
+  color: var(--co-foam-2);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 160ms var(--co-ease),
+    color 160ms var(--co-ease);
+}
+.co-ghost:hover {
+  background: rgba(233, 241, 236, 0.05);
+  color: var(--co-foam);
+}
+.co-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.co-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--co-foam-3);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 160ms var(--co-ease);
+}
+.co-back:hover {
+  color: var(--co-foam);
+}
+.co-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--co-sg);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  text-decoration: none;
+  border-radius: 4px;
+}
+.co-link:hover {
+  color: var(--co-sg-light);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- words ---------- */
+.co-mono {
+  font-family: "Geist Mono", ui-monospace, monospace;
+}
+.co-hint {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--co-foam-3);
+}
+.co-error {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--co-bad);
+}
+.co-ok {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--co-sg);
+}
+.co-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px 14px;
+  border-radius: 14px;
+  background: rgba(233, 241, 236, 0.04);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--co-foam-2);
+}
+.co-note > svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--co-foam-3);
+}
+.co-note b {
+  color: var(--co-foam);
+  font-weight: 600;
+}
+.co-note[data-tone="warn"] {
+  background: rgba(242, 160, 142, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(242, 160, 142, 0.2);
+}
+.co-note[data-tone="warn"] > svg {
+  color: var(--co-bad);
+}
+.co-note[data-tone="info"] {
+  background: rgba(127, 209, 185, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(127, 209, 185, 0.22);
+}
+.co-note[data-tone="info"] > svg {
+  color: var(--co-sg);
+}
+.co-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  font-weight: 600;
+  color: var(--co-foam);
+  cursor: pointer;
+}
+.co-check input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  accent-color: var(--co-bad);
+}
+
+/* ---------- the receipt ---------- */
+.co-receipt {
+  --co-ring: var(--co-i0);
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--co-i0);
+  box-shadow: inset 0 0 0 1px var(--co-line);
+}
+.co-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 16px;
+  border-top: 1px solid rgba(233, 241, 236, 0.06);
+}
+.co-row:first-child {
+  border-top: 0;
+}
+.co-row > span:first-child {
+  flex: none;
+  font-size: 13.5px;
+  color: var(--co-foam-3);
+}
+.co-row-value {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--co-foam);
+}
+.co-row-value > span {
+  min-width: 0;
+}
+.co-row-value .co-mono {
+  font-size: 12.5px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+.co-row[data-muted="true"] .co-row-value {
+  color: var(--co-foam-3);
+}
+
+/* Send on top, arrive below, and a drop of light that sinks between them once. */
+.co-flow {
+  display: grid;
+  gap: 0;
+  padding: 18px 18px 16px;
+}
+.co-flow-side {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.co-flow-side small {
+  display: block;
+  font-size: 13px;
+  color: var(--co-foam-3);
+}
+.co-flow-amount {
+  display: block;
+  margin-top: 2px;
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-weight: 800;
+  font-size: 34px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.co-flow-amount em {
+  font-style: normal;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--co-foam-3);
+  margin-left: 6px;
+}
+.co-flow-get .co-flow-amount {
+  font-size: 26px;
+}
+.co-sink {
+  position: relative;
+  width: 2px;
+  height: 34px;
+  margin: 8px 0 8px 14px;
+  background-image: linear-gradient(to bottom, var(--co-line-2) 50%, transparent 0);
+  background-size: 2px 6px;
+}
+.co-sink::after {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--co-sg);
+  box-shadow: 0 0 12px rgba(127, 209, 185, 0.8);
+  animation: co-sink 1100ms var(--co-ease) 250ms both;
+}
+@keyframes co-sink {
+  from {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(30px);
+    opacity: 1;
+  }
+}
+
+/* The price is live: a thin ring runs down to the next refresh. */
+.co-fresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--co-foam-3);
+}
+.co-fresh svg {
+  transform: rotate(-90deg);
+}
+.co-fresh circle:last-child {
+  stroke-dasharray: 31.4;
+  stroke-dashoffset: 0;
+  animation: co-countdown var(--co-every, 30s) linear forwards;
+}
+@keyframes co-countdown {
+  to {
+    stroke-dashoffset: 31.4;
+  }
+}
+
+/* ---------- the timeline ---------- */
+.co-tl {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.co-tl li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  padding-bottom: 18px;
+  animation: co-rise 420ms var(--co-ease) both;
+  animation-delay: calc(var(--i, 0) * 110ms);
+}
+.co-tl li:last-child {
+  padding-bottom: 0;
+}
+/* The line down to the next stage fills once this one is done. */
+.co-tl li:not(:last-child)::before,
+.co-tl li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 30px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--co-line);
+}
+.co-tl li:not(:last-child)::after {
+  background: var(--co-sg);
+  transform-origin: top;
+  transform: scaleY(0);
+  transition: transform 600ms var(--co-ease);
+}
+.co-tl li[data-state="done"]:not(:last-child)::after {
+  transform: scaleY(1);
+}
+.co-node {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--co-line-2);
+  color: var(--co-foam-3);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  transition:
+    background-color 300ms var(--co-ease),
+    box-shadow 300ms var(--co-ease);
+}
+.co-tl li[data-state="done"] .co-node {
+  background: var(--co-sg);
+  box-shadow: none;
+  color: var(--co-abyss);
+}
+.co-tl li[data-state="now"] .co-node {
+  box-shadow: inset 0 0 0 1.5px var(--co-sg);
+  color: var(--co-sg);
+}
+.co-tl li[data-state="back"] .co-node {
+  background: rgba(233, 241, 236, 0.12);
+  box-shadow: none;
+  color: var(--co-foam);
+}
+.co-tl li[data-state="bad"] .co-node {
+  background: rgba(242, 160, 142, 0.16);
+  box-shadow: inset 0 0 0 1.5px rgba(242, 160, 142, 0.5);
+  color: var(--co-bad);
+}
+.co-tl-title {
+  padding-top: 3px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--co-foam);
+}
+.co-tl li[data-state="next"] .co-tl-title {
+  color: var(--co-foam-3);
+  font-weight: 500;
+}
+.co-tl li[data-state="bad"] .co-tl-title {
+  color: var(--co-bad);
+}
+.co-tl-detail {
+  margin-top: 2px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--co-foam-3);
+}
+.co-tl-detail[data-gold="true"] {
+  color: var(--co-gold);
+}
+.co-spin {
+  animation: co-spin 900ms linear infinite;
+}
+@keyframes co-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- done ---------- */
+.co-seal {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: rgba(127, 209, 185, 0.12);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(127, 209, 185, 0.5),
+    0 0 0 10px rgba(127, 209, 185, 0.05);
+  color: var(--co-sg);
+  animation: co-pop 520ms var(--co-ease) both;
+}
+.co-seal path {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: co-draw 520ms var(--co-ease) 260ms forwards;
+}
+.co-seal[data-tone="wait"] {
+  background: rgba(233, 241, 236, 0.06);
+  box-shadow: inset 0 0 0 1.5px var(--co-line-2);
+  color: var(--co-foam-2);
+}
+@keyframes co-pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes co-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.co-big {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-weight: 800;
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- menus (the coin picker) ---------- */
+.co-menu {
+  --co-ring: var(--co-i2);
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin-top: 8px;
+  max-height: 20rem;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--co-i2);
+  box-shadow:
+    inset 0 0 0 1px var(--co-line),
+    0 24px 40px -20px rgba(0, 0, 0, 0.85);
+  animation: co-rise 220ms var(--co-ease) both;
+}
+.co-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 11px;
+  background: none;
+  color: var(--co-foam);
+  font-size: 15px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms var(--co-ease);
+}
+.co-option:hover,
+.co-option:focus-visible {
+  outline: none;
+  background: rgba(233, 241, 236, 0.06);
+}
+.co-option[aria-selected="true"] {
+  background: rgba(127, 209, 185, 0.1);
+}
+.co-option em {
+  font-style: normal;
+  color: var(--co-foam-3);
+}
+
+/* ---------- moving between steps ---------- */
+.co-enter {
+  animation: co-in 380ms var(--co-ease) both;
+}
+.co-enter[data-from="back"] {
+  animation-name: co-in-back;
+}
+@keyframes co-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes co-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes co-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .co *,
+  .co *::before,
+  .co *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  .co-spin {
+    animation: none !important;
+  }
+  .co-fresh circle:last-child {
+    animation: none !important;
+  }
+  .co-choice:hover {
+    transform: none;
+  }
+}
