@@ -211,6 +211,7 @@ Limits, stated plainly:
 - Next.js 16 and React 19
 - Tailwind CSS
 - lucide-react
+- lenis 1.3.27 (smooth scrolling on the landing)
 - qrcode
 - Fastify 5 and @fastify/rate-limit
 - pg
