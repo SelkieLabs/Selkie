@@ -503,29 +503,12 @@ html.lenis {
     --sx: 60%;
   }
 }
-/* the dive line: how far down the page you are, with a glowing head */
-.td-nav::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: -1px;
-  height: 2px;
-  width: calc(var(--p, 0) * 100%);
-  background: linear-gradient(90deg, transparent, rgba(127, 209, 185, 0.5) 40%, var(--sg));
-  box-shadow: 6px 0 14px rgba(127, 209, 185, 0.7);
-  border-radius: 0 2px 2px 0;
-  opacity: 0;
-  transition: opacity 450ms var(--ease);
-}
 .td-nav.stuck {
   height: 64px;
 }
 .td-nav.stuck::before {
   opacity: 1;
   transform: none;
-}
-.td-nav.stuck::after {
-  opacity: 1;
 }
 @media (prefers-reduced-motion: reduce) {
   .td-nav::before {

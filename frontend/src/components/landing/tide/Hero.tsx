@@ -157,9 +157,8 @@ function Nav() {
   const close = useRef(() => setMenu(false)).current;
   const bar = useRef<HTMLElement>(null);
 
-  // Fixed to the top. Past the first few pixels it turns to frosted water, and
-  // its bottom edge fills with sea-glass as you dive down the page. Written as
-  // a class and a CSS variable, so scrolling never re-renders React.
+  // Fixed to the top. Past the first few pixels it turns to frosted water
+  // (a class, so scrolling never re-renders React for it).
   useEffect(() => {
     const el = bar.current;
     if (!el) return;
@@ -167,9 +166,7 @@ function Nav() {
     const read = () => {
       raf = 0;
       const y = window.scrollY;
-      const max = document.documentElement.scrollHeight - window.innerHeight;
       el.classList.toggle("stuck", y > 24);
-      el.style.setProperty("--p", (max > 0 ? Math.min(1, y / max) : 0).toFixed(4));
       // the section under the upper third of the screen lights its link
       const line = window.innerHeight * 0.35;
       let now: string | null = null;
