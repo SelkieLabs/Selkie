@@ -96,6 +96,56 @@ export interface SendResult {
   results?: BatchResult["results"];
   /** NEAR cash-out to another chain: follow it with `api.near.intents.status`. */
   intents?: { depositAddress: string };
+  /** NEAR cash-out to a bank: follow it with `api.near.bank.status`. */
+  bank?: {
+    orderId: string;
+    depositAddress: string;
+    currency: string;
+    fiatAmount: string;
+    institutionName: string;
+    accountLast4: string;
+  };
+}
+
+/** A bank (or mobile-money service) Paycrest can pay into. */
+export interface BankInstitution {
+  name: string;
+  code: string;
+  /** "bank" or "mobile_money". */
+  type: string;
+}
+
+/** What a bank cash-out would pay. Amounts are decimal strings. */
+export interface BankQuote {
+  /** NEAR mainnet. */
+  live: boolean;
+  /** Confirming makes a real payout. */
+  payoutsOn: boolean;
+  /** Why it is only a preview, when it is. */
+  note?: string;
+  currency: string;
+  /** USDC the payout is for. */
+  amount: string;
+  /** Local currency per 1 USDC. */
+  rate: string;
+  /** About what reaches the bank. */
+  fiatAmount: string;
+  /** About what leaves your account: the payout plus the swap to get it there. */
+  sendAbout?: string;
+  /** The most the confirmed payout may take. */
+  sendAtMost?: string;
+  /** Seconds. */
+  timeEstimate?: number;
+}
+
+export type BankStage = "swapping" | "paying" | "paid" | "back-to-you" | "returning" | "returned" | "expired" | "late";
+
+export interface BankStatus {
+  orderId: string;
+  stage: BankStage;
+  done: boolean;
+  paycrest: { status: string; rate?: string; amount?: string; fiatAmount?: string; txHash?: string } | null;
+  intents: { status: IntentsStatusName; refundReason?: string; originTxs: string[]; destinationTxs: string[] } | null;
 }
 
 /** A stablecoin on another chain that NEAR Intents can bring in or take out. */
@@ -597,6 +647,41 @@ export const api = {
       toChain: { assetId: string; address: string };
     }): Promise<PreparedPayment> {
       return request("/near/payments/prepare", json(input));
+    },
+
+    /**
+     * USDC out to a bank account. The server makes a Paycrest order and a NEAR
+     * Intents quote that pays it at this moment; `maxSend` is the most the
+     * person agreed to send. Mainnet only.
+     */
+    async prepareBankCashOut(input: {
+      amount: string;
+      toBank: { currency: string; institution: string; accountIdentifier: string; accountName: string; maxSend: string };
+    }): Promise<PreparedPayment> {
+      return request("/near/payments/prepare", json(input));
+    },
+
+    /** Cash out to a bank through Paycrest. Banks, rates and the name check work everywhere. */
+    bank: {
+      async institutions(currency: string): Promise<{ institutions: BankInstitution[] }> {
+        return request(`/near/bank/institutions?currency=${encodeURIComponent(currency)}`);
+      },
+      /** The name on the account. `accountName` is null when the bank does not share it. */
+      async verify(input: {
+        currency: string;
+        institution: string;
+        accountIdentifier: string;
+      }): Promise<{ institution: string; institutionName: string; accountName: string | null }> {
+        return request("/near/bank/verify", json(input));
+      },
+      async quote(input: { currency: string; amount: string }): Promise<BankQuote> {
+        return request("/near/bank/quote", json(input));
+      },
+      async status(orderId: string, depositAddress: string): Promise<BankStatus> {
+        return request(
+          `/near/bank/status?orderId=${encodeURIComponent(orderId)}&depositAddress=${encodeURIComponent(depositAddress)}`,
+        );
+      },
     },
 
     /** NEAR Intents (1Click): other chains in and out. The API key stays on the server. */

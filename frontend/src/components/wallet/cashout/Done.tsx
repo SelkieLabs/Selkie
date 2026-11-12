@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Clock, ExternalLink, RotateCcw } from "lucide-react";
 import type { ChainAsset, SendResult } from "@/lib/api";
 import { money } from "@/lib/format";
+import { BankTimeline } from "./BankFields";
 import { Timeline } from "./bits";
 import { IntentsTimeline } from "./IntentsTimeline";
 
@@ -21,7 +22,8 @@ function Seal() {
 /**
  * Money left, for real: the amount, where it went, how far it has got, and
  * the transaction to check it by. A move to another chain keeps reading NEAR
- * Intents until it has arrived, come back, or failed.
+ * Intents until it has arrived, come back, or failed; a cash-out to a bank
+ * reads both NEAR Intents and Paycrest until the bank has it.
  */
 export function DoneStep({
   amount,
@@ -38,7 +40,7 @@ export function DoneStep({
   chain?: ChainAsset;
   onAgain: () => void;
 }) {
-  const following = Boolean(chain && result.intents);
+  const following = Boolean((chain && result.intents) || result.bank);
 
   return (
     <div className="flex flex-col items-center text-center">
@@ -54,7 +56,9 @@ export function DoneStep({
       <p className="co-blurb mx-auto text-center">{result.message}</p>
 
       <div className="co-receipt mt-6 w-full p-5 text-left">
-        {following && chain && result.intents ? (
+        {result.bank ? (
+          <BankTimeline order={result.bank} />
+        ) : following && chain && result.intents ? (
           <IntentsTimeline depositAddress={result.intents.depositAddress} direction="out" asset={chain} />
         ) : (
           <Timeline

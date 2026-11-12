@@ -44,7 +44,16 @@ export function AmountStep({
         if (check.ok) onContinue();
       }}
     >
-      <Head title="How much?" blurb={destination === "wallet" && !isNear ? "Straight to your wallet, nothing in between." : BLURB[destination]} />
+      <Head
+        title="How much?"
+        blurb={
+          destination === "wallet" && !isNear
+            ? "Straight to your wallet, nothing in between."
+            : destination === "bank" && isNear
+              ? "In USDC. Next you pick the currency and your bank, and see what arrives at today's rate."
+              : BLURB[destination]
+        }
+      />
 
       <label className="co-label mt-6" htmlFor="cashout-amount">
         Amount in USDC

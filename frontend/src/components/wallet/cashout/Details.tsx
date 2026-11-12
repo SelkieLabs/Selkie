@@ -7,6 +7,7 @@ import { ADDRESS } from "@/lib/address";
 import type { AccountLookup, ChainAsset } from "@/lib/api";
 import { isNear } from "@/lib/chain";
 import { addressPlaceholder, inAbout, type useOutQuote } from "@/lib/other-chain";
+import { PaycrestBankFields } from "./BankFields";
 import { Fresh, Head, Note, Row } from "./bits";
 import { COUNTRIES, type BankDetails, type Destination } from "./model";
 
@@ -43,6 +44,7 @@ export function DetailsStep({
   onChainAddress,
   chainProblem,
   quote,
+  paycrest,
   error,
   ready,
   busy,
@@ -63,6 +65,8 @@ export function DetailsStep({
   onChainAddress: (value: string) => void;
   chainProblem: string | null;
   quote: OutQuote;
+  /** NEAR: Paycrest's banks, the name check and the rate. Without it, the bank form is Stellar's. */
+  paycrest?: Omit<Parameters<typeof PaycrestBankFields>[0], "bank" | "onBank">;
   error: string | null;
   ready: boolean;
   /** Set while the continue button waits: what it is waiting for. */
@@ -80,7 +84,9 @@ export function DetailsStep({
         title={TITLE[destination]}
         blurb={
           destination === "bank"
-            ? "We only ask for this once. Next time it is two taps."
+            ? paycrest
+              ? "Pick the currency and your bank. The name on the account shows as you type the number."
+              : "We only ask for this once. Next time it is two taps."
             : destination === "chain"
               ? "Pick what it should arrive as, then paste your address there."
               : "Money sent to another account cannot be called back, so this is worth reading twice."
@@ -88,7 +94,9 @@ export function DetailsStep({
       />
 
       <div className="mt-6">
-        {destination === "bank" ? (
+        {destination === "bank" && paycrest ? (
+          <PaycrestBankFields bank={bank} onBank={onBank} {...paycrest} />
+        ) : destination === "bank" ? (
           <BankFields bank={bank} onBank={onBank} />
         ) : destination === "chain" ? (
           <ChainFields

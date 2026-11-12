@@ -20,10 +20,11 @@ interface Choice {
 
 /**
  * The ways out, each with what happens and what it costs, so the choice is
- * made on facts. On NEAR the two that move money today come first; the bank
- * says plainly that it is not open yet instead of failing at the end.
+ * made on facts. On Stellar the bank says plainly that it is not open yet
+ * instead of failing at the end.
  */
 function choices(): Choice[] {
+  if (isNear) return nearChoices();
   const bank: Choice = {
     to: "bank",
     icon: <Building2 size={21} strokeWidth={2.1} />,
@@ -32,18 +33,25 @@ function choices(): Choice[] {
     time: "Opening soon",
     soon: true,
   };
-  if (!isNear) {
-    return [
-      bank,
-      {
-        to: "wallet",
-        icon: <Wallet size={21} strokeWidth={2.1} />,
-        title: "Another wallet",
-        what: "Any wallet you already have. Straight there, nothing in between.",
-        time: "Seconds",
-      },
-    ];
-  }
+  return [
+    bank,
+    {
+      to: "wallet",
+      icon: <Wallet size={21} strokeWidth={2.1} />,
+      title: "Another wallet",
+      what: "Any wallet you already have. Straight there, nothing in between.",
+      time: "Seconds",
+    },
+  ];
+}
+
+/**
+ * On NEAR all three move money. The bank goes through Paycrest: NEAR Intents
+ * swaps the USDC to Base on the way, so like the chain route it is a live
+ * price on mainnet and a labelled preview on testnet.
+ */
+function nearChoices(): Choice[] {
+  const mainnet = NEAR_NETWORK === "mainnet";
   return [
     {
       to: "wallet",
@@ -58,10 +66,17 @@ function choices(): Choice[] {
       icon: <ChainStack chains={CHAIN_PREVIEW} size={17} />,
       title: "Another chain",
       what: "USDC on Base, USDT on Tron and more. NEAR Intents swaps it on the way.",
-      time: NEAR_NETWORK === "mainnet" ? "A few minutes" : "Price preview on testnet",
-      fee: NEAR_NETWORK === "mainnet" ? "Fee in the price" : undefined,
+      time: mainnet ? "A few minutes" : "Price preview on testnet",
+      fee: mainnet ? "Fee in the price" : undefined,
     },
-    bank,
+    {
+      to: "bank",
+      icon: <Building2 size={21} strokeWidth={2.1} />,
+      title: "A bank account",
+      what: "Naira to any Nigerian bank. Kenya, Uganda and Tanzania too, mobile money included.",
+      time: mainnet ? "A few minutes" : "Rate preview on testnet",
+      fee: mainnet ? "Fee in the rate" : undefined,
+    },
   ];
 }
 

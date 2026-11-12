@@ -69,13 +69,27 @@ export function checkAmount(amount: string, balance: string): { ok: boolean; pro
 
 /** The bank fields, kept together so going back and forth never loses them. */
 export interface BankDetails {
+  /** Stellar's form: where the bank is. */
   country: string;
+  /** The bank's name, as typed (Stellar) or as Paycrest lists it (NEAR). */
   bank: string;
   accountNumber: string;
+  /** NEAR: typed only when the bank does not share the name on the account. */
   accountName: string;
+  /** NEAR: the currency Paycrest pays out in. */
+  currency: string;
+  /** NEAR: the bank's Paycrest code (GTBINGLA, ...). */
+  institution: string;
 }
 
-export const EMPTY_BANK: BankDetails = { country: COUNTRIES[0].code, bank: "", accountNumber: "", accountName: "" };
+export const EMPTY_BANK: BankDetails = {
+  country: COUNTRIES[0].code,
+  bank: "",
+  accountNumber: "",
+  accountName: "",
+  currency: "NGN",
+  institution: "",
+};
 
 export const bankReady = (details: BankDetails): boolean =>
   details.bank.trim().length > 0 && details.accountNumber.trim().length > 0 && details.accountName.trim().length > 0;

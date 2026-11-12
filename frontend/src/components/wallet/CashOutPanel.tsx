@@ -6,7 +6,8 @@ import { ChainLogo, CoinOnChain } from "@/components/ChainLogo";
 import { useToast } from "@/contexts/ToastContext";
 import { useConfirm } from "@/contexts/useConfirm";
 import { ADDRESS } from "@/lib/address";
-import { ApiError, api, type ChainAsset, type SendResult } from "@/lib/api";
+import { ApiError, api, type BankQuote, type ChainAsset, type SendResult } from "@/lib/api";
+import { bankLine, currencyOf, fiat, useAccountName, useBankQuote, useBanks } from "@/lib/bank";
 import { isNear } from "@/lib/chain";
 import { money, usd } from "@/lib/format";
 import { chainAddressProblem, shortChainAddress, useChainAssets, useOutQuote } from "@/lib/other-chain";
@@ -24,6 +25,7 @@ import {
   bankReady,
   checkAmount,
   flowIndex,
+  toCents,
   type BankDetails,
   type Destination,
   type Step,
@@ -48,8 +50,12 @@ import {
  * "Another chain" goes through NEAR Intents: the server quotes it and prepares
  * a transfer to the quote's deposit address, the user signs that, and the
  * swap lands on the chain they picked. NEAR Intents is mainnet only, so on
- * testnet the review shows a real price marked as a preview. The bank route is
- * not built, and says so on its first card and its last screen.
+ * testnet the review shows a real price marked as a preview. "A bank" goes
+ * through Paycrest: the server makes a Paycrest order and a NEAR Intents quote
+ * that pays it exactly, and the user signs one transfer. Banks, rates and the
+ * name check are real everywhere; sending needs mainnet and Paycrest's key,
+ * and until then the review says it is a preview. On Stellar the bank route
+ * is not built, and says so on its first card and its last screen.
  */
 export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: () => void }) {
   const toast = useToast();
@@ -73,8 +79,26 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
   const [result, setResult] = useState<SendResult | null>(null);
 
   const toChain = isNear && destination === "chain";
-  /** Pressing send moves money now: a NEAR account, or another chain (where NEAR Intents is live). */
-  const live = isNear && (destination === "wallet" || destination === "chain");
+  /** NEAR: a bank account through Paycrest. */
+  const toBank = isNear && destination === "bank";
+  const bankSteps = toBank && (step === "details" || step === "review");
+  const banks = useBanks(toBank ? bank.currency : null);
+  const nameCheck = useAccountName({
+    currency: bank.currency,
+    institution: bank.institution,
+    accountNumber: bank.accountNumber,
+    active: bankSteps,
+  });
+  const payout = useBankQuote({ currency: bank.currency, amount, active: bankSteps, refreshSeconds: sending ? 0 : 30 });
+  /** Pressing send moves money now: a NEAR account, another chain (where NEAR Intents is live), or a bank (where Paycrest is on). */
+  const live =
+    isNear && (destination === "wallet" || destination === "chain" || (destination === "bank" && Boolean(payout.quote?.payoutsOn)));
+
+  // The name the bank has is the name on the order. Typed only when it does not share one.
+  const foundName = nameCheck.name;
+  useEffect(() => {
+    if (toBank && foundName) setBank((was) => (was.accountName === foundName ? was : { ...was, accountName: foundName }));
+  }, [toBank, foundName]);
 
   const chains = useChainAssets(toChain);
   const chainAsset = pickedAsset ?? chains.assets?.[0] ?? null;
@@ -127,9 +151,20 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
     go("amount");
   };
 
+  const bankChecked = nameCheck.checked && !nameCheck.problem && bank.accountName.trim().length > 1;
+  /** Why a bank cash-out that is otherwise ready cannot go: the swap takes it over the balance. */
+  const bankStop =
+    toBank && payout.quote?.sendAbout && toCents(payout.quote.sendAbout) > toCents(balance)
+      ? `With the swap this takes about ${money(payout.quote.sendAbout)} USDC, more than you have. Lower the amount.`
+      : toBank && payout.quote?.payoutsOn && !payout.quote.sendAtMost
+        ? "Could not price the swap to the bank just now. Wait a moment for the price to update."
+        : null;
+
   const detailsReady =
     destination === "bank"
-      ? bankReady(bank)
+      ? toBank
+        ? bankChecked && payout.quote !== null
+        : bankReady(bank)
       : toChain
         ? chainAsset !== null && chainAddress.length > 0 && !chainProblem && quote.quote !== null
         : addressValid && !(lookup.forAddress === cleanAddress && lookup.problem);
@@ -187,6 +222,36 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
     }
   };
 
+  /**
+   * The server makes the Paycrest order and the NEAR Intents quote that pays
+   * it; the user's key signs one transfer. `maxSend` is the most they agreed to.
+   */
+  const cashOutToBank = async (priced: BankQuote) => {
+    if (!priced.sendAtMost) return;
+    setSending(true);
+    setError(null);
+    try {
+      finish(
+        await nearPay(() =>
+          api.near.prepareBankCashOut({
+            amount,
+            toBank: {
+              currency: bank.currency,
+              institution: bank.institution,
+              accountIdentifier: bank.accountNumber,
+              accountName: bank.accountName.trim(),
+              maxSend: priced.sendAtMost!,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      failed(err);
+    } finally {
+      setSending(false);
+    }
+  };
+
   /** The user's own key signs a transfer out; Selkie's relayer pays the gas. */
   const cashOut = async () => {
     setSending(true);
@@ -205,6 +270,22 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
   };
 
   const onConfirm = async () => {
+    if (toBank) {
+      const q = payout.quote;
+      if (!q || !q.payoutsOn || !q.sendAtMost || bankStop) return;
+      const yes = await confirm({
+        title: `Send ${fiat(q.fiatAmount, q.currency)} to ${bank.bank}?`,
+        confirm: "Send to the bank",
+        rows: [
+          { label: "To", value: `${bank.accountName.trim()}, ${bankLine(bank.bank, bank.accountNumber)}` },
+          { label: "You send", value: `About ${money(q.sendAbout ?? amount)} USDC, at most ${money(q.sendAtMost)}` },
+          { label: "They get about", value: fiat(q.fiatAmount, q.currency) },
+        ],
+        body: "Once Paycrest pays the bank it cannot be pulled back. If the swap on the way fails, your USDC comes back to your account.",
+      });
+      if (yes) void cashOutToBank(q);
+      return;
+    }
     if (toChain) {
       const q = quote.quote;
       if (!q || !chainAsset) return;
@@ -237,7 +318,7 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
   };
 
   const destinationText: Record<Destination, string> = {
-    bank: "Your bank",
+    bank: toBank && flowIndex(step) > flowIndex("details") ? currencyOf(bank.currency).name : isNear ? "A bank account" : "Your bank",
     wallet: isNear ? "A NEAR account" : "Another wallet",
     chain: chainAsset && flowIndex(step) > flowIndex("details") ? chainAsset.chainName : "Another chain",
   };
@@ -263,12 +344,16 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
           ...(flowIndex(step) > flowIndex("amount") && amountCheck.ok
             ? [{ key: "amount", label: "Change the amount", text: <span className="co-mono">{money(amount)} USDC</span>, onClick: () => go("amount") }]
             : []),
-          ...(step === "review" && destination !== "bank"
+          ...(step === "review" && (destination !== "bank" || toBank)
             ? [
                 {
                   key: "details",
-                  label: "Change the address",
-                  text: <span className="co-mono">{toChain ? shortChainAddress(chainAddress) : ADDRESS.short(cleanAddress)}</span>,
+                  label: toBank ? "Change the bank account" : "Change the address",
+                  text: (
+                    <span className="co-mono">
+                      {toBank ? bankLine(bank.bank, bank.accountNumber) : toChain ? shortChainAddress(chainAddress) : ADDRESS.short(cleanAddress)}
+                    </span>
+                  ),
                   onClick: () => go("details"),
                 },
               ]
@@ -321,6 +406,7 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
             onChainAddress={setChainAddress}
             chainProblem={chainProblem}
             quote={quote}
+            paycrest={toBank ? { banks, name: nameCheck, quote: payout } : undefined}
             error={error}
             ready={amountCheck.ok && detailsReady}
             busy={waitingFor}
@@ -339,11 +425,13 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
                 ? { asset: chainAsset, address: chainAddress, quote: quote.quote, at: quote.at, loading: quote.loading }
                 : null
             }
+            payout={toBank && payout.quote ? { quote: payout.quote, at: payout.at, loading: payout.loading } : null}
+            stop={bankStop}
             bank={bank}
             country={country}
             contract={destination === "wallet" && target.isContract ? { accepted: target.accepted, onAccept: target.setAccepted } : undefined}
             sending={sending}
-            error={error ?? (toChain && !quote.quote ? quote.error : null)}
+            error={error ?? (toChain && !quote.quote ? quote.error : toBank && !payout.quote ? payout.error : null)}
             onConfirm={() => void onConfirm()}
             onBack={() => go("details")}
           />
@@ -354,7 +442,13 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
         {step === "done" && result && (
           <DoneStep
             amount={amount}
-            to={toChain && chainAsset ? `${shortChainAddress(chainAddress)} on ${chainAsset.chainName}` : ADDRESS.short(cleanAddress)}
+            to={
+              result.bank
+                ? `${result.bank.institutionName} ••${result.bank.accountLast4}`
+                : toChain && chainAsset
+                  ? `${shortChainAddress(chainAddress)} on ${chainAsset.chainName}`
+                  : ADDRESS.short(cleanAddress)
+            }
             result={result}
             chain={toChain ? (chainAsset ?? undefined) : undefined}
             onAgain={restart}

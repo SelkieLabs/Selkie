@@ -1,13 +1,14 @@
 "use client";
 
-import { Building2, Loader2, PenLine } from "lucide-react";
+import { Building2, Eye, Loader2, PenLine } from "lucide-react";
 import { ChainLogo, CoinOnChain } from "@/components/ChainLogo";
 import { PreviewNote } from "@/components/wallet/OtherChain";
-import type { ChainAsset, IntentsQuote } from "@/lib/api";
+import type { BankQuote, ChainAsset, IntentsQuote } from "@/lib/api";
+import { bankLine, fiat, previewLabel } from "@/lib/bank";
 import { isNear } from "@/lib/chain";
 import { money } from "@/lib/format";
 import { assetName, inAbout } from "@/lib/other-chain";
-import { ContractNotice, Fresh, Head, Row } from "./bits";
+import { ContractNotice, Fresh, Head, Note, Row } from "./bits";
 import type { BankDetails, Country, Destination } from "./model";
 
 /**
@@ -21,6 +22,8 @@ export function ReviewStep({
   live,
   address,
   chain,
+  payout,
+  stop,
   bank,
   country,
   contract,
@@ -35,6 +38,10 @@ export function ReviewStep({
   live: boolean;
   address: string;
   chain: { asset: ChainAsset; address: string; quote: IntentsQuote; at: number; loading: boolean } | null;
+  /** NEAR: a bank cash-out through Paycrest, priced live. */
+  payout?: { quote: BankQuote; at: number; loading: boolean } | null;
+  /** Set when it cannot go as it stands, and why. */
+  stop?: string | null;
   bank: BankDetails;
   country: Country;
   contract?: { accepted: boolean; onAccept: (accepted: boolean) => void };
@@ -44,15 +51,16 @@ export function ReviewStep({
   onBack: () => void;
 }) {
   const toBank = destination === "bank";
-  const preview = Boolean(chain?.quote.preview);
-  const blocked = sending || preview || (contract !== undefined && !contract.accepted);
+  const paid = toBank ? (payout?.quote ?? null) : null;
+  const preview = Boolean(chain?.quote.preview) || (paid !== null && !paid.payoutsOn);
+  const blocked = sending || preview || Boolean(stop) || (contract !== undefined && !contract.accepted);
 
   return (
     <>
       <Head
         title="Check it, then send"
         blurb={
-          chain
+          chain || paid
             ? "The price updates while you look. The final one is fixed the moment you sign."
             : toBank
               ? "Last look before it goes to your bank."
@@ -64,9 +72,9 @@ export function ReviewStep({
         <div className="co-flow">
           <div className="co-flow-side">
             <span className="min-w-0">
-              <small>You send</small>
+              <small>{paid?.sendAbout ? "You send about" : "You send"}</small>
               <span className="co-flow-amount">
-                {money(amount)}
+                {money(paid?.sendAbout ?? amount)}
                 <em>USDC</em>
               </span>
             </span>
@@ -75,9 +83,14 @@ export function ReviewStep({
           <span className="co-sink" aria-hidden="true" />
           <div className="co-flow-side co-flow-get">
             <span className="min-w-0">
-              <small>{chain ? "They get about" : toBank ? "Your bank pays out" : "Arrives as"}</small>
+              <small>{chain || paid ? "They get about" : toBank ? "Your bank pays out" : "Arrives as"}</small>
               <span className="co-flow-amount">
-                {chain ? (
+                {paid ? (
+                  <>
+                    {fiat(paid.fiatAmount, paid.currency)}
+                    <em>{paid.currency}</em>
+                  </>
+                ) : chain ? (
                   <>
                     {chain.quote.amountOutFormatted}
                     <em>{assetName(chain.asset)}</em>
@@ -104,7 +117,19 @@ export function ReviewStep({
           </div>
         </div>
 
-        {toBank ? (
+        {paid ? (
+          <>
+            <Row label="To">{bank.accountName}</Row>
+            <Row label="Account" mono>
+              {bankLine(bank.bank, bank.accountNumber)}
+            </Row>
+            <Row label="Rate">{fiat(paid.rate, paid.currency)} per USDC</Row>
+            <Row label="Order for">{money(paid.amount)} USDC</Row>
+            {paid.sendAtMost && <Row label="At most">{money(paid.sendAtMost)} USDC, the rest comes back</Row>}
+            <Row label="Fees">In the rate and the swap. Gas is on us.</Row>
+            <Row label="Arrives">Usually within a few minutes</Row>
+          </>
+        ) : toBank ? (
           <>
             <Row label="To">{bank.accountName || "—"}</Row>
             <Row label="Account" mono>
@@ -140,14 +165,28 @@ export function ReviewStep({
           </>
         )}
 
-        {chain && (
-          <div className="border-t border-[rgba(233,241,236,.06)] px-4 py-3">
-            <Fresh at={chain.at} every={30} loading={chain.loading} />
+        {(chain || (paid && payout)) && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[rgba(233,241,236,.06)] px-4 py-3">
+            <Fresh at={chain?.at ?? payout!.at} every={30} loading={chain?.loading ?? payout!.loading} />
+            {paid && !paid.payoutsOn && (
+              <span className="co-hint inline-flex items-center gap-1.5">
+                <Eye size={13} /> {previewLabel(paid)}
+              </span>
+            )}
           </div>
         )}
       </div>
 
-      {toBank && (
+      {paid && !paid.payoutsOn && (
+        <div className="mt-4">
+          <Note tone="info" icon={<Eye size={15} />}>
+            <b>Preview only.</b>{" "}
+            {paid.note ?? "The banks, the rate and the name on the account are real, but nothing is sent."}
+          </Note>
+        </div>
+      )}
+
+      {toBank && !paid && (
         <p className="co-hint mt-3">
           The rate and the fee appear here the moment your bank is connected, and you will always see them before
           anything moves.
@@ -160,11 +199,11 @@ export function ReviewStep({
         </div>
       )}
 
-      {preview && <PreviewNote what="nothing leaves your account from here. Cash out to a NEAR account in the meantime." />}
+      {chain?.quote.preview && <PreviewNote what="nothing leaves your account from here. Cash out to a NEAR account in the meantime." />}
 
-      {error && (
+      {(error ?? stop) && (
         <p className="co-error mt-4 text-center" role="alert">
-          {error}
+          {error ?? stop}
         </p>
       )}
 
@@ -174,7 +213,7 @@ export function ReviewStep({
             <Loader2 size={16} className="co-spin" /> Sending
           </>
         ) : preview ? (
-          "Sending works on mainnet"
+          paid?.live ? "Bank payouts aren't on yet" : "Sending works on mainnet"
         ) : live ? (
           <>
             <PenLine size={16} strokeWidth={2.4} /> Sign and send
