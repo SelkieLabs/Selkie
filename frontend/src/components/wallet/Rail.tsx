@@ -100,11 +100,13 @@ function TabLinks({ active, waiting, onPick }: { active: WalletTab; waiting: num
             onClick={onPick}
             aria-current={on ? "page" : undefined}
             className={`group flex items-center gap-3 rounded-[0.875rem] px-2.5 py-2 text-[14.5px] font-semibold transition-colors duration-150 ${
-              on ? "bg-foam text-abyss" : "text-pen/70 hover:bg-pen/[0.05] hover:text-pen"
+              on
+                ? "bg-gradient-to-r from-foam to-[#d3f1e6] text-abyss shadow-[0_10px_26px_-14px_rgba(127,209,185,0.7)]"
+                : "text-pen/70 hover:bg-pen/[0.05] hover:text-pen"
             }`}
           >
             <span
-              className={`grid h-[2.125rem] w-[2.125rem] shrink-0 place-items-center rounded-[0.7rem] transition-colors duration-150 ${
+              className={`grid h-[2.125rem] w-[2.125rem] shrink-0 place-items-center rounded-[0.7rem] transition-[color,background-color,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-rotate-[8deg] group-hover:scale-105 ${
                 on ? "bg-abyss/10 text-abyss" : "bg-tide-2 text-pen/70 group-hover:text-pen"
               }`}
             >

@@ -1694,3 +1694,186 @@
     padding: 2mm 4mm !important;
   }
 }
+
+/* ---------- life in the wallet ----------
+   Small, quiet motion so the flows feel like water rather than forms: light
+   on the top of each panel, content that rises in, a step that breathes, a
+   button with a slow glint. Nothing flashes, nothing loops fast. */
+.panel-in {
+  isolation: isolate;
+}
+/* the light sits between the panel's own background and its content */
+.panel-light {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 230px;
+  z-index: -1;
+  overflow: hidden;
+  border-radius: 1.375rem 1.375rem 0 0;
+  opacity: 0.55;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.5) 40%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.5) 40%, transparent 100%);
+}
+.panel-in > :not(.panel-light) {
+  animation: wallet-rise 620ms var(--ease) both;
+  animation-delay: calc(var(--k, 8) * 55ms);
+}
+.panel-in > :nth-child(2) { --k: 0; }
+.panel-in > :nth-child(3) { --k: 1; }
+.panel-in > :nth-child(4) { --k: 2; }
+.panel-in > :nth-child(5) { --k: 3; }
+.panel-in > :nth-child(6) { --k: 4; }
+.panel-in > :nth-child(7) { --k: 5; }
+.panel-in > :nth-child(8) { --k: 6; }
+.panel-in > :nth-child(9) { --k: 7; }
+@keyframes wallet-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+.title-in {
+  animation: wallet-title 560ms var(--ease) both;
+}
+@keyframes wallet-title {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(4px);
+  }
+}
+
+/* steps: the line to each reached step fills with sea-glass; the current one breathes */
+.steps li + li::before {
+  background-color: rgba(233, 241, 236, 0.16);
+  background-image: linear-gradient(90deg, rgba(127, 209, 185, 0.5), var(--sg));
+  background-repeat: no-repeat;
+  background-size: 0% 100%;
+  transition: background-size 600ms var(--ease);
+}
+.steps li.on::before,
+.steps li.done::before {
+  background-size: 100% 100%;
+}
+.steps .on .n {
+  position: relative;
+}
+.steps .on .n::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  animation: wallet-ring 2.6s ease-out infinite;
+}
+@keyframes wallet-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(127, 209, 185, 0.5);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 8px rgba(127, 209, 185, 0);
+  }
+}
+
+/* the main button: a little depth, and a glint that passes now and then */
+.btn-gold:not(:disabled) {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background-image: linear-gradient(180deg, #9fe0cc, var(--sg) 60%, #6fc6ab);
+}
+.btn-gold:not(:disabled)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.5) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: wallet-glint 5.5s var(--ease) infinite;
+  pointer-events: none;
+}
+.btn-gold:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+@keyframes wallet-glint {
+  0%,
+  62% {
+    transform: translateX(-120%);
+  }
+  88%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+/* chips lift a hair under the pointer */
+.chip {
+  transition:
+    background-color 150ms var(--ease),
+    color 150ms var(--ease),
+    box-shadow 150ms var(--ease),
+    transform 200ms var(--ease);
+}
+.chip:hover {
+  transform: translateY(-1px);
+}
+.chip:active {
+  transform: scale(0.97);
+}
+
+/* a field you are typing in catches a little light */
+.field:focus {
+  background:
+    linear-gradient(180deg, rgba(127, 209, 185, 0.07), rgba(127, 209, 185, 0) 75%),
+    var(--i0);
+}
+
+/* the amount box fills like a tank as the amount nears the balance */
+.tank {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(0deg, rgba(127, 209, 185, 0.17), rgba(127, 209, 185, 0.05));
+  transition:
+    height 700ms var(--ease),
+    background 300ms var(--ease);
+}
+.tank::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -6px;
+  height: 7px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='7'%3E%3Cpath d='M0 4 Q10 0 20 4 T40 4 V7 H0Z' fill='rgba(127,209,185,0.17)'/%3E%3C/svg%3E") repeat-x;
+  background-size: 40px 7px;
+  opacity: 0;
+  transition: opacity 300ms var(--ease);
+  animation: wallet-wave 2.4s linear infinite;
+}
+.tank.wet::before {
+  opacity: 1;
+}
+.tank.over {
+  background: linear-gradient(0deg, rgba(240, 110, 100, 0.2), rgba(240, 110, 100, 0.06));
+}
+.tank.over::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='7'%3E%3Cpath d='M0 4 Q10 0 20 4 T40 4 V7 H0Z' fill='rgba(240,110,100,0.2)'/%3E%3C/svg%3E");
+}
+@keyframes wallet-wave {
+  to {
+    background-position: 40px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-in > :not(.panel-light),
+  .title-in,
+  .steps .on .n::after,
+  .btn-gold:not(:disabled)::after,
+  .tank::before {
+    animation: none;
+  }
+}

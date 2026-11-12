@@ -36,6 +36,11 @@ export function Avatar({
   size?: number;
 }) {
   const initial = name.replace(/^@/, "").slice(0, 1).toUpperCase() || "?";
+  // Each name gets its own colour of water, the same every time, so people
+  // are told apart at a glance without anyone's photo.
+  let hash = 0;
+  for (const ch of name.toLowerCase()) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  const hue = 150 + (hash % 150); // sea-glass through blue to violet, never alarm red
   return src ? (
     <img
       src={src}
@@ -46,8 +51,15 @@ export function Avatar({
     />
   ) : (
     <span
-      className="grid shrink-0 place-items-center rounded-full bg-deep font-display font-extrabold text-sg"
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.4) }}
+      className="grid shrink-0 place-items-center rounded-full font-display font-extrabold"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.round(size * 0.4),
+        color: `hsl(${hue} 70% 82%)`,
+        background: `radial-gradient(circle at 30% 25%, hsl(${hue} 45% 34%), hsl(${hue} 50% 16%))`,
+        boxShadow: `inset 0 0 0 1px hsl(${hue} 60% 60% / 0.3)`,
+      }}
       aria-hidden="true"
     >
       {initial}

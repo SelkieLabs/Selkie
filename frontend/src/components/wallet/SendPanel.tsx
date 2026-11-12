@@ -580,6 +580,18 @@ export function SendPanel({
           onChange={(e) => setAmount(cleanAmount(e.target.value))}
           onKeyDown={(e) => e.key === "Enter" && canContinue && void toConfirm()}
         />
+        {/* The box fills like a tank as the amount nears the balance, and turns
+            red when it goes over: the limit, felt before it is read. */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[0.875rem]" aria-hidden="true">
+          <div
+            className={`tank${value > 0 ? " wet" : ""}${tooMuch ? " over" : ""}`}
+            style={{
+              height: `${
+                tooMuch ? 100 : Number(balance) > 0 ? Math.min(100, ((value || 0) / Number(balance)) * 100) : 0
+              }%`,
+            }}
+          />
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">

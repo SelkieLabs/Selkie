@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Check } from "lucide-react";
+import { Caustics } from "./Caustics";
 
 /**
  * The shape every wallet tab takes: one ink panel, one heading, one job.
@@ -8,7 +9,16 @@ import { Check } from "lucide-react";
  * like five products. This is the only reason it exists.
  */
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`chunk p-5 sm:p-7 ${className}`}>{children}</section>;
+  return (
+    <section className={`chunk panel-in p-5 sm:p-7 ${className}`}>
+      {/* Faint light on the water at the top of every panel, fading as it
+          goes down: the app's one ambient motion, never behind the numbers. */}
+      <div className="panel-light" aria-hidden="true">
+        <Caustics className="h-full w-full" tile={170} top={0.55} bottom={0} speed={0.22} />
+      </div>
+      {children}
+    </section>
+  );
 }
 
 /**
@@ -49,7 +59,11 @@ export function PanelHead({
           <p className="eyebrow">{eyebrow}</p>
           {steps && <Steps labels={steps.labels} at={steps.at} />}
         </div>
-        <h1 className="mt-1.5 font-display text-[1.6rem] font-extrabold leading-tight tracking-[-0.03em]">
+        {/* keyed by the title, so each step's heading rises in as the flow moves on */}
+        <h1
+          key={title}
+          className="title-in mt-1.5 font-display text-[1.6rem] font-extrabold leading-tight tracking-[-0.03em]"
+        >
           {title}
         </h1>
         {blurb && <p className="mt-2 text-[15px] leading-relaxed text-pen/60">{blurb}</p>}
