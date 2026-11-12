@@ -5,9 +5,10 @@ import { useParams } from "next/navigation";
 import { Header, Shell, Spinner } from "@/components/Layout";
 import { Redirect } from "@/components/Redirect";
 import { ActivityFeed } from "@/components/wallet/ActivityFeed";
-import { AssetList, BalanceCard } from "@/components/wallet/BalanceCard";
+import { AssetList, BalanceActions, BalanceCard } from "@/components/wallet/BalanceCard";
 import { CashOutPanel } from "@/components/wallet/CashOutPanel";
 import { ConvertSheet } from "@/components/wallet/ConvertSheet";
+import { QuickSend, WaitingCard } from "@/components/wallet/HomeSide";
 import { PayManyPanel } from "@/components/wallet/PayManyPanel";
 import {
   ClaimCelebration,
@@ -22,18 +23,19 @@ import { RequestsPanel } from "@/components/wallet/RequestsPanel";
 import { SendPanel } from "@/components/wallet/SendPanel";
 import { SettingsPanel } from "@/components/wallet/SettingsPanel";
 import { useAuth } from "@/contexts/useAuth";
-import { api, type ActivityEntry, type MoneyRequest } from "@/lib/api";
-import { features } from "@/lib/chain";
+import { api, type ActivityEntry, type MoneyRequest, type User } from "@/lib/api";
+import { features, isNear } from "@/lib/chain";
 import { DOLLAR } from "@/lib/format";
 import { isWalletTab } from "@/lib/tabs";
 import { useArrivals } from "@/lib/useArrivals";
 import { useLiveRefresh } from "@/lib/useLiveRefresh";
+import { displayNameOf } from "@/lib/user";
 
 /**
  * The wallet.
  *
- * One shell, six tabs, and the two things that never move: your balance at the
- * top, the rail within reach. Everything a tab needs is loaded here rather than
+ * One shell, seven tabs. Home is the overview (balance, what to do next, what
+ * happened, what is still waiting); every other tab is one job in one column. Everything a tab needs is loaded here rather than
  * inside it, because the rail has to know how many people are waiting on you no
  * matter which tab you happen to be looking at.
  */
@@ -49,6 +51,8 @@ export default function WalletTabPage() {
   const [incoming, setIncoming] = useState<MoneyRequest[]>([]);
   const [outgoing, setOutgoing] = useState<MoneyRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
+  // Says the list could not be read, so an empty one is not mistaken for "nobody asked".
+  const [requestsFailed, setRequestsFailed] = useState(false);
   const [converting, setConverting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -74,8 +78,10 @@ export default function WalletTabPage() {
       const { incoming: mine, outgoing: theirs } = await api.requests();
       setIncoming(mine);
       setOutgoing(theirs);
+      setRequestsFailed(false);
     } catch (error) {
       console.error(error);
+      setRequestsFailed(true);
     } finally {
       setLoadingRequests(false);
     }
@@ -154,63 +160,83 @@ export default function WalletTabPage() {
 
   return (
     <>
-      <Header />
-      <main className="pb-32 pt-8 lg:pb-24">
-        <Shell wide>
-          <div className="flex gap-8 xl:gap-10">
+      <Header app />
+      <main className="pb-32 pt-3 lg:pb-20 lg:pt-5">
+        <Shell app>
+          <div className="flex gap-7">
             <Rail active={tab} waiting={waiting} />
 
-            <div className="min-w-0 flex-1 space-y-6">
-              {/* Settings is about the account, not the money, so the balance
-                  card would only be noise on it. */}
-              {tab !== "settings" && (
-                <BalanceCard
-                  user={user}
-                  balances={balances}
-                  loading={!balancesReady}
-                  refreshing={refreshing}
-                  onRefresh={() => void refreshAll()}
-                  onConvert={features.convert ? () => setConverting(true) : undefined}
-                />
-              )}
-
-              {!handle && tab !== "settings" && <LinkHandleBanner />}
-
-              {tab === "home" && (
-                <div className="space-y-6">
-                  <NotifyNudge />
-                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
-                    <ActivityFeed
-                      entries={entries}
-                      loading={loadingFeed}
-                      onChanged={afterMoneyMoved}
-                    />
-                    <AssetList balances={balances} loading={!balancesReady} />
-                  </div>
+            <div className="min-w-0 flex-1">
+              {!handle && tab !== "settings" && (
+                <div className="mb-5">
+                  <LinkHandleBanner />
                 </div>
               )}
 
-              {tab === "send" && (
-                <SendPanel balance={dollars} entries={entries} onSent={afterMoneyMoved} />
+              {tab === "home" ? (
+                <div className="grid gap-7 xl:grid-cols-[minmax(0,1fr)_23.25rem] xl:items-start">
+                  <div className="min-w-0 space-y-4">
+                    <Hello user={user} />
+                    <BalanceCard
+                      user={user}
+                      balances={balances}
+                      loading={!balancesReady}
+                      refreshing={refreshing}
+                      onRefresh={() => void refreshAll()}
+                    />
+                    <BalanceActions
+                      balances={balances}
+                      onConvert={features.convert ? () => setConverting(true) : undefined}
+                    />
+                    <NotifyNudge />
+                    {/* On a narrower screen the side column has nowhere to go,
+                        so what is waiting comes before the history. */}
+                    <div className="xl:hidden">
+                      <WaitingCard entries={entries} />
+                    </div>
+                    <ActivityFeed entries={entries} loading={loadingFeed} onChanged={afterMoneyMoved} />
+                    {!isNear && (
+                      <div className="xl:hidden">
+                        <AssetList balances={balances} loading={!balancesReady} />
+                      </div>
+                    )}
+                  </div>
+
+                  <aside className="hidden space-y-4 xl:sticky xl:top-24 xl:block">
+                    <QuickSend balance={dollars} />
+                    <WaitingCard entries={entries} />
+                    {!isNear && <AssetList balances={balances} loading={!balancesReady} />}
+                  </aside>
+                </div>
+              ) : (
+                // Every other tab is one job, so it gets one calm column. The
+                // key makes each tab arrive rather than swap in place.
+                <div key={tab} className="step-in mx-auto w-full max-w-[48rem] space-y-6">
+                  {tab === "send" && (
+                    <SendPanel balance={dollars} entries={entries} onSent={afterMoneyMoved} />
+                  )}
+
+                  {tab === "receive" && <ReceivePanel handle={handle} />}
+
+                  {tab === "cashout" && <CashOutPanel balance={dollars} onSent={afterMoneyMoved} />}
+
+                  {tab === "requests" && (
+                    <RequestsPanel
+                      incoming={incoming}
+                      outgoing={outgoing}
+                      loading={loadingRequests}
+                      failed={requestsFailed}
+                      onRetry={() => void loadRequests()}
+                      canAsk={handle !== null}
+                      onChanged={afterMoneyMoved}
+                    />
+                  )}
+
+                  {tab === "many" && <PayManyPanel balance={dollars} onSent={afterMoneyMoved} />}
+
+                  {tab === "settings" && <SettingsPanel user={user} />}
+                </div>
               )}
-
-              {tab === "receive" && <ReceivePanel handle={handle} />}
-
-              {tab === "cashout" && <CashOutPanel balance={dollars} onSent={afterMoneyMoved} />}
-
-              {tab === "requests" && (
-                <RequestsPanel
-                  incoming={incoming}
-                  outgoing={outgoing}
-                  loading={loadingRequests}
-                  canAsk={handle !== null}
-                  onChanged={afterMoneyMoved}
-                />
-              )}
-
-              {tab === "many" && <PayManyPanel balance={dollars} onSent={afterMoneyMoved} />}
-
-              {tab === "settings" && <SettingsPanel user={user} />}
             </div>
           </div>
         </Shell>
@@ -226,5 +252,22 @@ export default function WalletTabPage() {
       {claimed.length > 0 && <ClaimCelebration claimed={claimed} />}
       <MergePrompt />
     </>
+  );
+}
+
+/** "Good evening, Tunde", and the day, so Home opens like it knows you. */
+function Hello({ user }: { user: User }) {
+  const name = displayNameOf(user);
+  const first = name.startsWith("@") ? name : (name.split(/\s+/)[0] ?? name);
+  const hour = new Date().getHours();
+  const part = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+  const today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pt-1">
+      <h1 className="font-display text-[1.6rem] font-extrabold leading-tight tracking-[-0.035em] sm:text-[1.875rem]">
+        Good {part}, {first}
+      </h1>
+      <span className="text-[13.5px] text-pen/45">{today}</span>
+    </div>
   );
 }

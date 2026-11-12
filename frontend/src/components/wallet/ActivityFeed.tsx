@@ -5,7 +5,6 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Banknote,
-  ChevronRight,
   Clock,
   Loader2,
   Repeat,
@@ -13,7 +12,6 @@ import {
   Undo2,
 } from "lucide-react";
 import { ChainLogo } from "@/components/ChainLogo";
-import { TokenIcon } from "@/components/TokenIcon";
 import { TransactionSheet } from "@/components/wallet/TransactionSheet";
 import { useToast } from "@/contexts/ToastContext";
 import { useConfirm } from "@/contexts/useConfirm";
@@ -21,7 +19,7 @@ import { ApiError, api, type ActivityEntry } from "@/lib/api";
 import { features, isNear } from "@/lib/chain";
 import { chainInLabel } from "@/lib/logos";
 import { useNearPay } from "@/lib/near-wallet";
-import { dayKey, dayLabel, money, timeAgo } from "@/lib/format";
+import { dayLabel, money } from "@/lib/format";
 import { MASK, useAmountsHidden } from "@/lib/privacy";
 
 type Filter = "all" | "in" | "out";
@@ -34,10 +32,10 @@ const PAGE = 8;
 /**
  * The activity feed.
  *
- * Three things keep a payment history readable as it grows: day headings, so
- * "when" is answered once per group instead of once per row; a cap, so the page
- * never becomes a scroll marathon; and rows compact enough to scan down the
- * right-hand column and see only the money.
+ * One row per payment: who, when, its state as one word, and the money in the
+ * right-hand column so you can scan down it and see only that. Money that came
+ * in is gold, the one place gold is spent. A cap keeps the page from becoming a
+ * scroll marathon.
  */
 export function ActivityFeed({
   entries,
@@ -64,28 +62,16 @@ export function ActivityFeed({
 
   const visible = filtered.slice(0, shown);
 
-  // Group after slicing, so "Show more" never reshuffles what is already read.
-  const groups = useMemo(() => {
-    const map = new Map<string, { label: string; rows: ActivityEntry[] }>();
-    for (const entry of visible) {
-      const key = dayKey(entry.at);
-      const group = map.get(key) ?? { label: dayLabel(entry.at), rows: [] };
-      group.rows.push(entry);
-      map.set(key, group);
-    }
-    return [...map.values()];
-  }, [visible]);
-
   if (loading) return <FeedSkeleton />;
 
   if (entries.length === 0) {
     return (
-      <div className="chunk p-8 text-center">
-        <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-gold/15 text-gold-ink">
-          <Sparkles size={22} strokeWidth={2.2} />
+      <div className="chunk px-6 py-10 text-center">
+        <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-sg/[0.12] text-sg">
+          <Sparkles size={22} strokeWidth={2} />
         </span>
-        <p className="mt-4 font-display text-lg font-bold tracking-tight">Nothing here yet</p>
-        <p className="mx-auto mt-1.5 max-w-xs text-[15px] leading-relaxed text-pen/60">
+        <p className="mt-4 font-display text-lg font-extrabold tracking-tight">Nothing here yet</p>
+        <p className="mx-auto mt-1.5 max-w-xs text-[15px] leading-relaxed text-pen/55">
           Send a few dollars to any {features.telegram ? "X or Telegram" : "X"} handle. They do not
           need an account, and it waits for them until they sign in.
         </p>
@@ -94,11 +80,11 @@ export function ActivityFeed({
   }
 
   return (
-    <section>
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-lg font-bold tracking-tight text-ivory">Activity</h2>
+    <section className="chunk px-4 pb-1.5 pt-1 sm:px-5">
+      <div className="flex items-center justify-between gap-3 pb-2 pt-3.5">
+        <h2 className="font-display text-[19px] font-extrabold tracking-[-0.02em]">Activity</h2>
         {entries.length > 4 && (
-          <div className="flex gap-1.5">
+          <div className="seg !grid-cols-3 !p-0.5" role="group" aria-label="Show">
             {(
               [
                 ["all", "All"],
@@ -112,7 +98,8 @@ export function ActivityFeed({
                   setFilter(key);
                   setShown(PAGE);
                 }}
-                className={`chip h-8 px-3 text-[13px] ${filter === key ? "chip-on" : ""}`}
+                aria-pressed={filter === key}
+                className={`seg-btn !h-7 px-3 text-[12.5px] ${filter === key ? "seg-on" : ""}`}
               >
                 {label}
               </button>
@@ -122,31 +109,26 @@ export function ActivityFeed({
       </div>
 
       {filtered.length === 0 ? (
-        <p className="chunk mt-3 p-6 text-center text-[15px] text-pen/60">
+        <p className="border-t border-pen/[0.06] py-6 text-center text-[14.5px] text-pen/50">
           Nothing {filter === "in" ? "came in" : "went out"} yet.
         </p>
       ) : (
-        <div className="chunk mt-3 overflow-hidden">
-          {groups.map((group) => (
-            <div key={group.label}>
-              <p className="bg-pen/[0.04] px-5 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-pen/45">
-                {group.label}
-              </p>
-              {group.rows.map((entry) => (
-                <Row key={entry.id} entry={entry} onChanged={onChanged} />
-              ))}
-            </div>
+        <div>
+          {visible.map((entry) => (
+            <Row key={entry.id} entry={entry} onChanged={onChanged} />
           ))}
         </div>
       )}
 
       {shown < filtered.length && (
-        <button
-          onClick={() => setShown((current) => current + 20)}
-          className="btn btn-dim btn-sm mx-auto mt-4 flex"
-        >
-          Show more
-        </button>
+        <div className="border-t border-pen/[0.06] py-2.5 text-center">
+          <button
+            onClick={() => setShown((current) => current + 20)}
+            className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-pen/55 transition-colors duration-150 hover:bg-pen/[0.05] hover:text-pen"
+          >
+            Show more
+          </button>
+        </div>
       )}
     </section>
   );
@@ -207,6 +189,9 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
     }
   };
 
+  const status = statusOf(entry, incoming);
+  const sub = [dayLabel(entry.at), detail(entry, incoming)].filter(Boolean).join(" · ");
+
   return (
     <>
       <div
@@ -222,51 +207,23 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
             setOpen(true);
           }
         }}
-        className="group flex cursor-pointer items-center gap-3 border-t-2 border-pen/[0.07] px-4 py-3.5 transition-colors first:border-t-0 hover:bg-pen/[0.035] focus-visible:bg-pen/[0.05] focus-visible:outline-none sm:gap-3.5 sm:px-5"
+        className="group -mx-2 flex cursor-pointer items-center gap-3 rounded-xl border-t border-pen/[0.06] px-2 py-3 transition-colors duration-150 hover:bg-pen/[0.03] focus-visible:bg-pen/[0.05] focus-visible:outline-none sm:gap-3.5"
       >
-        {/* Direction first, as a boxed arrow: which way the money went is the one
-            thing worth knowing before reading anything else in the row. */}
         <span
-          className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border-2 ${
-            returned
-              ? "border-pen/15 bg-pen/[0.05] text-pen/45"
-              : incoming
-                ? "border-[#2f7d3f]/25 bg-[#2f7d3f]/10 text-[#2f7d3f]"
-                : "border-[#b91c34]/25 bg-[#b91c34]/[0.08] text-[#b91c34]"
+          className={`grid h-[2.375rem] w-[2.375rem] shrink-0 place-items-center overflow-hidden rounded-full font-display text-[14px] font-extrabold ${
+            waiting && !incoming ? "bg-deep text-sg" : "bg-tide-2 text-pen/70"
           }`}
         >
-          <Icon kind={entry.kind} waiting={waiting} returned={returned} counterparty={entry.counterparty} />
+          <Face entry={entry} waiting={waiting} returned={returned} />
         </span>
 
-        <TokenIcon asset={entry.amount.asset} size={30} />
-
         <div className="min-w-0 flex-1">
-          <p
-            className={`flex items-baseline gap-1.5 font-display text-[17px] font-bold tracking-tight tabular-nums ${
-              // Money in reads green, money out reads red, at a glance and
-              // without reading the number. Returned money is neither: it never
-              // went anywhere, so it is struck out and greyed instead.
-              returned ? "text-pen/40 line-through" : incoming ? "text-[#2f7d3f]" : "text-[#b91c34]"
-            }`}
-          >
-            <span>
-              {incoming ? "+" : "−"}
-              {hidden ? MASK : money(entry.amount.amount)}
-            </span>
-            <span className="text-[13px] font-bold text-pen/45">{entry.amount.asset}</span>
-          </p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 truncate text-[13px] font-medium text-pen/50">
-            {waiting && !incoming && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-gold/20 px-2 py-0.5 text-[11px] font-bold text-gold-ink">
-                <Clock size={10} strokeWidth={2.6} /> Waiting
-              </span>
-            )}
-            {returned && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-pen/[0.09] px-2 py-0.5 text-[11px] font-bold text-pen/60">
-                <Undo2 size={10} strokeWidth={2.6} /> Back with you
-              </span>
-            )}
+          <p className={`truncate text-[14.5px] font-semibold ${returned ? "text-pen/45" : ""}`}>
             {title(entry)}
+          </p>
+          <p className="mt-0.5 flex min-w-0 items-center gap-2 text-[12.5px] text-pen/45">
+            <span className={`st sm:hidden ${status.className}`}>{status.label}</span>
+            <span className="truncate">{sub}</span>
           </p>
         </div>
 
@@ -279,19 +236,23 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
               void takeBack();
             }}
             disabled={returning}
-            className="btn btn-dim btn-sm hidden shrink-0 sm:inline-flex"
+            className="btn btn-dim btn-sm hidden !h-8 shrink-0 !px-3 !text-[12.5px] md:inline-flex"
           >
             {returning ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />}
             {returning ? "Returning" : "Take it back"}
           </button>
         )}
 
-        <span className="shrink-0 text-[13px] font-semibold text-pen/40">{timeAgo(entry.at)}</span>
-        <ChevronRight
-          size={16}
-          strokeWidth={2.4}
-          className="-ml-1 shrink-0 text-pen/25 transition-colors group-hover:text-pen/50"
-        />
+        <span className={`st hidden shrink-0 sm:inline-flex ${status.className}`}>{status.label}</span>
+
+        <span
+          className={`w-[5.75rem] shrink-0 text-right font-mono text-[14.5px] tabular-nums ${
+            returned ? "text-pen/35 line-through" : incoming ? "text-[#d9a441]" : "text-pen"
+          }`}
+        >
+          {incoming ? "+" : "−"}
+          {hidden ? MASK : `$${money(entry.amount.amount)}`}
+        </span>
       </div>
 
       {/* Outside the row, deliberately. The sheet is portaled to <body>, but a
@@ -311,66 +272,101 @@ function Row({ entry, onChanged }: { entry: ActivityEntry; onChanged: () => void
   );
 }
 
-function Icon({
-  kind,
+function Face({
+  entry,
   waiting,
   returned,
-  counterparty,
 }: {
-  kind: ActivityEntry["kind"];
+  entry: ActivityEntry;
   waiting: boolean;
   returned: boolean;
-  counterparty?: string;
 }) {
-  if (returned) return <Undo2 size={16} strokeWidth={2.3} />;
+  if (returned) return <Undo2 size={16} strokeWidth={2.2} />;
+  const { kind, counterparty } = entry;
   // A cash-out to another chain ("0x5a…eAed on Base") shows that chain's mark.
-  const chain = kind === "cashout" ? chainInLabel(counterparty) : null;
+  const chain = chainInLabel(counterparty);
   if (chain) return <ChainLogo blockchain={chain} name={counterparty ?? chain} size={22} />;
-  if (kind === "cashout") return <Banknote size={16} strokeWidth={2.3} />;
-  if (kind === "swap") return <Repeat size={16} strokeWidth={2.3} />;
-  if (kind === "claim") return <Sparkles size={16} strokeWidth={2.3} />;
-  if (kind === "receive") return <ArrowDownLeft size={17} strokeWidth={2.4} />;
-  return waiting ? <Clock size={16} strokeWidth={2.3} /> : <ArrowUpRight size={17} strokeWidth={2.4} />;
+  // A person reads as their initial, the way the people you pay are drawn
+  // everywhere else in the app.
+  if (counterparty?.startsWith("@")) return <>{counterparty.slice(1, 2).toUpperCase()}</>;
+  if (kind === "cashout") return <Banknote size={16} strokeWidth={2.2} />;
+  if (kind === "swap") return <Repeat size={16} strokeWidth={2.2} />;
+  if (kind === "claim") return <Sparkles size={16} strokeWidth={2.2} />;
+  if (kind === "receive") return <ArrowDownLeft size={17} strokeWidth={2.2} />;
+  return waiting ? <Clock size={16} strokeWidth={2.2} /> : <ArrowUpRight size={17} strokeWidth={2.2} />;
 }
 
 /**
- * The line under the amount. Plain sentences, never a transaction type.
- *
- * Lower case and short, because it sits beneath the number rather than above it
- * and is read second. "from @amaka" is a caption; "From @amaka" is a heading
- * competing with the money for the eye.
+ * The state of a payment as one word. Waiting is the only one drawn in the
+ * accent, because it is the only one you might still act on.
  */
+function statusOf(entry: ActivityEntry, incoming: boolean): { label: string; className: string } {
+  if (entry.status === "failed") return { label: "Failed", className: "st-bad" };
+  if (entry.status === "returned") return { label: "Returned", className: "" };
+  if (entry.status === "pending") {
+    return incoming ? { label: "On its way", className: "" } : { label: "Waiting", className: "st-wait" };
+  }
+  switch (entry.kind) {
+    case "receive":
+    case "claim":
+      return { label: "Received", className: "" };
+    case "cashout":
+      return { label: "Cashed out", className: "" };
+    case "swap":
+      return { label: "Converted", className: "" };
+    case "send":
+      // Money that waited and was then picked up keeps its escrow id.
+      return { label: entry.claimRef ? "Claimed" : "Sent", className: "" };
+    default:
+      return { label: "Done", className: "" };
+  }
+}
+
+/** The second half of the line under the title: what happens next, if anything. */
+function detail(entry: ActivityEntry, incoming: boolean): string {
+  if (entry.status === "pending" && !incoming) {
+    if (!entry.refundableAt) return "waiting for them";
+    const at = Date.parse(entry.refundableAt);
+    return at <= Date.now()
+      ? "you can take it back"
+      : `take back after ${new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  }
+  if (entry.status === "returned") return "back with you";
+  return "";
+}
+
+/** The row's heading. Plain sentences, never a transaction type. */
 function title(entry: ActivityEntry): string {
   switch (entry.kind) {
     case "receive":
-      return entry.counterparty ? `from ${entry.counterparty}` : "money in";
+      return entry.counterparty ? `From ${entry.counterparty}` : "Money in";
     case "claim":
-      return "was waiting for you";
+      return "Was waiting for you";
     case "swap":
-      return entry.counterparty ? `converted to ${entry.counterparty}` : "converted";
+      return entry.counterparty ? `Converted to ${entry.counterparty}` : "Converted";
     case "cashout":
-      return entry.counterparty ? `cashed out to ${entry.counterparty}` : "cashed out";
+      return entry.counterparty ? `Cashed out to ${entry.counterparty}` : "Cashed out";
     default:
-      return entry.counterparty ? `to ${entry.counterparty}` : "money out";
+      return entry.counterparty ? `To ${entry.counterparty}` : "Money out";
   }
 }
 
 function FeedSkeleton() {
   return (
-    <section>
-      <div className="h-6 w-24 rounded-lg bg-ivory/[0.07]" />
-      <div className="chunk mt-3 overflow-hidden">
-        {[0, 1, 2].map((row) => (
-          <div key={row} className="flex items-center gap-3.5 border-t-2 border-pen/[0.07] px-5 py-3.5 first:border-t-0">
-            <span className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-pen/[0.08]" />
-            <div className="flex-1">
-              <span className="block h-3.5 w-32 animate-pulse rounded bg-pen/[0.08]" />
-              <span className="mt-2 block h-3 w-16 animate-pulse rounded bg-pen/[0.06]" />
-            </div>
-            <span className="h-4 w-14 animate-pulse rounded bg-pen/[0.08]" />
-          </div>
-        ))}
+    <section className="chunk px-4 pb-2 pt-1 sm:px-5" aria-label="Loading activity">
+      <div className="pb-2 pt-3.5">
+        <span className="skel block h-5 w-20 rounded-md" />
       </div>
+      {[0, 1, 2].map((row) => (
+        <div key={row} className="flex items-center gap-3.5 border-t border-pen/[0.06] py-3">
+          <span className="skel h-[2.375rem] w-[2.375rem] shrink-0 rounded-full" />
+          <div className="flex-1">
+            <span className="skel block h-3.5 w-32 rounded" />
+            <span className="skel mt-2 block h-3 w-20 rounded" />
+          </div>
+          <span className="skel h-4 w-16 rounded" />
+        </div>
+      ))}
     </section>
   );
 }

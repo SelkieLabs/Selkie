@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, AtSign, Check, Clock, ExternalLink, Loader2, Wallet } from "lucide-react";
 import { Avatar } from "@/components/Layout";
 import { ContractWarning } from "@/components/wallet/ContractWarning";
 import { PlatformLogo } from "@/components/Mark";
-import { Panel, PanelHead } from "@/components/wallet/Panel";
+import { Panel, PanelHead, Steps } from "@/components/wallet/Panel";
 import { HandleSuggestions } from "@/components/wallet/HandleSuggestions";
 import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
@@ -28,6 +28,9 @@ import { useHandleSuggestBox } from "@/lib/useHandleSuggestions";
 import { PLATFORMS, PLATFORM_FIELD, PLATFORM_LABEL, PLATFORM_PLACEHOLDER, type Platform } from "@/lib/platform";
 
 type Step = "compose" | "confirm" | "done";
+
+/** The three screens, named for what you do on each. */
+const FLOW = ["Who", "Check", "Sent"];
 
 /**
  * Who the money is going to.
@@ -173,6 +176,24 @@ export function SendPanel({
     }
   };
 
+  // Home's quick send hands over who and how much and asks to go straight to
+  // the check screen. Read once; the flag is then taken out of the address so
+  // a reload does not repeat it.
+  const [autoReview] = useState(
+    () =>
+      prefill !== null &&
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("review") === "1",
+  );
+  useEffect(() => {
+    if (!autoReview) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    if (canContinue) void toConfirm();
+    // Once, on arrival: the form is already filled from the hand-over, and
+    // re-running on every keystroke would yank them back to the check screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoReview]);
+
   const send = async () => {
     setSending(true);
     setError(null);
@@ -213,15 +234,24 @@ export function SendPanel({
   if (step === "done" && result) {
     return (
       <Panel>
-        <div className="flex flex-col items-center py-4 text-center">
-          <span className="grid h-16 w-16 place-items-center rounded-full border-2 border-[#2f7d3f]/40 bg-[#2f7d3f]/12 text-[#2f7d3f]">
+        <div className="flex justify-end">
+          <Steps labels={FLOW} at={2} />
+        </div>
+        <div className="flex flex-col items-center pb-4 pt-2 text-center">
+          <span
+            className={`grid h-16 w-16 place-items-center rounded-full text-sg ${
+              result.waitingToBeClaimed
+                ? "shadow-[inset_0_0_0_1.5px_rgb(127_209_185/0.55)]"
+                : "bg-sg/[0.14]"
+            }`}
+          >
             {result.waitingToBeClaimed ? (
               <Clock size={26} strokeWidth={2.2} />
             ) : (
               <Check size={30} strokeWidth={2.6} />
             )}
           </span>
-          <p className="mt-5 font-display text-[2rem] font-bold leading-none tracking-tight">
+          <p className="mt-5 font-mono text-[2rem] font-medium leading-none tracking-[-0.03em]">
             {usd(amount)}
           </p>
           {mode === "address" ? (
@@ -233,6 +263,9 @@ export function SendPanel({
               to @{cleanHandle} <PlatformLogo platform={platform} size={14} />
             </p>
           )}
+          <span className={`st mt-4 ${result.waitingToBeClaimed ? "st-wait" : ""}`}>
+            {result.waitingToBeClaimed ? "Waiting for them to sign in" : "Delivered"}
+          </span>
           <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-pen/65">
             {result.message}
           </p>
@@ -241,7 +274,7 @@ export function SendPanel({
               href={result.explorer}
               target="_blank"
               rel="noreferrer"
-              className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-bold text-pen/55 transition-colors hover:text-pen"
+              className="mt-3 inline-flex items-center gap-1.5 font-mono text-[12.5px] text-sg transition-opacity duration-150 hover:opacity-80"
             >
               See it on the NEAR explorer <ExternalLink size={13} />
             </a>
@@ -257,15 +290,18 @@ export function SendPanel({
   if (step === "confirm" && mode === "address") {
     return (
       <Panel>
-        <button
-          onClick={() => setStep("compose")}
-          className="flex items-center gap-1.5 text-[13px] font-bold text-pen/55 transition-colors hover:text-pen"
-        >
-          <ArrowLeft size={15} /> Back
-        </button>
+        <div className="flex items-center justify-between gap-4">
+          <button
+            onClick={() => setStep("compose")}
+            className="flex items-center gap-1.5 text-[13px] font-semibold text-pen/55 transition-colors duration-150 hover:text-pen"
+          >
+            <ArrowLeft size={15} /> Back
+          </button>
+          <Steps labels={FLOW} at={1} />
+        </div>
 
         <div className="mt-5 flex flex-col items-center text-center">
-          <span className="grid h-16 w-16 place-items-center rounded-2xl border-2 border-pen/20 bg-pen/[0.06] text-pen/70">
+          <span className="grid h-16 w-16 place-items-center rounded-2xl bg-tide-2 text-pen/70">
             <Wallet size={26} strokeWidth={2.2} />
           </span>
 
@@ -276,7 +312,7 @@ export function SendPanel({
             {cleanAddress}
           </p>
 
-          <p className="mt-6 font-display text-[3rem] font-bold leading-none tracking-tight">
+          <p className="mt-6 font-mono text-[3rem] font-medium leading-none tracking-[-0.04em]">
             {usd(amount)}
           </p>
 
@@ -325,12 +361,15 @@ export function SendPanel({
   if (step === "confirm" && recipient) {
     return (
       <Panel>
-        <button
-          onClick={() => setStep("compose")}
-          className="flex items-center gap-1.5 text-[13px] font-bold text-pen/55 transition-colors hover:text-pen"
-        >
-          <ArrowLeft size={15} /> Back
-        </button>
+        <div className="flex items-center justify-between gap-4">
+          <button
+            onClick={() => setStep("compose")}
+            className="flex items-center gap-1.5 text-[13px] font-semibold text-pen/55 transition-colors duration-150 hover:text-pen"
+          >
+            <ArrowLeft size={15} /> Back
+          </button>
+          <Steps labels={FLOW} at={1} />
+        </div>
 
         <div className="mt-5 flex flex-col items-center text-center">
           <Avatar name={`@${recipient.handle.username}`} src={recipient.avatarUrl} size={72} />
@@ -348,7 +387,7 @@ export function SendPanel({
             <PlatformLogo platform={recipient.handle.platform} size={13} />
           </p>
 
-          <p className="mt-7 font-display text-[3rem] font-bold leading-none tracking-tight">
+          <p className="mt-7 font-mono text-[3rem] font-medium leading-none tracking-[-0.04em]">
             {usd(amount)}
           </p>
           {note.trim() && (
@@ -414,6 +453,7 @@ export function SendPanel({
     <Panel>
       <PanelHead
         eyebrow="Send"
+        steps={{ labels: FLOW, at: 0 }}
         title="Who are you paying?"
         blurb={
           mode === "handle"

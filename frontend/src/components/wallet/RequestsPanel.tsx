@@ -39,16 +39,16 @@ function Row({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-3 border-t-2 border-pen/[0.07] px-5 py-4 first:border-t-0">
+    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-3 border-t border-pen/[0.07] px-5 py-4 first:border-t-0">
       <Avatar name={who} size={38} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-bold tracking-tight">{who}</p>
-        <p className="mt-0.5 truncate text-[13px] font-medium text-pen/50">
+        <p className="truncate text-[15px] font-semibold">{who}</p>
+        <p className="mt-0.5 truncate text-[13px] text-pen/50">
           {request.note ? `${request.note} · ` : ""}
           {timeAgo(request.createdAt)}
         </p>
       </div>
-      <span className="shrink-0 font-display text-[17px] font-bold tabular-nums">
+      <span className="shrink-0 font-mono text-[16px] tabular-nums">
         {amountOf(request)}
       </span>
       {children && <div className="flex w-full shrink-0 gap-2 sm:w-auto">{children}</div>}
@@ -67,12 +67,17 @@ export function RequestsPanel({
   incoming,
   outgoing,
   loading,
+  failed = false,
+  onRetry,
   canAsk,
   onChanged,
 }: {
   incoming: MoneyRequest[];
   outgoing: MoneyRequest[];
   loading: boolean;
+  /** The list could not be read. Empty then means "unknown", not "nobody asked". */
+  failed?: boolean;
+  onRetry?: () => void;
   /** False when they have not linked a handle yet, so nobody could answer them. */
   canAsk: boolean;
   onChanged: () => void;
@@ -153,8 +158,129 @@ export function RequestsPanel({
     }
   };
 
+  const heading = (title: string, count?: number) => (
+    <h2 className="flex items-center gap-2.5 font-display text-[19px] font-extrabold tracking-[-0.02em]">
+      {title}
+      {count !== undefined && count > 0 && <span className="rail-badge">{count}</span>}
+    </h2>
+  );
+
+  const skeleton = (
+    <div className="chunk overflow-hidden" aria-hidden="true">
+      {[0, 1].map((row) => (
+        <div key={row} className="flex items-center gap-3.5 border-t border-pen/[0.07] px-5 py-4 first:border-t-0">
+          <span className="h-10 w-10 shrink-0 skel rounded-full" />
+          <div className="flex-1">
+            <span className="block h-3.5 w-28 skel rounded" />
+            <span className="mt-2 block h-3 w-20 skel rounded" />
+          </div>
+          <span className="h-4 w-14 skel rounded" />
+        </div>
+      ))}
+    </div>
+  );
+
+  // Someone waiting on an answer comes first: it is the one thing here that
+  // another person is blocked on. With nobody waiting, asking leads.
+  const waitingSection = (
+    <section className="space-y-3">
+      {heading("Waiting on you", waiting.length)}
+      {loading ? (
+        skeleton
+      ) : failed && waiting.length === 0 ? (
+        <div className="chunk flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[14.5px] leading-relaxed text-pen/65">
+            We could not load your requests just now. Nothing has changed with them.
+          </p>
+          {onRetry && (
+            <button onClick={onRetry} className="btn btn-dim btn-sm shrink-0">
+              Try again
+            </button>
+          )}
+        </div>
+      ) : waiting.length === 0 ? (
+        <div className="chunk flex items-center gap-3.5 p-5">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-tide-2 text-pen/55">
+            <HandCoins size={18} strokeWidth={2} />
+          </span>
+          <p className="text-[14.5px] leading-relaxed text-pen/60">
+            Nobody is waiting on you. When someone asks you for money, it shows up here with a Pay
+            button.
+          </p>
+        </div>
+      ) : (
+        <div className="chunk overflow-hidden">
+          {waiting.map((request) => (
+            <Row
+              key={request.id}
+              request={request}
+              who={`@${request.fromHandle.username}`}
+            >
+              <button
+                onClick={async () => {
+                  const yes = await confirm({
+                    tone: "danger",
+                    title: `Turn down @${request.fromHandle.username}?`,
+                    body: `They asked you for ${amountOf(request)}. They will see it was turned down, and it cannot be undone.`,
+                    confirm: "Turn it down",
+                  });
+                  if (!yes) return;
+                  void act(
+                    request.id,
+                    () => api.declineRequest(request.id),
+                    "Turned down.",
+                    "That did not go through. It is still waiting for your answer.",
+                  );
+                }}
+                disabled={busyId === request.id}
+                className="btn btn-dim btn-sm flex-1 sm:flex-none"
+              >
+                <X size={15} strokeWidth={2.6} /> No
+              </button>
+              <button
+                onClick={async () => {
+                  const yes = await confirm({
+                    title: `Pay @${request.fromHandle.username} ${amountOf(request)}?`,
+                    confirm: `Pay ${amountOf(request)}`,
+                    rows: [
+                      { label: "To", value: `@${request.fromHandle.username}` },
+                      { label: "Amount", value: amountOf(request) },
+                      ...(request.note ? [{ label: "For", value: request.note }] : []),
+                    ],
+                  });
+                  if (!yes) return;
+                  void act(
+                    request.id,
+                    // On NEAR the payer's own key signs it, for exactly what was asked.
+                    () =>
+                      isNear
+                        ? nearPay(() => api.near.preparePayRequest(request.id))
+                        : api.payRequest(request.id),
+                    `Paid @${request.fromHandle.username}.`,
+                    "That did not send. Your money is safe. Try again.",
+                  );
+                }}
+                disabled={busyId === request.id}
+                className="btn btn-gold btn-sm flex-1 sm:flex-none"
+              >
+                {busyId === request.id ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Check size={15} strokeWidth={2.6} />
+                )}
+                Pay
+              </button>
+            </Row>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {waiting.length > 0 && !loading && waitingSection}
+
       <Panel>
         <PanelHead
           eyebrow="Requests"
@@ -178,7 +304,7 @@ export function RequestsPanel({
               {PLATFORM_FIELD[platform]}
             </label>
             <div className="relative mt-2">
-              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-pen/40">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-semibold text-pen/40">
                 @
               </span>
               <input
@@ -205,12 +331,12 @@ export function RequestsPanel({
               How much
             </label>
             <div className="relative mt-2">
-              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-pen/40">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-semibold text-pen/40">
                 $
               </span>
               <input
                 id="ask-amount"
-                className="field pl-8 font-display font-bold"
+                className="field pl-8 font-mono"
                 placeholder="0.00"
                 inputMode="decimal"
                 disabled={!canAsk}
@@ -247,150 +373,58 @@ export function RequestsPanel({
         </button>
       </Panel>
 
-      {loading ? (
-        <Panel className="!p-0">
-          {[0, 1].map((row) => (
-            <div key={row} className="flex items-center gap-3.5 border-t-2 border-pen/[0.07] px-5 py-4 first:border-t-0">
-              <span className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-pen/[0.08]" />
-              <div className="flex-1">
-                <span className="block h-3.5 w-28 animate-pulse rounded bg-pen/[0.08]" />
-                <span className="mt-2 block h-3 w-20 animate-pulse rounded bg-pen/[0.06]" />
-              </div>
-              <span className="h-4 w-14 animate-pulse rounded bg-pen/[0.08]" />
-            </div>
-          ))}
-        </Panel>
-      ) : (
-        <>
-          <section>
-            <h2 className="font-display text-lg font-bold tracking-tight text-ivory">
-              Waiting on you
-            </h2>
-            {waiting.length === 0 ? (
-              <div className="chunk mt-3 p-7 text-center">
-                <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-gold/15 text-gold-ink">
-                  <HandCoins size={20} strokeWidth={2.2} />
-                </span>
-                <p className="mt-3.5 text-[15px] leading-relaxed text-pen/60">
-                  Nobody is waiting on you. When someone asks you for money, it lands here.
-                </p>
-              </div>
-            ) : (
-              <div className="chunk mt-3 overflow-hidden">
-                {waiting.map((request) => (
-                  <Row
-                    key={request.id}
-                    request={request}
-                    who={`@${request.fromHandle.username}`}
-                  >
-                    <button
-                      onClick={async () => {
-                        const yes = await confirm({
-                          tone: "danger",
-                          title: `Turn down @${request.fromHandle.username}?`,
-                          body: `They asked you for ${amountOf(request)}. They will see it was turned down, and it cannot be undone.`,
-                          confirm: "Turn it down",
-                        });
-                        if (!yes) return;
-                        void act(
-                          request.id,
-                          () => api.declineRequest(request.id),
-                          "Turned down.",
-                          "That did not go through. It is still waiting for your answer.",
-                        );
-                      }}
-                      disabled={busyId === request.id}
-                      className="btn btn-dim btn-sm flex-1 sm:flex-none"
-                    >
-                      <X size={15} strokeWidth={2.6} /> No
-                    </button>
-                    <button
-                      onClick={async () => {
-                        const yes = await confirm({
-                          title: `Pay @${request.fromHandle.username} ${amountOf(request)}?`,
-                          confirm: `Pay ${amountOf(request)}`,
-                          rows: [
-                            { label: "To", value: `@${request.fromHandle.username}` },
-                            { label: "Amount", value: amountOf(request) },
-                            ...(request.note ? [{ label: "For", value: request.note }] : []),
-                          ],
-                        });
-                        if (!yes) return;
-                        void act(
-                          request.id,
-                          // On NEAR the payer's own key signs it, for exactly what was asked.
-                          () =>
-                            isNear
-                              ? nearPay(() => api.near.preparePayRequest(request.id))
-                              : api.payRequest(request.id),
-                          `Paid @${request.fromHandle.username}.`,
-                          "That did not send. Your money is safe. Try again.",
-                        );
-                      }}
-                      disabled={busyId === request.id}
-                      className="btn btn-gold btn-sm flex-1 sm:flex-none"
-                    >
-                      {busyId === request.id ? (
-                        <Loader2 size={15} className="animate-spin" />
-                      ) : (
-                        <Check size={15} strokeWidth={2.6} />
-                      )}
-                      Pay
-                    </button>
-                  </Row>
-                ))}
-              </div>
-            )}
-          </section>
+      {(waiting.length === 0 || loading) && waitingSection}
 
-          {(outgoing.length > 0 || answered.length > 0) && (
-            <section>
-              <h2 className="font-display text-lg font-bold tracking-tight text-ivory">
-                What you asked for
-              </h2>
-              <div className="chunk mt-3 overflow-hidden">
-                {outgoing.map((request) => (
-                  <Row key={request.id} request={request} who={`@${request.toHandle.username}`}>
-                    {request.status === "pending" ? (
-                      <button
-                        onClick={async () => {
-                          const yes = await confirm({
-                            tone: "danger",
-                            title: "Withdraw this request?",
-                            body: `@${request.toHandle.username} will no longer be able to pay it. Ask again any time.`,
-                            confirm: "Withdraw it",
-                          });
-                          if (!yes) return;
-                          void act(
-                            request.id,
-                            () => api.cancelRequest(request.id),
-                            "Withdrawn.",
-                            "That did not go through. They can still see it.",
-                          );
-                        }}
-                        disabled={busyId === request.id}
-                        className="btn btn-dim btn-sm flex-1 sm:flex-none"
-                      >
-                        Withdraw
-                      </button>
-                    ) : (
-                      <span className="rounded-full bg-pen/[0.07] px-3 py-1 text-[12px] font-bold text-pen/55">
-                        {SETTLED[request.status]}
-                      </span>
-                    )}
-                  </Row>
-                ))}
-                {answered.map((request) => (
-                  <Row key={request.id} request={request} who={`@${request.fromHandle.username}`}>
-                    <span className="rounded-full bg-pen/[0.07] px-3 py-1 text-[12px] font-bold text-pen/55">
-                      {SETTLED[request.status]}
-                    </span>
-                  </Row>
-                ))}
-              </div>
-            </section>
-          )}
-        </>
+      {!loading && outgoing.length > 0 && (
+        <section className="space-y-3">
+          {heading("What you asked for")}
+          <div className="chunk overflow-hidden">
+            {outgoing.map((request) => (
+              <Row key={request.id} request={request} who={`@${request.toHandle.username}`}>
+                {request.status === "pending" ? (
+                  <button
+                    onClick={async () => {
+                      const yes = await confirm({
+                        tone: "danger",
+                        title: "Withdraw this request?",
+                        body: `@${request.toHandle.username} will no longer be able to pay it. Ask again any time.`,
+                        confirm: "Withdraw it",
+                      });
+                      if (!yes) return;
+                      void act(
+                        request.id,
+                        () => api.cancelRequest(request.id),
+                        "Withdrawn.",
+                        "That did not go through. They can still see it.",
+                      );
+                    }}
+                    disabled={busyId === request.id}
+                    className="btn btn-dim btn-sm flex-1 sm:flex-none"
+                  >
+                    Withdraw
+                  </button>
+                ) : (
+                  <span className={`st ${request.status === "paid" ? "st-in" : ""}`}>
+                    {SETTLED[request.status]}
+                  </span>
+                )}
+              </Row>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!loading && answered.length > 0 && (
+        <section className="space-y-3">
+          {heading("Already answered")}
+          <div className="chunk overflow-hidden">
+            {answered.map((request) => (
+              <Row key={request.id} request={request} who={`@${request.fromHandle.username}`}>
+                <span className="st">{SETTLED[request.status]}</span>
+              </Row>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );

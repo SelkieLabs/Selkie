@@ -3,7 +3,7 @@
 import { useState, type KeyboardEvent } from "react";
 import { ArrowLeft, Check, Clock, Loader2, X } from "lucide-react";
 import { Avatar } from "@/components/Layout";
-import { Panel, PanelHead } from "@/components/wallet/Panel";
+import { Panel, PanelHead, Steps } from "@/components/wallet/Panel";
 import { HandleSuggestions } from "@/components/wallet/HandleSuggestions";
 import { PlatformToggle } from "@/components/wallet/PlatformToggle";
 import { useToast } from "@/contexts/ToastContext";
@@ -23,6 +23,9 @@ import { useHandleSuggestBox } from "@/lib/useHandleSuggestions";
 const MAX = isNear ? MAX_PAY_MANY : 100;
 
 type Step = "compose" | "confirm" | "done";
+
+/** The three screens, named for what you do on each. */
+const FLOW = ["List", "Check", "Sent"];
 
 /**
  * Paying a list of people the same amount each.
@@ -132,12 +135,13 @@ export function PayManyPanel({
     const failed = result.results.filter((row) => !row.sent);
     return (
       <Panel>
-        <div className="flex flex-col items-center text-center">
+        <div className="flex justify-end">
+          <Steps labels={FLOW} at={2} />
+        </div>
+        <div className="mt-2 flex flex-col items-center text-center">
           <span
-            className={`grid h-16 w-16 place-items-center rounded-full border-2 ${
-              failed.length === 0
-                ? "border-[#2f7d3f]/40 bg-[#2f7d3f]/12 text-[#2f7d3f]"
-                : "border-gold-deep/50 bg-gold/15 text-gold-ink"
+            className={`grid h-16 w-16 place-items-center rounded-full ${
+              failed.length === 0 ? "bg-sg/[0.14] text-sg" : "bg-[#f28b9b]/12 text-[#f28b9b]"
             }`}
           >
             <Check size={30} strokeWidth={2.6} />
@@ -148,11 +152,11 @@ export function PayManyPanel({
           </p>
         </div>
 
-        <div className="mt-6 max-h-72 overflow-y-auto rounded-2xl border-2 border-pen/15">
+        <div className="mt-6 max-h-72 overflow-y-auto rounded-2xl bg-tide-0/60 shadow-[inset_0_0_0_1px_rgba(233,241,236,0.08)]">
           {result.results.map((row) => (
             <div
               key={row.handle}
-              className="flex items-center gap-3 border-t-2 border-pen/[0.07] px-4 py-2.5 first:border-t-0"
+              className="flex items-center gap-3 border-t border-pen/[0.07] px-4 py-2.5 first:border-t-0"
             >
               <Avatar name={row.handle} size={30} />
               <span className="min-w-0 flex-1 truncate text-[14px] font-bold">{row.handle}</span>
@@ -161,7 +165,7 @@ export function PayManyPanel({
                   <X size={14} strokeWidth={2.8} /> Did not send
                 </span>
               ) : row.waitingToBeClaimed ? (
-                <span className="flex items-center gap-1.5 text-[13px] font-bold text-gold-ink">
+                <span className="flex items-center gap-1.5 text-[13px] font-semibold text-sg">
                   <Clock size={14} strokeWidth={2.6} /> Waiting for them
                 </span>
               ) : (
@@ -193,16 +197,19 @@ export function PayManyPanel({
   if (step === "confirm") {
     return (
       <Panel>
-        <button
-          onClick={() => setStep("compose")}
-          className="flex items-center gap-1.5 text-[13px] font-bold text-pen/55 transition-colors hover:text-pen"
-        >
-          <ArrowLeft size={15} /> Back
-        </button>
+        <div className="flex items-center justify-between gap-4">
+          <button
+            onClick={() => setStep("compose")}
+            className="flex items-center gap-1.5 text-[13px] font-semibold text-pen/55 transition-colors duration-150 hover:text-pen"
+          >
+            <ArrowLeft size={15} /> Back
+          </button>
+          <Steps labels={FLOW} at={1} />
+        </div>
 
         <div className="mt-5 text-center">
           <p className="eyebrow">You are about to send</p>
-          <p className="mt-2 font-display text-[3rem] font-bold leading-none tracking-tight">
+          <p className="mt-2 font-mono text-[3rem] font-medium leading-none tracking-[-0.04em]">
             {usd(total)}
           </p>
           <p className="mt-2.5 text-[15px] text-pen/65">
@@ -213,15 +220,15 @@ export function PayManyPanel({
           )}
         </div>
 
-        <div className="mt-6 max-h-64 overflow-y-auto rounded-2xl border-2 border-pen/15">
+        <div className="mt-6 max-h-64 overflow-y-auto rounded-2xl bg-tide-0/60 shadow-[inset_0_0_0_1px_rgba(233,241,236,0.08)]">
           {handles.map((handle) => (
             <div
               key={handle}
-              className="flex items-center gap-3 border-t-2 border-pen/[0.07] px-4 py-2.5 first:border-t-0"
+              className="flex items-center gap-3 border-t border-pen/[0.07] px-4 py-2.5 first:border-t-0"
             >
               <Avatar name={`@${handle}`} size={30} />
               <span className="min-w-0 flex-1 truncate text-[14px] font-bold">@{handle}</span>
-              <span className="font-display text-[14px] font-bold tabular-nums text-pen/70">
+              <span className="font-mono text-[14px] tabular-nums text-pen/70">
                 {usd(amount)}
               </span>
             </div>
@@ -264,6 +271,7 @@ export function PayManyPanel({
     <Panel>
       <PanelHead
         eyebrow="Pay many"
+        steps={{ labels: FLOW, at: 0 }}
         title="Send to a whole list at once"
         blurb="Paste or type handles, pick one amount, and everyone gets the same."
       />
@@ -276,13 +284,13 @@ export function PayManyPanel({
       </label>
       <div className="relative">
       <div
-        className="mt-2 flex min-h-[3rem] flex-wrap items-center gap-2 rounded-xl border-2 border-pen bg-card-bright p-2 focus-within:border-[#b8871f] focus-within:shadow-[0_0_0_4px_rgba(217,168,92,0.3)]"
+        className="field-box mt-2 flex min-h-[3rem] flex-wrap items-center gap-2 p-2"
         onClick={() => document.getElementById("many-handles")?.focus()}
       >
         {handles.map((handle) => (
           <span
             key={handle}
-            className="flex items-center gap-1.5 rounded-lg bg-pen/[0.07] py-1 pl-1 pr-1.5 text-[13px] font-bold"
+            className="flex items-center gap-1.5 rounded-lg bg-tide-2 py-1 pl-1 pr-1.5 text-[13px] font-semibold"
           >
             <Avatar name={`@${handle}`} size={20} />@{handle}
             <button
@@ -356,7 +364,7 @@ export function PayManyPanel({
       />
 
       {/* The total, always visible once it can be worked out. */}
-      <div className="mt-6 flex items-center justify-between rounded-2xl border-2 border-pen/15 bg-pen/[0.04] p-4">
+      <div className="mt-6 flex items-center justify-between rounded-2xl border border-pen/15 bg-pen/[0.04] p-4">
         <div>
           <p className="label">Total</p>
           <p className="mt-0.5 text-[13px] font-medium text-pen/50">
@@ -364,7 +372,7 @@ export function PayManyPanel({
           </p>
         </div>
         <p
-          className={`font-display text-[1.75rem] font-bold leading-none tracking-tight tabular-nums ${
+          className={`font-mono text-[1.75rem] font-medium leading-none tracking-[-0.03em] tabular-nums ${
             tooMuch ? "text-[#a11d34]" : ""
           }`}
         >

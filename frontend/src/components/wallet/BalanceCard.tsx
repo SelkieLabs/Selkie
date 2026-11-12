@@ -13,24 +13,27 @@ import {
   Repeat,
   RefreshCw,
   Send,
+  Users,
 } from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
+import { Caustics } from "@/components/wallet/Caustics";
 import { KeyProof } from "@/components/wallet/KeyProof";
 import { useToast } from "@/contexts/ToastContext";
 import type { Money, User } from "@/lib/api";
-import { features, isNear } from "@/lib/chain";
+import { NEAR_NETWORK, features, isNear } from "@/lib/chain";
 import { DOLLAR, money, moneyLike, shortAddress } from "@/lib/format";
 import { MASK, toggleAmountsHidden, useAmountsHidden } from "@/lib/privacy";
 import { useCountUp } from "@/lib/useCountUp";
 
 /**
- * The top of the wallet: who you are, what you have, and what you can do next.
+ * The top of the wallet: what you have, and where it lives.
  *
- * One card rather than three, because a balance means something different
- * depending on whose it is. The handle above the number is what makes it "your
- * money" instead of "a number". Refresh and copy live here too: they are the two
- * things people reach for the moment a balance looks wrong, and hiding them in a
- * menu is how a wallet earns a support message.
+ * The one rich moment in the app: caustic light drifts over this card and
+ * nowhere else, so the eye lands on the money first. The account name sits on
+ * it because on NEAR the name is the point (it is your handle), and the key
+ * proof sits at its foot because "Selkie holds no key" means most next to the
+ * number it protects. Refresh and hide are here too: they are what people
+ * reach for the moment a balance looks wrong.
  */
 export function BalanceCard({
   user,
@@ -38,129 +41,110 @@ export function BalanceCard({
   loading,
   refreshing,
   onRefresh,
-  onConvert,
 }: {
   user: User;
   balances: Money[];
   loading: boolean;
   refreshing: boolean;
   onRefresh: () => void;
-  /** Absent where the chain has no conversion; the button goes with it. */
-  onConvert?: () => void;
 }) {
   const hidden = useAmountsHidden();
   const dollars = balances.find((balance) => balance.asset === DOLLAR)?.amount ?? "0";
-  const hasSomethingToConvert = balances.some((balance) => Number(balance.amount) > 0);
 
   // Counted, not printed. While the balance is still loading this target is 0,
   // so the count begins the moment the real figure arrives rather than starting
-  // against a number nobody has seen yet. Off while the balance is covered:
-  // there is nothing to watch behind the mask, and it would mean the number had
-  // already finished moving by the time it was uncovered.
+  // against a number nobody has seen yet. Off while the balance is covered.
   const counted = useCountUp(Number(dollars) || 0, { enabled: !hidden });
-
-  const profile = user.identities.find((identity) => identity.avatarUrl || identity.displayName);
-  const handle = user.handles[0];
-  const name = profile?.displayName;
+  const shown = moneyLike(counted, dollars);
+  const point = shown.indexOf(".");
+  const whole = point === -1 ? shown : shown.slice(0, point);
+  const cents = point === -1 ? "" : shown.slice(point);
 
   return (
-    <section className="chunk-gold overflow-hidden p-6 sm:p-7">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar url={profile?.avatarUrl} fallback={handle?.username ?? name ?? "?"} />
-          <div className="min-w-0">
-            <p className="eyebrow">{isNear ? "Your NEAR account" : "Your wallet"}</p>
-            <p className="truncate font-display text-[17px] font-bold tracking-tight">
-              {handle ? `@${handle.username}` : (name ?? "Not linked yet")}
-            </p>
-            {/* The account is named after the handle; that is the point, so it
-                is shown whole. Copy is on the button beside it. */}
-            {isNear && (
-              <p className="truncate font-mono text-[12px] font-medium text-pen/60" title={user.address}>
-                {user.address}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <IconButton
-            label={hidden ? "Show balance" : "Hide balance"}
-            onClick={toggleAmountsHidden}
-          >
-            {hidden ? (
-              <EyeOff size={15} strokeWidth={2.5} />
-            ) : (
-              <Eye size={15} strokeWidth={2.5} />
-            )}
-          </IconButton>
-          <IconButton label="Refresh balance" onClick={onRefresh} disabled={refreshing}>
-            <RefreshCw
-              size={15}
-              strokeWidth={2.5}
-              className={refreshing ? "animate-spin" : undefined}
-            />
-          </IconButton>
+    <section className="chunk-gold overflow-hidden">
+      <Caustics className="pointer-events-none absolute inset-0 h-full w-full opacity-60 mix-blend-screen" />
+      <div className="relative flex min-h-[14.75rem] flex-col p-5 sm:px-6 sm:py-[1.375rem]">
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-1">
+            <span className="mr-1.5 text-[14px] text-pen/70">Balance</span>
+            <IconButton label={hidden ? "Show balance" : "Hide balance"} onClick={toggleAmountsHidden}>
+              {hidden ? <EyeOff size={14} strokeWidth={2.2} /> : <Eye size={14} strokeWidth={2.2} />}
+            </IconButton>
+            <IconButton label="Refresh balance" onClick={onRefresh} disabled={refreshing}>
+              <RefreshCw size={14} strokeWidth={2.2} className={refreshing ? "animate-spin" : undefined} />
+            </IconButton>
+          </span>
           <CopyAddress address={user.address} />
         </div>
-      </div>
 
-      <div className="mt-6">
-        {loading ? (
-          <span className="block h-[3.25rem] w-52 animate-pulse rounded-xl bg-pen/[0.12]" />
-        ) : (
-          // A plain block, not a flex row. Flexbox decides a pill's baseline
-          // from the first thing inside it, which is the coin, so the pill
-          // could never be lined up by its own edge. Laid out as ordinary
-          // inline content, the rule further down gives an exact answer.
-          <p className="leading-none">
-            {/* Space Grotesk draws its dollar sign taller than its digits: the
-                stroke pierces above the cap line and below the baseline. At the
-                same size it therefore cannot sit flush, however it is aligned.
-                So it is scaled to the digits' own height and lifted back onto
-                their baseline, which puts its top and bottom on the same two
-                lines as the numerals. Muted rather than shrunk further, so the
-                digits still lead. It sits outside the masked part, so a hidden
-                balance still reads as money. */}
-            <span className="font-display text-[2.5rem] font-bold leading-none tracking-tight tabular-nums sm:text-[3.35rem]">
-              <span className="inline-block translate-y-[-0.085em] text-[0.82em] opacity-70">$</span>
-              {hidden ? MASK : moneyLike(counted, dollars)}
-            </span>
-            {/* An inline-block whose overflow is clipped takes its baseline
-                from its own bottom edge rather than from the text inside it.
-                That is the whole trick: the pill's bottom edge then lands on
-                the line the digits sit on, so it finishes exactly where the
-                zeros finish. Nothing here depends on the font's measurements,
-                which is why this holds at both sizes. */}
-            <span className="ml-3 inline-block overflow-hidden whitespace-nowrap rounded-full border-2 border-pen/20 bg-card-bright/60 py-0.5 pl-1 pr-2">
-              <TokenIcon asset={DOLLAR} size={17} className="mr-1.5 inline-block align-middle" />
-              <span className="font-display text-[12px] font-bold">{DOLLAR}</span>
-            </span>
+        <div className="mt-3 sm:mt-2">
+          {loading ? (
+            <span className="skel block h-[3.75rem] w-56 rounded-2xl sm:h-[5rem]" />
+          ) : (
+            <p className="font-display text-[3.6rem] font-extrabold leading-[0.95] tracking-[-0.05em] tabular-nums sm:text-[5.25rem]">
+              <span>$</span>
+              {hidden ? (
+                MASK
+              ) : (
+                <>
+                  {whole}
+                  <small className="text-[0.48em] tracking-[-0.03em] text-pen/45">{cents}</small>
+                </>
+              )}
+            </p>
+          )}
+          <p className="mt-1.5 font-mono text-[12px] text-pen/45">
+            {DOLLAR} on {isNear ? `NEAR ${NEAR_NETWORK}` : "Stellar testnet"}
           </p>
-        )}
-      </div>
+        </div>
 
-      <div className="mt-6 flex flex-wrap gap-2.5">
-        <Link href="/wallet/send" className="btn btn-dark flex-1 sm:flex-none">
-          <Send size={15} strokeWidth={2.4} /> Send
-        </Link>
-        <Link href="/wallet/receive" className="btn flex-1 sm:flex-none">
-          <ArrowDownToLine size={15} strokeWidth={2.4} /> Deposit
-        </Link>
-        {features.cashOut && (
-          <Link href="/wallet/cashout" className="btn flex-1 sm:flex-none">
-            <Banknote size={15} strokeWidth={2.4} /> Cash out
-          </Link>
-        )}
-        {features.convert && onConvert && (
-          <button onClick={onConvert} disabled={!hasSomethingToConvert} className="btn">
-            <Repeat size={15} strokeWidth={2.4} /> Convert
-          </button>
-        )}
+        <div className="mt-auto pt-5">{isNear && <KeyProof />}</div>
       </div>
-
-      {isNear && <KeyProof />}
     </section>
+  );
+}
+
+/**
+ * The four things you do with money, under the number. Send is the one
+ * filled in: it is why people open the app.
+ */
+export function BalanceActions({
+  balances,
+  onConvert,
+}: {
+  balances: Money[];
+  /** Absent where the chain has no conversion; the button goes with it. */
+  onConvert?: () => void;
+}) {
+  const hasSomethingToConvert = balances.some((balance) => Number(balance.amount) > 0);
+  const base =
+    "flex h-[3.625rem] min-w-0 flex-col items-center justify-center gap-1 rounded-2xl text-[13px] font-semibold transition-[background-color,box-shadow,transform] duration-150 active:scale-[0.98] sm:flex-row sm:gap-2.5 sm:text-[14.5px]";
+  const plain = `${base} bg-tide-1 text-pen shadow-[inset_0_0_0_1px_rgba(233,241,236,0.08)] hover:bg-tide-2`;
+  return (
+    <div className="grid grid-cols-4 gap-2 sm:gap-2.5">
+      <Link href="/wallet/send" className={`${base} bg-sg text-abyss hover:bg-sg-light`}>
+        <Send size={17} strokeWidth={2} /> Send
+      </Link>
+      <Link href="/wallet/receive" className={plain}>
+        <ArrowDownToLine size={17} strokeWidth={2} className="text-pen/70" /> Deposit
+      </Link>
+      {features.cashOut && (
+        <Link href="/wallet/cashout" className={plain}>
+          <Banknote size={17} strokeWidth={2} className="text-pen/70" /> Cash out
+        </Link>
+      )}
+      {features.convert && onConvert ? (
+        <button onClick={onConvert} disabled={!hasSomethingToConvert} className={`${plain} disabled:opacity-50`}>
+          <Repeat size={17} strokeWidth={2} className="text-pen/70" /> Convert
+        </button>
+      ) : (
+        features.payMany && (
+          <Link href="/wallet/many" className={plain}>
+            <Users size={17} strokeWidth={2} className="text-pen/70" /> Pay many
+          </Link>
+        )
+      )}
+    </div>
   );
 }
 
@@ -180,10 +164,10 @@ export function AssetList({ balances, loading }: { balances: Money[]; loading: b
         <p className="label">Everything you hold</p>
         <div className="mt-4 space-y-2.5">
           {[0, 1].map((row) => (
-            <div key={row} className="flex items-center gap-3 rounded-2xl border-2 border-pen/10 p-3">
-              <span className="h-8 w-8 animate-pulse rounded-full bg-pen/[0.08]" />
-              <span className="h-3.5 w-16 animate-pulse rounded bg-pen/[0.08]" />
-              <span className="ml-auto h-3.5 w-20 animate-pulse rounded bg-pen/[0.08]" />
+            <div key={row} className="flex items-center gap-3 rounded-2xl bg-pen/[0.03] p-3">
+              <span className="skel h-8 w-8 rounded-full" />
+              <span className="skel h-3.5 w-16 rounded" />
+              <span className="skel ml-auto h-3.5 w-20 rounded" />
             </div>
           ))}
         </div>
@@ -200,38 +184,19 @@ export function AssetList({ balances, loading }: { balances: Money[]; loading: b
         {rows.map((balance) => (
           <div
             key={balance.asset}
-            className="flex items-center gap-3 rounded-2xl border-2 border-pen/12 bg-card-bright/60 p-3"
+            className="flex items-center gap-3 rounded-2xl bg-pen/[0.03] p-3"
           >
             <TokenIcon asset={balance.asset} size={32} />
             <span className="font-display text-[15px] font-bold tracking-tight">
               {balance.asset}
             </span>
-            <span className="ml-auto font-display text-[15px] font-bold tabular-nums">
+            <span className="ml-auto font-mono text-[14.5px] tabular-nums">
               {hidden ? MASK : money(balance.amount)}
             </span>
           </div>
         ))}
       </div>
     </section>
-  );
-}
-
-function Avatar({ url, fallback }: { url?: string; fallback: string }) {
-  if (url) {
-    return (
-      <img
-        src={url}
-        alt=""
-        width={44}
-        height={44}
-        className="h-11 w-11 shrink-0 rounded-full border-2 border-pen/20 object-cover"
-      />
-    );
-  }
-  return (
-    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-pen/20 bg-pen/[0.09] font-display text-lg font-bold text-pen/70">
-      {fallback.slice(0, 1).toUpperCase()}
-    </span>
   );
 }
 
@@ -253,7 +218,7 @@ function IconButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="grid h-9 w-9 place-items-center rounded-full border-2 border-pen/20 bg-card-bright/60 text-pen transition-colors hover:bg-card-bright disabled:opacity-55"
+      className="grid h-8 w-8 place-items-center rounded-full text-pen/55 transition-colors duration-150 hover:bg-pen/[0.08] hover:text-pen disabled:opacity-50"
     >
       {children}
     </button>
@@ -290,18 +255,20 @@ function CopyAddress({ address }: { address: string }) {
       type="button"
       onClick={() => void copy()}
       disabled={busy}
-      title={address}
-      className="flex h-9 items-center gap-1.5 rounded-full border-2 border-pen/20 bg-card-bright/60 pl-2.5 pr-3 font-display text-[12px] font-bold text-pen transition-colors hover:bg-card-bright"
+      title={`Copy ${address}`}
+      aria-label={isNear ? "Copy account name" : "Copy address"}
+      className="inline-flex min-w-0 items-center gap-2 rounded-full bg-abyss/45 px-3 py-[0.45rem] font-mono text-[12px] text-pen shadow-[inset_0_0_0_1px_rgba(233,241,236,0.14)] transition-colors duration-150 hover:bg-abyss/70"
     >
+      {/* On NEAR the name is the handle, so it is shown whole (truncated only
+          when the screen is too narrow); elsewhere a short form is enough. */}
+      <span className="min-w-0 truncate">{copied ? "Copied" : isNear ? address : shortAddress(address)}</span>
       {busy ? (
-        <Loader2 size={13} className="animate-spin" />
+        <Loader2 size={13} className="shrink-0 animate-spin" />
       ) : copied ? (
-        <Check size={13} strokeWidth={2.8} />
+        <Check size={13} strokeWidth={2.6} className="shrink-0 text-sg" />
       ) : (
-        <Copy size={13} strokeWidth={2.5} />
+        <Copy size={13} strokeWidth={2.2} className="shrink-0 text-pen/60" />
       )}
-      {/* On NEAR the full name is already on the card; the pill only copies it. */}
-      <span className="hidden sm:inline">{copied ? "Copied" : isNear ? "Copy" : shortAddress(address)}</span>
     </button>
   );
 }

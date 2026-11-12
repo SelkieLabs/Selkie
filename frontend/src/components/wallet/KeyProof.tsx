@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ExternalLink, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ExternalLink, KeyRound, ShieldAlert } from "lucide-react";
 import { api, type AccountKeys } from "@/lib/api";
 
 /**
@@ -11,9 +11,13 @@ import { api, type AccountKeys } from "@/lib/api";
  * forwards what the RPC says) and links to the explorer so anyone can see the
  * same list without trusting this screen. If Selkie ever did hold a key it says
  * so plainly: a proof badge that can only say yes is not a proof.
+ *
+ * Drawn as the foot of the balance card, so the claim sits next to the money
+ * it protects.
  */
 export function KeyProof() {
-  const [proof, setProof] = useState<AccountKeys | null>(null);
+  // undefined while asking, null when the answer did not come.
+  const [proof, setProof] = useState<AccountKeys | null | undefined>(undefined);
 
   useEffect(() => {
     let live = true;
@@ -27,34 +31,50 @@ export function KeyProof() {
     };
   }, []);
 
-  if (!proof) return null;
+  if (proof === null) return null;
+
+  const shell =
+    "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-dashed border-pen/20 pt-3 text-[13.5px] text-pen/70";
+
+  if (proof === undefined) {
+    return (
+      <div className={shell} aria-hidden="true">
+        <span className="skel h-[26px] w-64 max-w-full rounded-lg" />
+      </div>
+    );
+  }
 
   const count = proof.keys.length;
   const yours = proof.keys.filter((key) => key.heldBy === "you").length;
   const clean = !proof.selkieHoldsKey && count > 0 && yours === count;
 
   return (
-    <a
-      href={proof.explorerUrl}
-      target="_blank"
-      rel="noreferrer"
-      className="mt-5 flex items-center gap-2.5 rounded-xl border-2 border-pen/15 bg-card-bright/60 px-3.5 py-2.5 text-[13px] leading-snug text-pen/80 transition-colors hover:bg-card-bright"
-    >
-      {clean ? (
-        <ShieldCheck size={17} strokeWidth={2.4} className="shrink-0 text-[#2f7d3f]" />
-      ) : (
-        <ShieldAlert size={17} strokeWidth={2.4} className="shrink-0 text-[#a11d34]" />
-      )}
-      <span className="min-w-0 flex-1">
-        <b className="font-bold text-pen">
-          Keys on this account: {count}
-          {clean ? (count === 1 ? " — yours." : " — all yours.") : "."}
-        </b>{" "}
-        {proof.selkieHoldsKey ? "One of them is Selkie's." : "Selkie holds none."}
+    <div className={shell}>
+      <span className="flex min-w-0 items-center gap-2.5">
+        <span
+          className={`grid h-[26px] w-[26px] shrink-0 place-items-center rounded-lg ${
+            clean ? "bg-sg/15 text-sg" : "bg-[#f28b9b]/15 text-[#f28b9b]"
+          }`}
+        >
+          {clean ? <KeyRound size={14} strokeWidth={2.2} /> : <ShieldAlert size={14} strokeWidth={2.2} />}
+        </span>
+        <span className="min-w-0">
+          Keys on this account:{" "}
+          <b className="font-semibold text-pen">
+            {count}
+            {clean ? (count === 1 ? ", yours." : ", all yours.") : "."}
+          </b>{" "}
+          {proof.selkieHoldsKey ? "One of them is Selkie's." : "Selkie holds none."}
+        </span>
       </span>
-      <span className="flex shrink-0 items-center gap-1 font-bold text-pen/55">
-        Check <ExternalLink size={12} />
-      </span>
-    </a>
+      <a
+        href={proof.explorerUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[12.5px] text-sg transition-opacity duration-150 hover:opacity-80"
+      >
+        View on explorer <ExternalLink size={13} />
+      </a>
+    </div>
   );
 }
