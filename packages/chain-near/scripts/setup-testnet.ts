@@ -24,6 +24,7 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Account, JsonRpcProvider, KeyPair, actions, nearToYocto, type KeyPairString } from "near-api-js";
+import { listAccessKeys } from "../src/keys";
 
 const ENV_PATH = resolve(import.meta.dirname, "../../../.env");
 const FAUCET_URL = "https://helper.nearprotocol.com/account";
@@ -104,6 +105,16 @@ async function main() {
     await waitFor(root);
     console.log(`created ${root} via the testnet faucet`);
   } else {
+    // Someone else's root (selkiepay.testnet itself, for anyone running this
+    // from a fresh clone) would fail later with a bare signature error.
+    const mine = KeyPair.fromString(rootKey).getPublicKey().toString();
+    const keys = await listAccessKeys(provider, root);
+    if (!keys.some((key) => key.publicKey === mine)) {
+      throw new Error(
+        `${root} already exists and NEAR_ROOT_KEY is not one of its keys. Pick a name of your own: ` +
+          `NEAR_ROOT_ACCOUNT=<name>.testnet npm run near:setup`,
+      );
+    }
     console.log(`exists  ${root}`);
   }
   const rootAccount = new Account(root, provider, rootKey);
