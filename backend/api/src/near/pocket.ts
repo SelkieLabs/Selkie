@@ -34,7 +34,7 @@ import {
   type NearChain,
   type PocketView,
 } from "@selkie/chain-near";
-import { toHandle } from "../app";
+import { toXHandle } from "./x-handle";
 import type { ActivityStore } from "../activity/store";
 import type { IdentityService } from "../identity/service";
 import type { UserStore } from "../identity/store";
@@ -324,7 +324,6 @@ function decimal(units: bigint): string {
 
 /** X ids are numbers; this is generous on length and strict on shape. */
 const X_ID = /^\d{1,32}$/;
-const X_HANDLE = /^[a-z0-9_]{1,15}$/;
 
 /** Same length, constant time: compared as hashes so neither length nor content leaks. */
 function sameSecret(given: unknown, expected: string): boolean {
@@ -370,11 +369,11 @@ export function registerPocketRoutes(
     const body = (request.body ?? {}) as Record<string, unknown>;
     const tweetId = typeof body.tweetId === "string" ? body.tweetId : "";
     const senderXUserId = typeof body.senderXUserId === "string" ? body.senderXUserId : "";
-    const to = typeof body.to === "string" ? toHandle(body.to, "x") : null;
+    const to = typeof body.to === "string" ? toXHandle(body.to) : null;
     if (!X_ID.test(tweetId) || !X_ID.test(senderXUserId)) {
       return reply.code(400).send({ error: "A bot send needs the tweet id and its author's X id." });
     }
-    if (!to || !X_HANDLE.test(to.username)) return reply.code(400).send({ error: "Add the handle you want to pay." });
+    if (!to) return reply.code(400).send({ error: "Add the handle you want to pay." });
     const units = toPositiveBaseUnits(typeof body.amount === "string" ? body.amount : "", USDC_DECIMALS);
     const note = typeof body.note === "string" ? body.note : undefined;
 

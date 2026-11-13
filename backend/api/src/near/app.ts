@@ -15,7 +15,8 @@ import {
   type NearChain,
   type OneClickClient,
 } from "@selkie/chain-near";
-import { BODY_LIMIT, LIMITS, publicUser, toHandle } from "../app";
+import { BODY_LIMIT, LIMITS, publicUser } from "../app";
+import { notAnXHandle, toXHandle } from "./x-handle";
 import type { ActivityStore } from "../activity/store";
 import { InMemoryActivityStore } from "../activity/store";
 import { bearerToken } from "../auth";
@@ -286,8 +287,8 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     const caller = await requireUser(request, reply);
     if (!caller) return;
     const { username } = request.params as { username: string };
-    const handle = toHandle(username, "x");
-    if (!handle) return reply.code(400).send({ error: "Add the handle you want to pay." });
+    const handle = toXHandle(username);
+    if (!handle) return reply.code(400).send({ error: notAnXHandle(username) });
 
     const found = await identity.findByHandle("x", handle.username);
     const profile = found?.identities.find(

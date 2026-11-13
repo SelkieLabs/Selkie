@@ -10,7 +10,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { handleKey, type HandleRef } from "@selkie/core";
 import { toPositiveBaseUnits, USDC_DECIMALS, fromBaseUnits } from "@selkie/chain-near";
-import { toHandle } from "../app";
+import { toXHandle } from "./x-handle";
 import type { User } from "../identity/types";
 import { userHandles } from "../identity/types";
 import type { RequestStore } from "../requests/store";
@@ -47,7 +47,7 @@ export function registerNearRequestRoutes(
 
     const asker = userHandles(user)[0];
     if (!asker) return reply.code(409).send({ error: "Sign in with X before asking for money." });
-    const target = toHandle(body.from, "x");
+    const target = toXHandle(body.from);
     if (!target) return reply.code(400).send({ error: "That handle is not one we can ask." });
     if (handleKey(target) === handleKey(asker)) {
       return reply.code(400).send({ error: "That is your own handle. Pick someone else." });

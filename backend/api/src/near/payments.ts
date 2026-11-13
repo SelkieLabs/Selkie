@@ -28,7 +28,7 @@ import {
   type NearChain,
   type TxOutcome,
 } from "@selkie/chain-near";
-import { toHandle } from "../app";
+import { notAnXHandle, toXHandle } from "./x-handle";
 import type { ActivityStore, NewActivity } from "../activity/store";
 import type { IdentityService } from "../identity/service";
 import type { UserStore } from "../identity/store";
@@ -172,8 +172,8 @@ export class NearPayments {
 
   /** One handle: straight into their account if they have one, into the escrow if not. */
   private async planSend(user: User, body: PrepareBody, requestId?: string): Promise<PaymentPlan> {
-    const to = body.to ? toHandle(body.to, "x") : null;
-    if (!to) throw new Refusal(400, "Add the handle you want to pay.");
+    const to = body.to ? toXHandle(body.to) : null;
+    if (!to) throw new Refusal(400, notAnXHandle(body.to ?? ""));
     if (owns(user, to)) throw new Refusal(400, "That's you. Pick someone else to pay.");
     const units = toPositiveBaseUnits(String(body.amount ?? ""), USDC_DECIMALS);
     await this.ensureBalance(user, units);
@@ -346,7 +346,7 @@ export class NearPayments {
     const seen = new Set(userHandles(user).map(handleKey));
     const targets: HandleRef[] = [];
     for (const raw of body.toMany) {
-      const handle = typeof raw === "string" ? toHandle(raw, "x") : null;
+      const handle = typeof raw === "string" ? toXHandle(raw) : null;
       if (!handle || seen.has(handleKey(handle))) continue;
       seen.add(handleKey(handle));
       targets.push(handle);
