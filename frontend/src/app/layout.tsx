@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Scene } from "@/components/Scene";
 import { isNear } from "@/lib/chain";
+import { RETURNING_SCRIPT } from "@/lib/session-hint";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -43,8 +44,10 @@ export const viewport: Viewport = {
  */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" data-scroll-behavior="smooth">
+    <html lang="en" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
+        {/* Before first paint: someone signed in last time sees the loader, not the landing. */}
+        <script dangerouslySetInnerHTML={{ __html: RETURNING_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         {/* Bricolage carries the display voice (variable, with an optical size

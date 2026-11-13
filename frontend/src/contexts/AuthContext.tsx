@@ -21,6 +21,7 @@ import {
 import { isNear } from "@/lib/chain";
 import { useNearWallet } from "@/lib/near-wallet";
 import { stopPushHere } from "@/lib/push";
+import { rememberSession } from "@/lib/session-hint";
 
 /** Privy's linked-account types that are a way to sign in to Selkie (an identity), not a wallet. */
 const SIGN_IN_TYPES = new Set<string>(["twitter_oauth", "telegram", "google_oauth"]);
@@ -178,6 +179,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const loadSession = useCallback(async () => {
     const mine = session.current;
+    // Asked together: reading the session creates nothing, so there is no
+    // reason to wait for the health check before starting it.
+    const asked = api.session();
+    asked.catch(() => {}); // handled below; this only stops an early return leaving it unhandled
     if (isNear) {
       // A NEAR web app pointed at the Stellar API signs people in to a Stellar
       // wallet under NEAR screens, and nothing else looks wrong. Stop at the door.
@@ -191,7 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
     }
-    let result = await api.session();
+    let result = await asked;
     if (session.current !== mine) return;
 
     if (result.status === "no-account" && isNear) {
@@ -211,6 +216,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("ready");
     await loadBalances();
   }, [loadBalances, openAccount]);
+
+  // Remembered for the next visit, so the front page can open the wallet
+  // straight away instead of showing the landing while the session loads.
+  useEffect(() => {
+    if (status !== "loading") rememberSession(status !== "signed-out");
+  }, [status]);
 
   useEffect(() => {
     if (!ready) return;
