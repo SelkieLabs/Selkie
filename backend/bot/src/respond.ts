@@ -184,8 +184,19 @@ async function fromPocket(
       );
     case "over-cap":
       return lines(link, "", `Your pocket has ${result.leftToday ?? "0"} USDC left today`);
+    case "not-on-selkie":
+      // They are tagged in this thread, so the reply is for them too: it is how
+      // someone who has never heard of Selkie learns money is coming, and what
+      // to do about it. "Waits" only follows "once you sign": nothing is held
+      // until the sender signs the link.
+      return lines(
+        `📬 @${command.to} isn't on Selkie yet, and that's fine`,
+        "",
+        `👉 Check ${command.amount} USDC and send: ${site.link("pay", command.to, command.amount, command.note)}`,
+        "",
+        `Once you sign, it waits for them. They take it by signing in with X at ${site.home}. No app, no wallet.`,
+      );
     default:
-      // not-on-selkie: it waits for them in the escrow once the sender signs.
       // failed: nothing left the pocket, so the link is the honest way on.
       return link;
   }

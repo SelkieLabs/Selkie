@@ -387,10 +387,13 @@ describe("on NEAR with an X pocket, a send tries the pocket first", () => {
     assert.match(text, /selkiepay\.com\/pocket\/tunde\?amount=2/);
   });
 
-  it("not-on-selkie: just the link, since it waits for them once signed", async () => {
-    const text = (await pocketReply("@SelkiePay send 2 to @tunde", api({ status: "not-on-selkie" }).client)) ?? "";
-    assert.match(text, /Check it and send/);
-    assert.doesNotMatch(text, /pocket/i);
+  it("not-on-selkie: says they are not on Selkie yet, and how they take it once signed", async () => {
+    const text = (await pocketReply("@SelkiePay send 2 to @tunde for lunch", api({ status: "not-on-selkie" }).client)) ?? "";
+    assert.match(text, /^📬 @tunde isn't on Selkie yet, and that's fine/);
+    assert.match(text, /👉 Check 2 USDC and send: selkiepay\.com\/pay\/tunde\?amount=2&note=for\+lunch/);
+    assert.match(text, /Once you sign, it waits for them\. They take it by signing in with X at selkiepay\.com\. No app, no wallet\.$/);
+    assert.doesNotMatch(text, /pocket/i, "a pocket only pays people on Selkie, so offering one here would mislead");
+    assert.ok(weigh(text) <= MAX_WEIGHT, `${weigh(text)}: ${text}`);
   });
 
   it("low-balance: the link, and what the pocket has left today", async () => {

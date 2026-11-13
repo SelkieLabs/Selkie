@@ -87,8 +87,10 @@ seconds or so and replies in the thread.
 When a pocket send can't go, the reply says why and gives the way on: no
 pocket yet (a link that opens the pocket top-up already filled in), not enough
 in the pocket (how much is left, and a top-up link), over today's limit (how much
-is left today), or the person isn't on Selkie yet (the Send link, because a
-pocket only pays Selkie accounts).
+is left today), or the person isn't on Selkie yet. That last reply says so, gives
+you the Send link to sign (a pocket only pays Selkie accounts), and tells them,
+tagged in the thread, that once you sign it waits for them until they sign in
+with X.
 
 What the bot can't do, and where that is enforced:
 
