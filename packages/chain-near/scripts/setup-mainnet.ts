@@ -9,11 +9,10 @@
  * spend it. Everything lives in `.env.mainnet` (gitignored), apart from the
  * testnet `.env`, so a mainnet key can never end up in the testnet API.
  *
- * The root's key is generated on this machine and never travels. Its public
- * half also names an implicit account (64 hex characters): send NEAR there and
- * `--execute` creates selkiepay.near from it through the `near` account's
- * `create_account`, with that key as the root's only key. (A root made in a
- * wallet with the printed key added works too.) Then it creates the children:
+ * The root, selkiepay.near, is not created here. The human creates it in their
+ * own wallet and adds the public key this script prints as a full-access key,
+ * so the root's private key is generated on this machine and never travels.
+ * After that, `--execute` creates the same children as testnet:
  *
  *   x.selkiepay.near        creates handle accounts (0.01 NEAR each)
  *   escrow.selkiepay.near   the handle-escrow contract (~2.92 NEAR of code storage)
@@ -45,20 +44,13 @@ if (execute && process.env.SELKIE_MAINNET_OK !== "yes") {
 // What each account needs to do its job, with headroom. The escrow refuses new
 // holds below 0.5 NEAR spare, so it starts with room above its ~2.9 NEAR of code.
 const CHILDREN = [
-  { prefix: "x", env: "NEAR_HANDLE_PARENT", near: "2", why: "about 190 sign-ups at 0.01 NEAR each, plus gas" },
+  { prefix: "x", env: "NEAR_HANDLE_PARENT", near: "1", why: "about 90 sign-ups at 0.01 NEAR each, plus gas" },
   { prefix: "escrow", env: "NEAR_ESCROW_CONTRACT", near: "4", why: "~2.92 NEAR of code storage, 0.5 spare, payment records" },
   { prefix: "relayer", env: "NEAR_RELAYER_ACCOUNT", near: "1", why: "gas for users' signed actions, USDC storage per user" },
   { prefix: "oracle", env: "NEAR_ORACLE_ACCOUNT", near: "0.3", why: "gas for claims", oracle: true },
 ] as const;
-/**
- * Kept on the root for its own storage, the escrow owner calls, and the pocket
- * deploy that follows (3 NEAR for the contract, 0.5 for the bot, 0.2 to create
- * the pocket account), so one funding covers everything.
- */
-const ROOT_RESERVE = "3.9";
-/** Left on the implicit account once it has created the root: its own storage. */
-const IMPLICIT_KEEP = nearToYocto("0.01");
-const TGAS = 1_000_000_000_000n;
+/** Kept on the root for its own storage and the escrow owner calls. */
+const ROOT_RESERVE = "0.2";
 
 function readEnvFile(): Record<string, string> {
   if (!existsSync(ENV_PATH)) return {};
@@ -110,22 +102,14 @@ async function main() {
   if (!existsSync(ENV_PATH)) appendFileSync(ENV_PATH, "# --- NEAR mainnet (written by npm run near:setup:mainnet) ---\n", { mode: 0o600 });
   const usdc = await usdcContract();
   const rootKey = key("NEAR_ROOT_KEY")!;
-  const rootPair = KeyPair.fromString(rootKey);
-  const rootPublic = rootPair.getPublicKey().toString();
-  const implicitId = Buffer.from(rootPair.getPublicKey().data).toString("hex");
+  const rootPublic = KeyPair.fromString(rootKey).getPublicKey().toString();
   const need = CHILDREN.reduce((sum, c) => sum + nearToYocto(c.near), nearToYocto(ROOT_RESERVE));
-  let rootBalance = await balance(root);
-  const implicitBalance = rootBalance === null ? await balance(implicitId) : null;
+  const rootBalance = await balance(root);
 
   console.log(`${execute ? "EXECUTING" : "Plan only (nothing is sent)"} on NEAR mainnet\n`);
   console.log(`USDC on NEAR (from 1Click): ${usdc}`);
   console.log(`Root ${root}: ${rootBalance === null ? "does not exist yet" : `${near(rootBalance)} NEAR`}`);
-  console.log(`Root needs this full-access public key: ${rootPublic}`);
-  if (rootBalance === null) {
-    console.log(`Funding address (implicit account of that key): ${implicitId}`);
-    console.log(`  holds ${implicitBalance === null ? "nothing yet" : `${near(implicitBalance)} NEAR`}`);
-  }
-  console.log("");
+  console.log(`Root needs this full-access public key: ${rootPublic}\n`);
   for (const c of CHILDREN) {
     const id = `${c.prefix}.${root}`;
     const have = await balance(id);
@@ -140,38 +124,12 @@ async function main() {
     if (!rootReady) console.log(`\n${root} exists but does not have the key above yet. Add it in the wallet that owns ${root}.`);
     else if (rootBalance < need) console.log(`\n${root} holds ${near(rootBalance)} NEAR; it needs ${near(need)}.`);
   } else {
-    console.log(`\nNext: send ${near(need)} NEAR or more to ${implicitId}; --execute then creates ${root} from it.`);
+    console.log(`\nNext: create ${root} in a NEAR wallet, add the public key above as a full-access key, and fund it.`);
   }
 
   if (!execute) {
     console.log("\nNothing was sent. Re-run with SELKIE_MAINNET_OK=yes and --execute once the root is funded.");
     return;
-  }
-
-  if (rootBalance === null) {
-    // The funded implicit account makes the root: `near` creates `<name>.near`
-    // for whoever calls create_account, and the attached NEAR becomes its balance.
-    if (implicitBalance === null || implicitBalance < need + IMPLICIT_KEEP + nearToYocto("0.04")) {
-      throw new Error(`${implicitId} needs ${near(need)} NEAR before it can create ${root}.`);
-    }
-    const funder = new Account(implicitId, provider, rootKey);
-    await funder.callFunction({
-      contractId: "near",
-      methodName: "create_account",
-      args: { new_account_id: root, new_public_key: rootPublic },
-      deposit: implicitBalance - IMPLICIT_KEEP - nearToYocto("0.01"),
-      gas: 100n * TGAS,
-    });
-    for (let i = 0; i < 20 && rootBalance === null; i++) {
-      await new Promise((r) => setTimeout(r, 1500));
-      rootBalance = await balance(root);
-    }
-    if (rootBalance === null) throw new Error(`${root} did not appear after create_account; check ${implicitId} on the explorer.`);
-    console.log(`created ${root} with ${near(rootBalance)} NEAR: ${EXPLORER}/accounts/${root}`);
-    for (let i = 0; i < 20 && !rootReady; i++) {
-      rootReady = (await listAccessKeys(provider, root)).some((k) => k.publicKey === rootPublic);
-      if (!rootReady) await new Promise((r) => setTimeout(r, 1500));
-    }
   }
   if (!rootReady) throw new Error(`${root} is not ready: it must exist and hold the key above.`);
   if (rootBalance! < need) throw new Error(`${root} needs ${near(need)} NEAR before setup can run.`);
@@ -210,7 +168,7 @@ async function main() {
     });
     console.log(`registered ${escrowId} with USDC`);
   }
-  console.log("\nNext: npm run build:contracts:near, then near:deploy-escrow:mainnet and near:deploy-pocket:mainnet.");
+  console.log("\nNext: build the escrow and run npm run near:deploy-escrow:mainnet.");
 }
 
 main().catch((err) => {

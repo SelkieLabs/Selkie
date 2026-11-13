@@ -1,8 +1,7 @@
 /**
- * Create, deploy and initialise the pocket contract.
+ * Create, deploy and initialise the pocket contract on testnet.
  *
  *   npm run build:contracts:near && npm run near:deploy-pocket
- *   SELKIE_MAINNET_OK=yes npm run near:deploy-pocket:mainnet   (reads .env.mainnet)
  *
  * Accounts (children of NEAR_ROOT_ACCOUNT, created by it):
  *
@@ -15,16 +14,15 @@
  *
  * Steps, each skipped when already done, so re-running is safe:
  *  1. Keys: reused from .env, or generated and APPENDED to it. Never printed.
- *  2. Create both accounts. The pocket is topped up to MIN_BALANCE (it pays for
- *     its ~200 KB of code and every pocket record): on testnet from the faucet,
- *     with the root paying if the faucet is down; on mainnet by the root.
+ *  2. Create both accounts. The pocket is topped up to MIN_BALANCE from the
+ *     testnet faucet (it pays for its ~200 KB of code and every pocket record);
+ *     if the faucet is down the root pays instead.
  *  3. Deploy the build, unless the deployed code hash already matches it.
  *  4. `new(owner = root, bot, token = USDC, handle_parent)`, signed by the pocket
  *     itself: `new` is #[private], so nobody can front-run it and name their bot.
  *  5. Register the pocket on USDC (storage_deposit), paid by the root.
  *
- * Mainnet spends real NEAR, so it also needs SELKIE_MAINNET_OK=yes.
- * A state layout change needs a fresh pocket account.
+ * Testnet only. A state layout change needs a fresh pocket account.
  */
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -34,22 +32,16 @@ import { failoverProvider, rpcUrls } from "../src/rpc";
 import { listAccessKeys } from "../src/keys";
 import { balanceOf, topUpFromFaucet } from "./faucet";
 
-const MAINNET = process.env.NEAR_NETWORK === "mainnet";
-const ENV_PATH = resolve(import.meta.dirname, MAINNET ? "../../../.env.mainnet" : "../../../.env");
+const ENV_PATH = resolve(import.meta.dirname, "../../../.env");
 const WASM = resolve(import.meta.dirname, "../../../contracts-near/target/wasm32-unknown-unknown/release/selkie_pocket.wasm");
-const EXPLORER = process.env.NEAR_EXPLORER_URL || (MAINNET ? "https://explorer.near.org" : "https://explorer.testnet.near.org");
+const EXPLORER = process.env.NEAR_EXPLORER_URL || "https://explorer.testnet.near.org";
 /** ~2.0 NEAR of code storage, the 0.5 NEAR the contract keeps spare, and room for pocket records. */
 const MIN_BALANCE = nearToYocto("3");
 const BOT_BALANCE = nearToYocto("0.5");
 const TGAS = 1_000_000_000_000n;
 
 const root = required("NEAR_ROOT_ACCOUNT");
-if (!root.endsWith(MAINNET ? ".near" : ".testnet")) {
-  throw new Error(`NEAR_ROOT_ACCOUNT ${root} does not match NEAR_NETWORK=${MAINNET ? "mainnet" : "testnet"}`);
-}
-if (MAINNET && process.env.SELKIE_MAINNET_OK !== "yes") {
-  throw new Error("The mainnet pocket deploy spends real NEAR. Set SELKIE_MAINNET_OK=yes once the human has agreed.");
-}
+if (!root.endsWith(".testnet")) throw new Error(`The pocket deploy is testnet only; NEAR_ROOT_ACCOUNT is ${root}`);
 const rootKey = required("NEAR_ROOT_KEY") as KeyPairString;
 const usdc = required("NEAR_USDC_CONTRACT");
 const handleParent = required("NEAR_HANDLE_PARENT");
@@ -133,22 +125,16 @@ async function main() {
     });
     console.log(`created ${pocketId}: ${tx(created.transaction.hash)}`);
   }
-  const rootPays = async (why: string) => {
+  try {
+    for (const hash of await topUpFromFaucet(provider, pocketId, MIN_BALANCE)) {
+      console.log(`topped up ${pocketId} from the faucet: ${tx(hash)}`);
+    }
+  } catch (error) {
     const short = MIN_BALANCE - (await balanceOf(provider, pocketId));
-    if (short <= 0n) return;
-    console.log(why);
-    const paid = await rootAccount.transfer({ receiverId: pocketId, amount: short });
-    console.log(`topped up ${pocketId} from ${root}: ${tx(paid.transaction.hash)}`);
-  };
-  if (MAINNET) {
-    await rootPays("mainnet has no faucet; the root pays");
-  } else {
-    try {
-      for (const hash of await topUpFromFaucet(provider, pocketId, MIN_BALANCE)) {
-        console.log(`topped up ${pocketId} from the faucet: ${tx(hash)}`);
-      }
-    } catch (error) {
-      await rootPays(`faucet unavailable (${error instanceof Error ? error.message : error}); the root pays instead`);
+    if (short > 0n) {
+      console.log(`faucet unavailable (${error instanceof Error ? error.message : error}); the root pays instead`);
+      const paid = await rootAccount.transfer({ receiverId: pocketId, amount: short });
+      console.log(`topped up ${pocketId} from ${root}: ${tx(paid.transaction.hash)}`);
     }
   }
 
