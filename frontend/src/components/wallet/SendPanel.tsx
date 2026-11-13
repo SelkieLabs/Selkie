@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, AtSign, Check, Clock, ExternalLink, Loader2, Wallet } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, ArrowLeft, AtSign, Check, Clock, ExternalLink, Loader2, Wallet, Zap } from "lucide-react";
 import { Avatar } from "@/components/Layout";
 import { ContractWarning } from "@/components/wallet/ContractWarning";
 import { PlatformLogo } from "@/components/Mark";
@@ -290,6 +291,21 @@ export function SendPanel({
           <button onClick={reset} className="btn btn-gold mt-7 w-full sm:w-auto sm:px-10">
             Send someone else
           </button>
+          {/* The person just paid someone on Selkie by hand. That is the moment to
+              say the next one can be a tweet. */}
+          {features.pocket && mode === "handle" && !result.waitingToBeClaimed && (
+            <p className="mx-auto mt-5 max-w-sm text-[13.5px] leading-relaxed text-pen/55">
+              <Zap size={13} strokeWidth={2.4} className="mr-1 inline text-gold" />
+              Next time, just tweet{" "}
+              <span className="font-semibold text-pen/80">
+                “@SelkiePay send {amount} to @{cleanHandle}”
+              </span>
+              .{" "}
+              <Link href="/wallet/pocket" className="font-semibold text-sg transition-opacity hover:opacity-80">
+                Set up Tweet to pay
+              </Link>
+            </p>
+          )}
         </div>
       </Panel>
     );
