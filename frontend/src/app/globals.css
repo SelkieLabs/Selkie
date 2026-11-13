@@ -1877,3 +1877,20 @@
     animation: none;
   }
 }
+
+/* The Home "Tweet to pay" card: the caret after the tweet that types itself. */
+.tweet-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: currentColor;
+  opacity: 0.7;
+  animation: tweet-caret 1s steps(1) infinite;
+}
+@keyframes tweet-caret {
+  50% {
+    opacity: 0;
+  }
+}

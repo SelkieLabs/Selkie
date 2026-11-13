@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Zap } from "lucide-react";
 import { HandleSuggestions } from "@/components/wallet/HandleSuggestions";
-import type { ActivityEntry } from "@/lib/api";
-import { isNear } from "@/lib/chain";
+import { api, type ActivityEntry, type PocketInfo } from "@/lib/api";
+import { features, isNear } from "@/lib/chain";
 import { cleanAmount, money } from "@/lib/format";
 import { savePayLink } from "@/lib/pay-link";
+import { leftShare } from "@/lib/pocket";
 import { MASK, useAmountsHidden } from "@/lib/privacy";
+import { usePrefersReducedMotion } from "@/lib/useCountUp";
 import { useHandleSuggestBox } from "@/lib/useHandleSuggestions";
+import { useLiveRefresh } from "@/lib/useLiveRefresh";
 
 const HANDLE = /^[a-z0-9_]{1,15}$/;
 
@@ -182,4 +186,154 @@ export function WaitingCard({ entries }: { entries: ActivityEntry[] }) {
       )}
     </section>
   );
+}
+
+/** Tweets the card types out, one after another, so the idea reads before the words do. */
+const EXAMPLES = ["send 2 to @friend", "send 5 to @amaka for lunch", "send 1 to @tunde"];
+
+/**
+ * "Tweet to pay", on Home, where people look first.
+ *
+ * Without a pocket it shows the trick itself: a tweet typing out
+ * "@SelkiePay send 2 to @friend", and one button to fill the pocket. With
+ * one, it is the pocket at a glance: what is in it and what is left today.
+ * Hidden when the server runs no pocket.
+ */
+export function PocketCard({ you }: { you: string | null }) {
+  const hidden = useAmountsHidden();
+  const still = usePrefersReducedMotion();
+  const [info, setInfo] = useState<PocketInfo | null | undefined>(undefined);
+
+  const load = useCallback(async () => {
+    try {
+      const found = await api.near.pocket.get();
+      setInfo(found.enabled ? found : null);
+    } catch {
+      // 404 (no pocket here) or a hiccup: Home is no place for an error about an extra.
+      setInfo((current) => current ?? null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (features.pocket) void load();
+  }, [load]);
+
+  // Someone tweets from their phone and glances back at Home.
+  useLiveRefresh(() => void load(), { enabled: Boolean(info?.pocket) });
+
+  const typed = useTyping(EXAMPLES, !info || Boolean(info.pocket) || still);
+
+  if (!features.pocket || !info) return null;
+  const pocket = info.pocket;
+  const figure = (value: string) => (hidden ? MASK : money(value));
+
+  if (pocket) {
+    const share = leftShare(pocket.leftToday, pocket.dailyCap);
+    return (
+      <section className="chunk p-5">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="flex items-center gap-2 font-display text-[21px] font-extrabold tracking-[-0.02em]">
+            <Zap size={17} strokeWidth={2.4} className="text-gold" /> Tweet to pay
+          </h2>
+          <Link href="/wallet/pocket" className="text-[13px] font-semibold text-sg hover:opacity-80">
+            Top up
+          </Link>
+        </div>
+        <p className="mt-3 font-mono text-[1.6rem] font-medium leading-none tracking-[-0.03em] tabular-nums">
+          {figure(pocket.balance)}
+          <span className="ml-1.5 text-[13px] tracking-normal text-pen/45">USDC in your X pocket</span>
+        </p>
+        <div
+          className="mt-3 h-1.5 overflow-hidden rounded-full bg-pen/[0.08]"
+          role="img"
+          aria-label={`${money(pocket.leftToday)} of ${money(pocket.dailyCap)} USDC left today`}
+        >
+          <i
+            className="block h-full origin-left rounded-full bg-sg transition-transform duration-500"
+            style={{ transform: `scaleX(${share / 100})` }}
+          />
+        </div>
+        <p className="mt-2 text-[12.5px] text-pen/50">
+          <span className="font-mono text-sg">{figure(pocket.leftToday)}</span> left today of{" "}
+          {figure(pocket.dailyCap)}
+        </p>
+        <p className="mt-3 text-[13px] leading-relaxed text-pen/60">
+          Tweet <span className="font-semibold text-pen/85">“@{info.bot} send 2 to @friend”</span> and it pays them
+          on the spot.
+        </p>
+      </section>
+    );
+  }
+
+  const shown = still ? EXAMPLES[0] : typed;
+  return (
+    <section className="chunk p-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="flex items-center gap-2 font-display text-[21px] font-extrabold tracking-[-0.02em]">
+          <Zap size={17} strokeWidth={2.4} className="text-gold" /> Tweet to pay
+        </h2>
+        <span className="rounded-full bg-gold/15 px-2 py-0.5 font-mono text-[11px] font-semibold text-gold">new</span>
+      </div>
+
+      {/* A tweet, drawn small: who, then the words typing out. Decorative; the paragraph says it plainly. */}
+      <div className="mt-3.5 rounded-2xl border border-pen/[0.09] bg-deep/60 p-3.5" aria-hidden="true">
+        <div className="flex items-start gap-2.5">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sg/15 font-display text-[13px] font-extrabold text-sg">
+            {(you ?? "@you").replace(/^@/, "").slice(0, 1).toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-[12.5px] text-pen/50">
+              <span className="font-semibold text-pen/80">{you ?? "@you"}</span> · now
+            </p>
+            <p className="mt-1 break-words text-[15px] leading-snug">
+              <span className="text-sg">@{info.bot}</span> <Tweet text={shown} />
+              <i className="tweet-caret" />
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-3 text-[14px] leading-relaxed text-pen/60">
+        Fill your X pocket once and a tweet like that pays them on the spot. You set the daily limit; the bot can’t
+        touch the rest of your money.
+      </p>
+      <Link href="/wallet/pocket" className="btn btn-gold mt-3.5 w-full">
+        Fill your pocket <ArrowRight size={16} strokeWidth={2.2} />
+      </Link>
+    </section>
+  );
+}
+
+/** The typed words, with handles in the tweet's link colour, as X shows them. */
+function Tweet({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(@[a-z0-9_]+)/i).map((part, index) =>
+        part.startsWith("@") ? (
+          <span key={index} className="text-sg">
+            {part}
+          </span>
+        ) : (
+          <span key={index}>{part}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+/** Types each example out, holds it, clears it, moves on. Paused when `off`. */
+function useTyping(examples: string[], off: boolean): string {
+  const [at, setAt] = useState({ example: 0, chars: 0 });
+  useEffect(() => {
+    if (off) return;
+    const full = examples[at.example];
+    const done = at.chars >= full.length;
+    const timer = window.setTimeout(
+      () =>
+        setAt(done ? { example: (at.example + 1) % examples.length, chars: 0 } : { ...at, chars: at.chars + 1 }),
+      done ? 2200 : 55 + Math.random() * 60,
+    );
+    return () => window.clearTimeout(timer);
+  }, [at, examples, off]);
+  return examples[at.example].slice(0, at.chars);
 }
