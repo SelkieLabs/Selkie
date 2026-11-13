@@ -368,6 +368,13 @@ describe("on NEAR with an X pocket, a send tries the pocket first", () => {
     assert.deepEqual(asked, [{ sender: AMAKA, payment: { to: "tunde", amount: "2", note: "for lunch" } }]);
   });
 
+  it("help says a send can go on the spot from a pocket", async () => {
+    const text = (await pocketReply("@SelkiePay help", api({ status: "no-pocket" }).client)) ?? "";
+    assert.match(text, /⚡ With an X pocket, a send goes on the spot\./);
+    assert.match(text, /send 5 to @friend/);
+    assert.ok(weigh(text) <= MAX_WEIGHT, `${weigh(text)}: ${text}`);
+  });
+
   it("no-pocket: the link, and where to top up", async () => {
     const text = (await pocketReply("@SelkiePay send 2 to @tunde", api({ status: "no-pocket" }).client)) ?? "";
     assert.match(text, /Check it and send: selkiepay\.com\/pay\/tunde\?amount=2/);

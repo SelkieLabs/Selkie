@@ -80,7 +80,7 @@ export async function respond(
       return cap(privately("history", site));
 
     case "help":
-      return cap(helpText(site));
+      return cap(helpText(site, Boolean(options.pocket)));
 
     case "error":
       return cap(explain(command.reason, site, near));
@@ -346,7 +346,7 @@ function privately(what: "balance" | "history", site: Site): string {
  * sentence on the thing that makes it worth using at all, and a door to the
  * full documentation for anybody who wants more than a tweet.
  */
-function helpText(site: Site): string {
+function helpText(site: Site, pocket = false): string {
   return lines(
     "👋 I move money by handle. Try any of these:",
     "",
@@ -355,7 +355,10 @@ function helpText(site: Site): string {
     "💰 balance",
     "📜 activity",
     "",
-    "They need no app and no wallet. If they have not joined, it waits for them.",
+    "They need no app and no wallet. Not joined yet? It waits for them.",
+    // Where the bot can pay from a pocket, say so: it is the one thing that
+    // changes what "send" does, from a link to sign into money that moves.
+    pocket && "⚡ With an X pocket, a send goes on the spot.",
     "",
     `📖 Everything else: ${site.docs}`,
   );
