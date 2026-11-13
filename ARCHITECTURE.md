@@ -21,8 +21,13 @@ packages/        shared libraries. No UI, no server. Reused by frontend and back
     services/    provider interfaces: ramp (cash in/out), airtime/bills, swap
     domain/      handles, payments, history (pure product logic)
   chain-stellar/ the Stellar implementation of ChainAdapter (the only Stellar code)
+  chain-near/    the NEAR implementation (the only code that imports NEAR SDKs;
+                 its browser signer is the `@selkie/chain-near/browser` subpath)
 contracts/       on-chain code (Rust, Soroban). Deployed, not imported.
   handle-escrow/ holds money addressed to a handle until its owner logs in
+contracts-near/  NEAR contracts (Rust, near-sdk), a Cargo workspace of their own
+  handle-escrow/ the same idea on NEAR, keyed on a hash of the X user
+  pocket/        the capped pocket the X bot pays from
 ```
 
 `contracts/` is its own section because it is a different artifact: it compiles to

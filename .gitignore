@@ -17,6 +17,9 @@ test_snapshots/
 /docs/stellar-scf-strategy.md
 /docs/submissions.md
 
-# NEAR agent skills are third-party docs; skills-lock.json records them and
-# `npx skills experimental_install` restores them.
+# Local working files: the coding agent's brief and skills, and the
+# hackathon notes. Kept on the builder's machine, not in the repo.
 .claude/skills/
+/CLAUDE.md
+/skills-lock.json
+/docs/hackathon/

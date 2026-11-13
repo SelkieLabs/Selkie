@@ -2,7 +2,7 @@
   "name": "selkie",
   "version": "0.1.0",
   "private": true,
-  "description": "Selkie: send money to any social handle. Multi-chain payments, Stellar first.",
+  "description": "Selkie: send money to any X handle, on NEAR. The person you pay needs no wallet, no app and no gas.",
   "workspaces": [
     "packages/*",
     "frontend",
