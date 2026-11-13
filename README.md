@@ -21,6 +21,7 @@
 </p>
 
 <p align="center">
+  <a href="https://youtu.be/yYEZpGX_UmY"><b>Demo video</b></a> ·
   <a href="https://selkiepay.com"><b>Live app</b></a> ·
   <a href="https://selkiepay.com/docs"><b>Docs</b></a> ·
   <a href="https://x.com/SelkiePay"><b>@SelkiePay on X</b></a> ·
@@ -29,7 +30,9 @@
 </p>
 
 <p align="center">
-  <a href="https://selkiepay.com"><img src="docs/media/banner.jpg" width="100%" alt="selkiepay.com: Pay any X handle. Money that finds its way home." /></a>
+  <a href="https://youtu.be/yYEZpGX_UmY"><img src="docs/media/video.jpg" width="100%" alt="Watch the 2-minute demo on YouTube" /></a>
+  <br/>
+  <sub><b><a href="https://youtu.be/yYEZpGX_UmY">▶ Watch the 2-minute demo</a></b>: a tweet pays someone, a stranger signs in with X and finds the money waiting, and money moves across chains.</sub>
 </p>
 
 To pay someone in crypto you need their address, and most people don't have one.
