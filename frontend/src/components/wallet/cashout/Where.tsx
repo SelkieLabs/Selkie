@@ -5,6 +5,7 @@ import { ArrowRight, Building2, Clock, Coins, Info, Wallet } from "lucide-react"
 import { ChainLogo, ChainStack } from "@/components/ChainLogo";
 import { NEAR_NETWORK, isNear } from "@/lib/chain";
 import { usd } from "@/lib/format";
+import { BillsTeaser } from "./Bills";
 import { Head, Note } from "./bits";
 import { CHAIN_PREVIEW, type Destination } from "./model";
 
@@ -84,10 +85,13 @@ export function WhereStep({
   picked,
   balance,
   onPick,
+  onBills,
 }: {
   picked: Destination | null;
   balance: string;
   onPick: (to: Destination) => void;
+  /** NEAR: open the airtime, data and bills preview. */
+  onBills?: () => void;
 }) {
   return (
     <>
@@ -123,6 +127,7 @@ export function WhereStep({
           </button>
         ))}
       </div>
+      {isNear && onBills && <BillsTeaser onOpen={onBills} />}
 
       <div className="mt-5">
         <Note icon={<Info size={15} />}>

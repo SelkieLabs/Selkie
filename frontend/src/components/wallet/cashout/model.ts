@@ -5,9 +5,10 @@
 
 /** "chain" is NEAR Intents: USDC out to another chain. */
 export type Destination = "bank" | "wallet" | "chain";
-export type Step = "where" | "amount" | "details" | "review" | "soon" | "done";
+/** "bills" is the airtime, data and bills preview: beside the flow, like "soon". */
+export type Step = "where" | "amount" | "details" | "review" | "soon" | "bills" | "done";
 
-/** The four steps the indicator shows. "done" and "soon" sit after the flow, not in it. */
+/** The four steps the indicator shows. "done", "soon" and "bills" sit outside the flow. */
 export const FLOW = [
   { step: "where", label: "Where to" },
   { step: "amount", label: "Amount" },

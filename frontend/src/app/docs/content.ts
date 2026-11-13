@@ -12,6 +12,7 @@ import {
   LogIn,
   Send,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   Zap,
   type LucideIcon,
@@ -314,7 +315,7 @@ const NEAR_SECTIONS: Section[] = [
         ],
       },
       {
-        p: "Cash out offers two more ways out: Another chain, and A bank account. Each has a section of its own below.",
+        p: "Cash out offers two more ways out: Another chain, and A bank account. Each has a section of its own below. Airtime, data and bills are on the way too.",
       },
     ],
   },
@@ -361,6 +362,27 @@ const NEAR_SECTIONS: Section[] = [
       },
       {
         note: "Bank payouts run on NEAR mainnet. On testnet you can go through every step with live rates, marked Preview only, and nothing is sent.",
+      },
+    ],
+  },
+  {
+    id: "bills",
+    icon: Smartphone,
+    title: "Airtime, data and bills",
+    lead: "Coming with mainnet, starting in Nigeria.",
+    blocks: [
+      {
+        p: "Soon you will pay for everyday things straight from your USDC, with no bank in between: airtime and data on MTN, Airtel, Glo and 9mobile, electricity on prepaid and postpaid meters, and TV on DStv, GOtv and StarTimes.",
+      },
+      {
+        steps: [
+          "Go to Cash out and pick Airtime, data and bills.",
+          "Pick a service and type the phone number, meter or smartcard. For power and TV you see the name on the account before you pay.",
+          "See the price in USDC at the live rate, then approve it with your key. Selkie pays the network fee, and the top-up or token arrives in seconds.",
+        ],
+      },
+      {
+        note: "Not switched on yet. Cash out already shows it, with an example receipt for each service, so you can see how it will work. Nothing is sent from that screen.",
       },
     ],
   },
@@ -424,6 +446,10 @@ const NEAR_SECTIONS: Section[] = [
           {
             q: "Can I cash out to my bank?",
             a: "On NEAR mainnet, yes: naira to Nigerian banks, and shillings to banks and mobile money in Kenya, Uganda and Tanzania. On testnet you can walk through it with live rates as a preview.",
+          },
+          {
+            q: "Can I buy airtime or pay bills?",
+            a: "Soon. Airtime, data, electricity and TV come with mainnet, starting in Nigeria, paid straight from your USDC. You can preview it now under Cash out.",
           },
           {
             q: "Can I sign in another way?",

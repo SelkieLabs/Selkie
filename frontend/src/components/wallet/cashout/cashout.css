@@ -1066,6 +1066,273 @@ select.co-field option {
   color: var(--co-foam-3);
 }
 
+/* ---------- airtime, data and bills (coming with mainnet) ---------- */
+/* One tint per service, kept soft so the sheet still reads as one surface. */
+.co-bills,
+.co-bills-teaser {
+  --co-airtime: #d9a441;
+  --co-data: #7fd1b9;
+  --co-power: #f0c674;
+  --co-tv: #9fb4f2;
+}
+[data-service="airtime"] { --co-tint: var(--co-airtime); }
+[data-service="data"] { --co-tint: var(--co-data); }
+[data-service="power"] { --co-tint: var(--co-power); }
+[data-service="tv"] { --co-tint: var(--co-tv); }
+
+.co-bills-teaser {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px dashed var(--co-line-2);
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(217, 164, 65, 0.07), transparent 60%),
+    rgba(233, 241, 236, 0.015);
+  color: var(--co-foam);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 180ms var(--co-ease),
+    background-color 180ms var(--co-ease),
+    transform 180ms var(--co-ease);
+}
+.co-bills-teaser:hover {
+  border-color: rgba(217, 164, 65, 0.5);
+  transform: translateY(-1px);
+}
+.co-bills-teaser:focus-visible {
+  outline: 2px solid var(--co-sg);
+  outline-offset: 3px;
+}
+/* The four services as one tile, the same size as the other choices' icons;
+   on hover the four pieces drift apart a little. */
+.co-bills-stack {
+  display: grid;
+  grid-template-columns: repeat(2, 20px);
+  gap: 3px;
+}
+.co-bills-stack > span {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--co-tint) 16%, var(--co-i2));
+  color: var(--co-tint);
+  transition: transform 220ms var(--co-ease);
+}
+.co-bills-stack > span svg {
+  width: 12px;
+  height: 12px;
+}
+.co-bills-teaser:hover .co-bills-stack > span:nth-child(1) { transform: translate(-1.5px, -1.5px); }
+.co-bills-teaser:hover .co-bills-stack > span:nth-child(2) { transform: translate(1.5px, -1.5px); }
+.co-bills-teaser:hover .co-bills-stack > span:nth-child(3) { transform: translate(-1.5px, 1.5px); }
+.co-bills-teaser:hover .co-bills-stack > span:nth-child(4) { transform: translate(1.5px, 1.5px); }
+.co-bills-badge,
+.co-bills-soon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(217, 164, 65, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(217, 164, 65, 0.35);
+  color: #ecc77e;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+.co-bills-soon {
+  width: fit-content;
+}
+
+.co-bills-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.co-bills-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 112px;
+  padding: 14px;
+  border: 0;
+  border-radius: 16px;
+  background: rgba(233, 241, 236, 0.025);
+  box-shadow: inset 0 0 0 1px var(--co-line);
+  color: var(--co-foam);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    box-shadow 180ms var(--co-ease),
+    background-color 180ms var(--co-ease),
+    transform 180ms var(--co-ease);
+}
+.co-bills-tile:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--co-tint) 45%, transparent);
+}
+.co-bills-tile:focus-visible {
+  outline: 2px solid var(--co-sg);
+  outline-offset: 3px;
+}
+.co-bills-tile[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--co-tint) 9%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--co-tint);
+}
+.co-bills-tile-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 6px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--co-tint) 14%, var(--co-i2));
+  color: var(--co-tint);
+}
+.co-bills-tile-name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.co-bills-tile-what {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--co-foam-3);
+}
+
+/* The example receipt: a dashed edge says "not real yet" before the tag does. */
+.co-bills-receipt {
+  position: relative;
+  /* Margins live here, not in utilities: this unlayered rule would beat them. */
+  margin: 20px 0 0;
+  padding: 18px;
+  border: 1px dashed color-mix(in srgb, var(--co-tint) 40%, transparent);
+  border-radius: 20px;
+  background:
+    radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--co-tint) 10%, transparent), transparent 65%),
+    var(--co-i0);
+  transition: border-color 260ms var(--co-ease);
+}
+.co-bills-tag {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--co-i2);
+  color: var(--co-foam-3);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.co-bills-receipt-body {
+  animation: co-rise 320ms var(--co-ease) both;
+}
+.co-bills-receipt-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 72px;
+}
+.co-bills-receipt-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--co-tint) 16%, var(--co-i2));
+  color: var(--co-tint);
+}
+.co-bills-receipt-title {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.co-bills-receipt-sub {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--co-foam-3);
+}
+.co-bills-rows {
+  display: grid;
+  gap: 0;
+  margin: 16px 0 0;
+  border-top: 1px dashed var(--co-line-2);
+}
+.co-bills-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--co-line);
+  font-size: 14px;
+}
+.co-bills-row dt {
+  color: var(--co-foam-3);
+}
+.co-bills-row dd {
+  margin: 0;
+  color: var(--co-foam);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 13px;
+  text-align: right;
+}
+.co-bills-after {
+  margin-top: 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--co-foam-2);
+}
+
+.co-bills-steps {
+  display: grid;
+  gap: 12px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.co-bills-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--co-foam-2);
+}
+.co-bills-step-n {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--co-i2);
+  color: var(--co-foam);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+.co-bills-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--co-foam-3);
+}
+
 /* ---------- moving between steps ---------- */
 .co-enter {
   animation: co-in 380ms var(--co-ease) both;
@@ -1119,7 +1386,10 @@ select.co-field option {
   .co-fresh circle:last-child {
     animation: none !important;
   }
-  .co-choice:hover {
+  .co-choice:hover,
+  .co-bills-tile:hover,
+  .co-bills-teaser:hover,
+  .co-bills-teaser:hover .co-bills-stack > span {
     transform: none;
   }
 }

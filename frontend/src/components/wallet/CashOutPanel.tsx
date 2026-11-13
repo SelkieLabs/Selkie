@@ -18,6 +18,7 @@ import { Back, Stepper, Surface, Trail } from "./cashout/bits";
 import { DetailsStep, type Lookup } from "./cashout/Details";
 import { DoneStep, NotYet } from "./cashout/Done";
 import { ReviewStep } from "./cashout/Review";
+import { BillsSoon } from "./cashout/Bills";
 import { WhereStep } from "./cashout/Where";
 import {
   COUNTRIES,
@@ -380,7 +381,26 @@ export function CashOutPanel({ balance, onSent }: { balance: string; onSent?: ()
       )}
 
       <div key={step} className="co-enter" data-from={from}>
-        {step === "where" && <WhereStep picked={destination} balance={balance} onPick={pick} />}
+        {step === "where" && (
+          <WhereStep
+            picked={destination}
+            balance={balance}
+            onPick={pick}
+            onBills={() => {
+              setFrom("ahead");
+              setStep("bills");
+            }}
+          />
+        )}
+
+        {step === "bills" && (
+          <BillsSoon
+            onBack={() => {
+              setFrom("back");
+              setStep("where");
+            }}
+          />
+        )}
 
         {step === "amount" && destination && (
           <AmountStep destination={destination} amount={amount} onAmount={setAmount} balance={balance} onContinue={() => go("details")} />

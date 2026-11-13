@@ -69,7 +69,10 @@ on NEAR testnet. The mainnet setup is written and waiting, see [Mainnet](#mainne
    account number. You see the account holder's name (Paycrest checks it), the
    rate, and what arrives in your currency, marked "Preview: sending works on
    mainnet". Pick **Another chain** instead and
-   you see a live NEAR Intents price for USDC or USDT on that chain.
+   you see a live NEAR Intents price for USDC or USDT on that chain. Under the
+   three choices, **Airtime, data and bills** opens a preview marked "Coming with
+   mainnet": tap Airtime, Data, Electricity or TV and you see an example receipt
+   for it. Nothing is sent from that screen.
 
 ## The X bot
 
@@ -337,6 +340,14 @@ Testnet and mainnet differ only by configuration. What is ready:
 
 Not done yet: the mainnet root account, the deploys, and Paycrest's business
 approval.
+
+**Coming with mainnet: airtime, data and bills.** Top up a phone, buy a data
+bundle, pay for electricity or TV, straight from USDC, starting in Nigeria (MTN,
+Airtel, Glo, 9mobile; prepaid and postpaid meters; DStv, GOtv, StarTimes). It
+will go the same way as every other payment: the server prepares it, the user
+signs it, the relayer pays the gas. Cash out already shows it as a preview with
+an example receipt for each service, and it moves nothing.
+[`Bills.tsx`](frontend/src/components/wallet/cashout/Bills.tsx)
 
 ## Tests
 
