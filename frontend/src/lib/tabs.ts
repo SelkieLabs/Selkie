@@ -6,6 +6,7 @@ import {
   Send,
   Settings,
   Sparkles,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { features } from "./chain";
@@ -26,6 +27,7 @@ export type WalletTab =
   | "cashout"
   | "requests"
   | "many"
+  | "pocket"
   | "settings";
 
 export interface TabDef {
@@ -47,6 +49,9 @@ const ALL_TABS: TabDef[] = [
   { id: "cashout", label: "Cash out", short: "Cash out", icon: Banknote, onPhone: true },
   { id: "requests", label: "Requests", short: "Requests", icon: HandCoins, onPhone: true },
   { id: "many", label: "Pay many", short: "Many", icon: Sparkles, onPhone: true },
+  // Its own tab, not a corner of Settings: a feature nobody finds is a feature
+  // nobody uses. Phones reach it from Home's card and the menu.
+  { id: "pocket", label: "Tweet to pay", short: "Tweet", icon: Zap, onPhone: false },
   { id: "settings", label: "Settings", short: "Settings", icon: Settings, onPhone: false },
 ];
 
@@ -58,6 +63,7 @@ const AVAILABLE: Record<WalletTab, boolean> = {
   cashout: features.cashOut,
   requests: features.requests,
   many: features.payMany,
+  pocket: features.pocket,
   settings: true,
 };
 

@@ -32,4 +32,6 @@ export const features = {
   payToAddress: true,
   /** Notifications when money comes in, with Selkie closed (Web Push). Served by the NEAR API. */
   push: isNear,
+  /** "Tweet to pay": the capped X pocket the bot sends from. NEAR only. */
+  pocket: isNear,
 } as const;

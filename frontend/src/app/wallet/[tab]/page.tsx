@@ -8,8 +8,9 @@ import { ActivityFeed } from "@/components/wallet/ActivityFeed";
 import { AssetList, BalanceActions, BalanceCard } from "@/components/wallet/BalanceCard";
 import { CashOutPanel } from "@/components/wallet/CashOutPanel";
 import { ConvertSheet } from "@/components/wallet/ConvertSheet";
-import { QuickSend, WaitingCard } from "@/components/wallet/HomeSide";
+import { PocketCard, QuickSend, WaitingCard } from "@/components/wallet/HomeSide";
 import { PayManyPanel } from "@/components/wallet/PayManyPanel";
+import { PocketPanel } from "@/components/wallet/PocketPanel";
 import {
   ClaimCelebration,
   CreateAccountGate,
@@ -188,6 +189,10 @@ export default function WalletTabPage() {
                       balances={balances}
                       onConvert={features.convert ? () => setConverting(true) : undefined}
                     />
+                    {/* Phones: Tweet to pay sits under the balance, where it gets seen. */}
+                    <div className="xl:hidden">
+                      <PocketCard you={handle} />
+                    </div>
                     <NotifyNudge />
                     {/* On a narrower screen the side column has nowhere to go,
                         so what is waiting comes before the history. */}
@@ -204,6 +209,7 @@ export default function WalletTabPage() {
 
                   <aside className="hidden space-y-4 xl:sticky xl:top-24 xl:block">
                     <QuickSend balance={dollars} />
+                    <PocketCard you={handle} />
                     <WaitingCard entries={entries} />
                     {!isNear && <AssetList balances={balances} loading={!balancesReady} />}
                   </aside>
@@ -233,6 +239,8 @@ export default function WalletTabPage() {
                   )}
 
                   {tab === "many" && <PayManyPanel balance={dollars} onSent={afterMoneyMoved} />}
+
+                  {tab === "pocket" && <PocketPanel standalone />}
 
                   {tab === "settings" && <SettingsPanel user={user} />}
                 </div>

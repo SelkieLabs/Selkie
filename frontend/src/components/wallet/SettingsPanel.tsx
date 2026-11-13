@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { SignOutModal } from "@/components/SignOutModal";
 import { Panel, PanelHead } from "@/components/wallet/Panel";
-import { PocketPanel } from "@/components/wallet/PocketPanel";
 import { useToast } from "@/contexts/ToastContext";
 import { useAuth } from "@/contexts/useAuth";
 import { ApiError, api, type EmailStatus, type Handle, type Identity, type User } from "@/lib/api";
@@ -110,9 +109,6 @@ export function SettingsPanel({ user }: { user: User }) {
         />
         <AddressRow address={user.address} />
       </Panel>
-
-      {/* Right after the account: the pocket is the one other place your money can sit. */}
-      {isNear && <PocketPanel />}
 
       {features.push && <NotificationsPanel />}
 

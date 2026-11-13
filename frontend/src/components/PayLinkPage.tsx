@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo } from "react";
-import { AlertTriangle, ArrowRight, HandCoins, Send } from "lucide-react";
+import { AlertTriangle, ArrowRight, HandCoins, Send, Zap } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Header, Spinner } from "@/components/Layout";
 import { Redirect } from "@/components/Redirect";
@@ -9,7 +9,7 @@ import { useAuth } from "@/contexts/useAuth";
 import { usd } from "@/lib/format";
 import { readPayLink, savePayLink, type PayLinkKind } from "@/lib/pay-link";
 
-const WHERE: Record<PayLinkKind, string> = { pay: "/wallet/send", ask: "/wallet/requests" };
+const WHERE: Record<PayLinkKind, string> = { pay: "/wallet/send", ask: "/wallet/requests", pocket: "/wallet/pocket" };
 
 /**
  * Where a link from the X bot lands: `/pay/amaka?amount=5` or `/ask/amaka?amount=5`.
@@ -51,11 +51,13 @@ function PayLinkBody({ kind }: { kind: PayLinkKind }) {
   if (status === "loading") return <Spinner />;
 
   const amount = link.amount ? usd(link.amount) : null;
-  const Icon = kind === "pay" ? Send : HandCoins;
+  const Icon = kind === "pay" ? Send : kind === "pocket" ? Zap : HandCoins;
   const title =
     kind === "pay"
       ? `Send ${amount ?? "money"} to @${link.handle}`
-      : `Ask @${link.handle} for ${amount ?? "money"}`;
+      : kind === "pocket"
+        ? "Let your tweets pay"
+        : `Ask @${link.handle} for ${amount ?? "money"}`;
 
   return (
     <>
@@ -72,7 +74,9 @@ function PayLinkBody({ kind }: { kind: PayLinkKind }) {
           <p className="mt-3 text-[15px] leading-relaxed text-pen/65">
             {kind === "pay"
               ? "Sign in with X and it opens ready to check. Nothing moves until you confirm it, and your own key signs it."
-              : "Sign in with X and the request opens ready to check. Nothing is sent until you confirm it."}
+              : kind === "pocket"
+                ? `Fill your X pocket once, and a tweet like “send ${amount ?? "2"} to @${link.handle}” pays them on the spot, up to a daily limit you set. Withdraw it any time.`
+                : "Sign in with X and the request opens ready to check. Nothing is sent until you confirm it."}
           </p>
 
           <button onClick={signIn} className="btn btn-gold mt-7 w-full">

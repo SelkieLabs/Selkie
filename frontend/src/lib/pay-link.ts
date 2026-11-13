@@ -11,7 +11,8 @@
  * the confirm screen and signs.
  */
 
-export type PayLinkKind = "pay" | "ask";
+/** `pocket`: the bot's "fill your X pocket" link, for the payment that was tweeted. */
+export type PayLinkKind = "pay" | "ask" | "pocket";
 
 export interface PayLink {
   kind: PayLinkKind;

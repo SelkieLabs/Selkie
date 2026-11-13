@@ -9,6 +9,7 @@ import { ApiError, api, type Pocket, type PocketInfo, type PreparedPayment } fro
 import { DOLLAR, cleanAmount, money, usd } from "@/lib/format";
 import { useNearPay } from "@/lib/near-wallet";
 import { DEFAULT_DAILY_LIMIT, isMore, isPositive, leftShare, usdcUnits } from "@/lib/pocket";
+import { takePayLink } from "@/lib/pay-link";
 import { MASK, useAmountsHidden } from "@/lib/privacy";
 import { useLiveRefresh } from "@/lib/useLiveRefresh";
 
@@ -33,7 +34,7 @@ interface Step {
  * Hidden entirely when the server runs no pocket: a section for a feature that
  * is not there would only be a promise.
  */
-export function PocketPanel() {
+export function PocketPanel({ standalone = false }: { standalone?: boolean } = {}) {
   const { user, balances, balancesReady, refresh } = useAuth();
   const confirm = useConfirm();
   const nearPay = useNearPay();
@@ -42,7 +43,10 @@ export function PocketPanel() {
   // undefined while asking the first time; null when there is nothing to show.
   const [info, setInfo] = useState<PocketInfo | null | undefined>(undefined);
   const [failed, setFailed] = useState(false);
-  const [open, setOpen] = useState<Action | null>(null);
+  // The bot's "fill your X pocket" link, from a tweet it could not pay from
+  // one: the top-up opens already filled in with what was tweeted.
+  const [link] = useState(() => takePayLink("pocket"));
+  const [open, setOpen] = useState<Action | null>(link ? "top_up" : null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ text: string; explorer?: string } | null>(null);
@@ -93,7 +97,17 @@ export function PocketPanel() {
     setDone(null);
   };
 
-  if (info === null) return null;
+  if (info === null) {
+    if (!standalone) return null;
+    return (
+      <Panel>
+        <PanelHead eyebrow="Send from X" title="Tweet to pay is not on here" />
+        <p className="mt-2 text-[15px] leading-relaxed text-pen/60">
+          This Selkie runs without the X pocket, so tweets reply with a link to check and sign instead.
+        </p>
+      </Panel>
+    );
+  }
   if (info === undefined) {
     if (!failed) return null;
     return (
@@ -177,6 +191,7 @@ export function PocketPanel() {
         <div className="mt-5 border-t border-pen/[0.08] pt-5">
           {open === "top_up" && (
             <TopUpForm
+              initialAmount={link?.amount ?? ""}
               pocket={pocket}
               available={available}
               availableKnown={balancesReady}
@@ -194,7 +209,9 @@ export function PocketPanel() {
                     body: "The bot can send from it when you tweet, up to your daily limit. Withdraw it any time.",
                   },
                   prepare: () => api.near.pocket.prepareTopUp({ amount, dailyCap: limit || undefined }),
-                  done: `${usd(amount)} is in your X pocket.`,
+                  done: link
+                    ? `${usd(amount)} is in your X pocket. Tweet “@${info.bot} send ${link.amount || amount} to @${link.handle}” again and it goes.`
+                    : `${usd(amount)} is in your X pocket.`,
                 })
               }
             />
@@ -349,6 +366,7 @@ function FormButtons({ label, ready, busy, onCancel }: { label: string; ready: b
 }
 
 function TopUpForm({
+  initialAmount,
   pocket,
   available,
   availableKnown,
@@ -356,6 +374,7 @@ function TopUpForm({
   onCancel,
   onSubmit,
 }: {
+  initialAmount: string;
   pocket: Pocket | null;
   available: string;
   availableKnown: boolean;
@@ -363,7 +382,7 @@ function TopUpForm({
   onCancel: () => void;
   onSubmit: (amount: string, limit: string) => void;
 }) {
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(initialAmount);
   const [limit, setLimit] = useState("");
   const tooMuch = availableKnown && isMore(amount, available);
   const badLimit = limit !== "" && !isPositive(limit);

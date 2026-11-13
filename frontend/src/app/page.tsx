@@ -13,7 +13,8 @@ export default function Landing() {
   // Someone with an account came for their wallet, not the pitch. If they
   // typed a handle into the landing's box before signing in, Send opens with it.
   if (status === "ready" || status === "needs-account") {
-    return <Redirect to={hasPayLink("pay") ? "/wallet/send" : "/wallet/home"} />;
+    const to = hasPayLink("pay") ? "/wallet/send" : hasPayLink("pocket") ? "/wallet/pocket" : "/wallet/home";
+    return <Redirect to={to} />;
   }
 
   // `loading` deliberately falls through to the page. The landing is the one
