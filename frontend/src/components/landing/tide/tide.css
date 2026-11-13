@@ -2263,6 +2263,11 @@ html.lenis {
 .td-many {
   background: linear-gradient(180deg, #040b11, #030a0f);
 }
+/* Tweet to pay borrows Pay many's layout but not its gradient: the dive keeps
+   getting darker, so it holds the colour Pay many ends on and Trust starts on. */
+.td-many.td-tweet {
+  background: #030a0f;
+}
 .td-many .td-inner {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 600px);

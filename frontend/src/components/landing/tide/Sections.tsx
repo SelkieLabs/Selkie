@@ -536,7 +536,7 @@ export function TweetToPay() {
   }, [seen]);
 
   return (
-    <section id="tweet" className="td-sec td-many" data-depth="-38" aria-labelledby="tweet-title">
+    <section id="tweet" className="td-sec td-many td-tweet" data-depth="-38" aria-labelledby="tweet-title">
       <div className="td-inner">
         <div>
           <Depth>−38 m · tweet to pay</Depth>
