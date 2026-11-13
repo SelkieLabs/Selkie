@@ -58,6 +58,19 @@ export type PocketAskResult =
   | { status: "asked"; id: string; from: string; amount: string }
   | { status: "no-account" | "failed"; message?: string };
 
+/**
+ * A payment someone made through one of the bot's links, to announce in the
+ * thread of the tweet that asked for it (NEAR). Amount is decimal USDC.
+ */
+export interface FollowUp {
+  tweetId: string;
+  to: string;
+  amount: string;
+  /** Waiting for someone not on Selkie yet, rather than delivered. */
+  held: boolean;
+  explorer: string;
+}
+
 export interface Me {
   user: { id: string; address: string; handles: { platform: string; username: string }[] };
   balances: Balance[];
@@ -193,6 +206,21 @@ export class SelkieClient {
       from: ask.from,
       amount: ask.amount,
       ...(ask.note ? { note: ask.note } : {}),
+    });
+  }
+
+  /** NEAR: payments made through the bot's links that it has not announced yet. */
+  async followUps(): Promise<FollowUp[]> {
+    const { followUps } = await this.#fetch<{ followUps?: FollowUp[] }>("GET", "/near/bot/follow-ups", {
+      "x-selkie-bot-secret": this.#botSecret,
+    });
+    return followUps ?? [];
+  }
+
+  /** NEAR: that follow-up is posted (or never will be), so it is not offered again. */
+  async followUpDone(tweetId: string): Promise<void> {
+    await this.#fetch("POST", `/near/bot/follow-ups/${encodeURIComponent(tweetId)}/done`, {
+      "x-selkie-bot-secret": this.#botSecret,
     });
   }
 

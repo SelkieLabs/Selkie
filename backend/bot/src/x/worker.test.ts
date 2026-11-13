@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MemoryStateStore } from "../state";
-import type { SelkieClient, SendResult } from "../selkie";
+import type { FollowUp, SelkieClient, SendResult } from "../selkie";
 import { XApiError } from "./client";
 import type { Mention, RateLimit, XClient } from "./client";
 import { XWorker } from "./worker";
@@ -440,5 +440,92 @@ describe("when things go wrong", () => {
     await worker.start();
 
     assert.deepEqual(waits, [2000, 4000, 8000], "each failure waits longer than the last");
+  });
+});
+
+describe("following up in the thread once a link was used to pay", () => {
+  const started = () => new MemoryStateStore({ sinceId: "1" });
+  const due = (tweetId: string): FollowUp => ({
+    tweetId,
+    to: "kemi",
+    amount: "1.5",
+    held: true,
+    explorer: "https://testnet.nearblocks.io/txns/abc",
+  });
+
+  /** A Selkie API with follow-ups waiting, recording which were marked done. */
+  function withFollowUps(waiting: FollowUp[], options: { failRead?: boolean } = {}) {
+    const done: string[] = [];
+    const selkie = {
+      ...fakeSelkie(),
+      followUps: async () => {
+        if (options.failRead) throw new Error("API down");
+        return waiting.filter((f) => !done.includes(f.tweetId));
+      },
+      followUpDone: async (tweetId: string) => void done.push(tweetId),
+    } as unknown as SelkieClient;
+    return { selkie, done };
+  }
+
+  it("replies in each tweet's thread, then never again", async () => {
+    const { selkie, done } = withFollowUps([due("20"), due("21")]);
+    const { worker, posted } = build([[], []], { state: started(), selkie, pocket: true, chain: "near" });
+
+    await worker.poll();
+    await worker.poll();
+
+    assert.deepEqual(posted.map((p) => p.inReplyTo), ["20", "21"]);
+    assert.match(posted[0]!.text, /1\.5 USDC is waiting for @kemi/);
+    assert.deepEqual(done, ["20", "21"]);
+  });
+
+  it("a rate limit leaves the rest for the next poll", async () => {
+    const { selkie, done } = withFollowUps([due("20"), due("21")]);
+    let calls = 0;
+    const posted: string[] = [];
+    const client = {
+      selfId: async () => "1",
+      mentions: async () => ({ mentions: [], newestId: null, rateLimit: null }),
+      reply: async (_text: string, inReplyTo: string) => {
+        if (calls++ === 0) throw new XApiError("slow down", 429, 60_000);
+        posted.push(inReplyTo);
+      },
+    } as unknown as XClient;
+    const { worker } = build([], { state: started(), selkie, pocket: true, chain: "near" }, { client, posted: [] });
+
+    await worker.poll();
+    assert.deepEqual(done, [], "nothing used up by a rate limit");
+    await worker.poll();
+    assert.deepEqual(posted, ["20", "21"]);
+    assert.deepEqual(done, ["20", "21"]);
+  });
+
+  it("a reply X will not take is given up on, not retried forever", async () => {
+    const { selkie, done } = withFollowUps([due("20")]);
+    const fake = fakeX([[]], { failReply: true });
+    const { worker, logs } = build([], { state: started(), selkie, pocket: true, chain: "near" }, fake);
+
+    await worker.poll();
+
+    assert.deepEqual(done, ["20"]);
+    assert.ok(logs.some((line) => line.includes("could not follow up on 20")));
+  });
+
+  it("an API that will not answer is logged, and the poll still succeeds", async () => {
+    const { selkie } = withFollowUps([], { failRead: true });
+    const { worker, logs } = build([[]], { state: started(), selkie, pocket: true, chain: "near" });
+
+    await assert.doesNotReject(() => worker.poll());
+    assert.ok(logs.some((line) => line.includes("could not read follow-ups")));
+  });
+
+  it("a dry run, or a bot without the secret, posts none and uses none up", async () => {
+    for (const overrides of [{ dryRun: true, pocket: true }, { pocket: false }]) {
+      const { selkie, done } = withFollowUps([due("20")]);
+      const { worker, posted } = build([[]], { state: started(), selkie, chain: "near", ...overrides });
+      await worker.poll();
+      assert.deepEqual(posted, []);
+      assert.deepEqual(done, []);
+    }
   });
 });

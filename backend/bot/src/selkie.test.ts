@@ -133,3 +133,27 @@ describe("sending from an X pocket (NEAR)", () => {
     }
   });
 });
+
+describe("follow-ups (NEAR)", () => {
+  it("reads them and marks one done, as the bot, with the secret", async () => {
+    const seen: { method: string; path: string; secret: string | null }[] = [];
+    const due = [{ tweetId: "55", to: "kemi", amount: "1.5", held: true, explorer: "https://x.test/tx" }];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const path = new URL(String(url)).pathname;
+      seen.push({ method: init?.method ?? "GET", path, secret: new Headers(init?.headers).get("x-selkie-bot-secret") });
+      const body = path.endsWith("/done") ? { ok: true } : { followUps: due };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    try {
+      assert.deepEqual(await client.followUps(), due);
+      await client.followUpDone("55");
+    } finally {
+      globalThis.fetch = original;
+    }
+    assert.deepEqual(seen, [
+      { method: "GET", path: "/near/bot/follow-ups", secret: SECRET },
+      { method: "POST", path: "/near/bot/follow-ups/55/done", secret: SECRET },
+    ]);
+  });
+});

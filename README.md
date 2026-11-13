@@ -92,6 +92,15 @@ you the Send link to sign (a pocket only pays Selkie accounts), and tells them,
 tagged in the thread, that once you sign it waits for them until they sign in
 with X.
 
+When you pay through one of those links, the bot comes back to the same thread
+once the payment lands: "✅ Done. @amaka got 5 USDC" with the explorer link, or,
+if @amaka hasn't joined, "5 USDC is waiting for @amaka" and a line telling
+@amaka (tagged, so X notifies them) to sign in with X to take it. The API ties
+the payment to the tweet by payer, handle and amount within two hours, and each
+thread gets that reply once
+([`backend/api/src/near/pocket.ts`](backend/api/src/near/pocket.ts),
+[`backend/bot/src/x/worker.ts`](backend/bot/src/x/worker.ts)).
+
 What the bot can't do, and where that is enforced:
 
 - **Spend from your account.** It can only spend from a pocket you filled

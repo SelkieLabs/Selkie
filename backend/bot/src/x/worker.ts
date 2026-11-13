@@ -1,7 +1,7 @@
 import { parseCommand } from "../parse";
-import { respond } from "../respond";
+import { followUpText, respond } from "../respond";
 import type { BotChain } from "../config";
-import type { SelkieClient } from "../selkie";
+import type { FollowUp, SelkieClient } from "../selkie";
 import type { StateStore } from "../state";
 import { XApiError } from "./client";
 import type { Mention, RateLimit, XClient } from "./client";
@@ -138,6 +138,10 @@ export class XWorker {
     }
     this.#haveBaseline = true;
 
+    // Only where the bot holds the API secret, and never in a dry run: the
+    // follow-up is marked done once posted, so a dry run would use it up.
+    if (this.#options.pocket && !this.dryRun) await this.#followUp();
+
     return { read: mentions.length, answered, nextPollMs: this.#pace(rateLimit) };
   }
 
@@ -231,6 +235,41 @@ export class XWorker {
 
   stop(): void {
     this.#running = false;
+  }
+
+  /**
+   * Say "done" in the thread of each tweet whose link was used to pay.
+   *
+   * Each is offered until marked done, and marked done once posted or once X
+   * refuses it for good, so a thread gets it once. A rate limit is the one
+   * refusal that leaves it for the next poll: it would post fine later.
+   */
+  async #followUp(): Promise<void> {
+    let due: FollowUp[];
+    try {
+      due = await this.#options.selkie.followUps();
+    } catch (error) {
+      this.#options.log(`could not read follow-ups: ${describe(error)}`);
+      return;
+    }
+
+    for (const followUp of due) {
+      try {
+        await this.#options.client.reply(followUpText(followUp, this.#options.webUrl), followUp.tweetId);
+        this.#options.log(`followed up on ${followUp.tweetId}: ${followUp.amount} to @${followUp.to}`);
+      } catch (error) {
+        if (error instanceof XApiError && error.status === 429) {
+          this.#options.log(`rate limited by X, follow-ups wait for the next poll`);
+          return;
+        }
+        this.#options.log(`could not follow up on ${followUp.tweetId}: ${describe(error)}`);
+      }
+      try {
+        await this.#options.selkie.followUpDone(followUp.tweetId);
+      } catch (error) {
+        this.#options.log(`could not mark ${followUp.tweetId} followed up: ${describe(error)}`);
+      }
+    }
   }
 
   /** Handle one mention. Returns whether it produced a reply. */

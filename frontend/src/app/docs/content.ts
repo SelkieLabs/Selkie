@@ -234,6 +234,7 @@ const NEAR_SECTIONS: Section[] = [
           "You have a pocket and they are already on Selkie: it is paid there and then, and the reply links the payment on the explorer.",
           "No pocket, or they have not joined yet: the reply is a link that opens Send, filled in. Nothing moves until you check it and approve it with your own key. If they have not joined, it waits for them like any other payment.",
           "Your pocket is short for today: the reply carries the same link and says how much is left, so the payment is never stuck.",
+          "Paid through the link: once it lands, the bot replies again in the same thread to say it is done. If they have not joined yet, that reply tags them and tells them to sign in with X to take it.",
         ],
       },
       {

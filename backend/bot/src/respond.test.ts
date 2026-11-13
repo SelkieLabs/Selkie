@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseCommand } from "./parse";
-import { respond } from "./respond";
+import { followUpText, respond } from "./respond";
 import { SelkieApiError } from "./selkie";
 import type { PocketAskResult, PocketSendResult, SelkieClient, Sender, SendResult } from "./selkie";
 import { weigh, MAX_WEIGHT } from "./text";
@@ -490,5 +490,30 @@ describe("on NEAR with an X pocket, a send tries the pocket first", () => {
       const text = (await pocketReply(command, api(answer).client)) ?? "";
       assert.ok(weigh(text) <= MAX_WEIGHT, `${answer.status} ${weigh(text)}: ${text}`);
     }
+  });
+});
+
+describe("the follow-up in a tweet's thread, once the link was used to pay", () => {
+  const explorer = "https://testnet.nearblocks.io/txns/9xWq3bWJmKpQ7nT2cLs8VhYd4RfGuE1oZaN6kXjB5MvC";
+
+  it("someone not on Selkie: it is waiting, and they are told how to take it", () => {
+    const text = followUpText({ tweetId: "1", to: "kemi", amount: "1.5", held: true, explorer }, WEB);
+    assert.equal(
+      text,
+      `✅ Done. 1.5 USDC is waiting for @kemi\n\n@kemi: sign in with X at selkiepay.vercel.app and it's yours. No app, no wallet, no gas.\n\n🔗 ${explorer}`,
+    );
+    assert.ok(weigh(text) <= MAX_WEIGHT);
+  });
+
+  it("someone on Selkie: it is theirs already", () => {
+    const text = followUpText({ tweetId: "1", to: "bayo", amount: "2", held: false, explorer }, WEB);
+    assert.equal(text, `✅ Done. @bayo got 2 USDC\n🔗 ${explorer}`);
+  });
+
+  it("fits a tweet with the longest handle and a big amount", () => {
+    const long = "a".repeat(15);
+    const text = followUpText({ tweetId: "1", to: long, amount: "123456.123456", held: true, explorer }, WEB);
+    assert.ok(weigh(text) <= MAX_WEIGHT, `${weigh(text)}`);
+    assert.match(text, new RegExp(`@${long}: sign in`));
   });
 });

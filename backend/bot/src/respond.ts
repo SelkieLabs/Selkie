@@ -1,7 +1,7 @@
 import type { BotChain } from "./config";
 import type { Command } from "./parse";
 import { SelkieApiError } from "./selkie";
-import type { PocketAskResult, PocketSendResult, SelkieClient, Sender } from "./selkie";
+import type { FollowUp, PocketAskResult, PocketSendResult, SelkieClient, Sender } from "./selkie";
 import { cap, lines } from "./text";
 
 /**
@@ -252,6 +252,29 @@ function askLink(command: Extract<Command, { type: "request" }>, sender: Sender,
 
 function usdcOnly(site: Site): string {
   return lines("🤔 On Selkie I move USDC", "", "Try: send 5 to @friend", "", `📖 ${site.docs}`);
+}
+
+/**
+ * The reply in a tweet's thread once the payment its link led to has landed.
+ *
+ * The first answer to a tweet could only say "check it and sign". This one says
+ * it happened. When the money is waiting, it names the person paid, so X tells
+ * them: for someone not on Selkie, this reply is how they hear about it.
+ */
+export function followUpText(followUp: FollowUp, webUrl: string): string {
+  const site = new Site(webUrl);
+  if (!followUp.held) {
+    return cap(lines(`✅ Done. @${followUp.to} got ${followUp.amount} USDC`, `🔗 ${followUp.explorer}`));
+  }
+  return cap(
+    lines(
+      `✅ Done. ${followUp.amount} USDC is waiting for @${followUp.to}`,
+      "",
+      `@${followUp.to}: sign in with X at ${site.home} and it's yours. No app, no wallet, no gas.`,
+      "",
+      `🔗 ${followUp.explorer}`,
+    ),
+  );
 }
 
 /**
