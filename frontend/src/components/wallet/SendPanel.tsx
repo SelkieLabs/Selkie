@@ -29,6 +29,9 @@ import { PLATFORMS, PLATFORM_FIELD, PLATFORM_LABEL, PLATFORM_PLACEHOLDER, type P
 
 type Step = "compose" | "confirm" | "done";
 
+/** What X allows in a username. */
+const X_USERNAME = /^[a-z0-9_]{1,15}$/;
+
 /** The three screens, named for what you do on each. */
 const FLOW = ["Who", "Check", "Sent"];
 
@@ -118,7 +121,12 @@ export function SendPanel({
   const addressValid = ADDRESS.valid(cleanAddress);
   const value = Number(amount);
   const tooMuch = value > Number(balance);
-  const destinationReady = mode === "handle" ? cleanHandle.length > 0 : addressValid;
+  // An X username is 1 to 15 letters, numbers or underscores. Anything else, like a
+  // NEAR account pasted into the handle box, could never sign in to claim money.
+  const handleValid = platform !== "x" || X_USERNAME.test(cleanHandle);
+  const handleIsAddress =
+    !handleValid && features.payToAddress && cleanHandle.includes(".") && ADDRESS.valid(ADDRESS.clean(cleanHandle));
+  const destinationReady = mode === "handle" ? cleanHandle.length > 0 && handleValid : addressValid;
   const canContinue = destinationReady && value > 0 && !tooMuch;
 
   // People on Selkie matching what is typed (NEAR, X handles, from 3 letters).
@@ -561,6 +569,28 @@ export function SendPanel({
             />
             {suggest.show && <HandleSuggestions {...suggest.listProps} />}
           </div>
+          {cleanHandle.length > 0 && !handleValid && (
+            <div className="mt-2 grid justify-items-start gap-1.5">
+              <p className="text-sm font-semibold text-[#a11d34]">
+                {handleIsAddress
+                  ? "That is an account address, not an X username."
+                  : "That is not an X username. They are up to 15 letters, numbers or underscores."}
+              </p>
+              {handleIsAddress && (
+                <button
+                  type="button"
+                  className="text-[13px] font-semibold text-pen/70 underline underline-offset-2 hover:text-pen"
+                  onClick={() => {
+                    setAddress(cleanHandle);
+                    setHandle("");
+                    setMode("address");
+                  }}
+                >
+                  Pay it as an address instead
+                </button>
+              )}
+            </div>
+          )}
         </>
       )}
 
