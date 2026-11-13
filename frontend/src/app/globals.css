@@ -374,11 +374,14 @@
     display: inline-grid;
     place-items: center;
     border-radius: 999px;
-    background: var(--i3);
-    color: var(--foam);
+    /* Only ever counts things waiting on you, so it is the one red in the app:
+       it has to be seen from across the rail, on the dark row and the light one. */
+    background: #e5484d;
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(229, 72, 77, 0.18), 0 6px 14px -6px rgba(229, 72, 77, 0.7);
     font-family: "Geist Mono", monospace;
     font-size: 11px;
-    font-weight: 500;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     line-height: 1;
   }
