@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { NEAR_NETWORK, isNear } from "@/lib/chain";
+import { isNear } from "@/lib/chain";
 
 type Question = { q: string; a: string };
 
@@ -54,10 +54,7 @@ const NEAR_QUESTIONS: Question[] = [
   },
   {
     q: "Is this real money?",
-    a:
-      NEAR_NETWORK === "mainnet"
-        ? "Yes. Selkie runs on NEAR mainnet, so your balance is real USDC, a dollar each."
-        : "Not yet. This copy of Selkie runs on NEAR testnet, so balances are test USDC with no real value.",
+    a: "Not yet. Selkie on NEAR runs on testnet, so balances are test USDC with no real value.",
   },
 ];
 

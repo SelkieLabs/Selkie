@@ -10,10 +10,10 @@ import { NEAR_NETWORK, isNear } from "./chain";
  */
 const STELLAR_NETWORK = process.env.NEXT_PUBLIC_SELKIE_NETWORK === "public" ? "public" : "testnet";
 
-// Both checked live: testnet on 11 Nov, mainnet on 12 Nov (and again 13 Nov).
+// Testnet verified live (11 Nov). Mainnet is set explicitly, never guessed.
 const NEAR_EXPLORER = (
   process.env.NEXT_PUBLIC_NEAR_EXPLORER ??
-  (NEAR_NETWORK === "testnet" ? "https://explorer.testnet.near.org" : "https://explorer.near.org")
+  (NEAR_NETWORK === "testnet" ? "https://explorer.testnet.near.org" : "")
 ).replace(/\/$/, "");
 
 export const explorer = isNear
