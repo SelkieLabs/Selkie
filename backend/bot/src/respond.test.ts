@@ -371,13 +371,13 @@ describe("on NEAR with an X pocket, a send tries the pocket first", () => {
   it("no-pocket: the link, and where to top up", async () => {
     const text = (await pocketReply("@SelkiePay send 2 to @tunde", api({ status: "no-pocket" }).client)) ?? "";
     assert.match(text, /Check it and send: selkiepay\.com\/pay\/tunde\?amount=2/);
-    assert.match(text, /⚡ Top up a pocket at selkiepay\.com to send straight from X$/);
+    assert.match(text, /Fill your X pocket once:\n👉 selkiepay\.com\/pocket\/tunde\?amount=2$/);
   });
 
   it("no-account: the link, and where to top up", async () => {
     const text = (await pocketReply("@SelkiePay send 2 to @tunde", api({ status: "no-account" }).client)) ?? "";
     assert.match(text, /Check it and send/);
-    assert.match(text, /Top up a pocket at selkiepay\.com/);
+    assert.match(text, /selkiepay\.com\/pocket\/tunde\?amount=2/);
   });
 
   it("not-on-selkie: just the link, since it waits for them once signed", async () => {
@@ -389,7 +389,7 @@ describe("on NEAR with an X pocket, a send tries the pocket first", () => {
   it("low-balance: the link, and what the pocket has left today", async () => {
     const text = (await pocketReply("@SelkiePay send 5 to @tunde", api({ status: "low-balance", leftToday: "3" }).client)) ?? "";
     assert.match(text, /Check it and send/);
-    assert.match(text, /Your pocket has 3 USDC left today$/);
+    assert.match(text, /Your pocket has 3 USDC left today\. Top it up:\n👉 selkiepay\.com\/pocket\/tunde\?amount=5$/);
   });
 
   it("over-cap: the link, and what the pocket has left today", async () => {

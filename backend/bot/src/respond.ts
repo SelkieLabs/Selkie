@@ -167,8 +167,21 @@ async function fromPocket(
       );
     case "no-pocket":
     case "no-account":
-      return lines(link, "", `⚡ Top up a pocket at ${site.home} to send straight from X`);
+      // The moment someone tweets a payment is the moment they want tweets to
+      // pay. The second link opens the pocket top-up already filled in.
+      return lines(
+        link,
+        "",
+        "⚡ Want tweets to pay instantly? Fill your X pocket once:",
+        `👉 ${site.link("pocket", command.to, command.amount)}`,
+      );
     case "low-balance":
+      return lines(
+        link,
+        "",
+        `Your pocket has ${result.leftToday ?? "0"} USDC left today. Top it up:`,
+        `👉 ${site.link("pocket", command.to, command.amount)}`,
+      );
     case "over-cap":
       return lines(link, "", `Your pocket has ${result.leftToday ?? "0"} USDC left today`);
     default:
@@ -213,8 +226,11 @@ class Site {
     this.docs = `${this.home}/docs`;
   }
 
-  /** `selkiepay.com/pay/amaka?amount=5`: opens Selkie with the payment filled in. */
-  link(kind: "pay" | "ask", handle: string, amount: string, note?: string): string {
+  /**
+   * `selkiepay.com/pay/amaka?amount=5`: opens Selkie with the payment filled in.
+   * `pocket` opens the X pocket top-up instead, for the payment that was tweeted.
+   */
+  link(kind: "pay" | "ask" | "pocket", handle: string, amount: string, note?: string): string {
     const query = new URLSearchParams({ amount });
     if (note) query.set("note", note);
     return `${this.home}/${kind}/${encodeURIComponent(handle)}?${query.toString()}`;
