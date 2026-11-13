@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { parseCommand } from "./parse";
 import { respond } from "./respond";
 import { SelkieApiError } from "./selkie";
-import type { PocketSendResult, SelkieClient, Sender, SendResult } from "./selkie";
+import type { PocketAskResult, PocketSendResult, SelkieClient, Sender, SendResult } from "./selkie";
 import { weigh, MAX_WEIGHT } from "./text";
 
 const AMAKA: Sender = { platform: "x", subject: "111", username: "amaka", messageId: "m1" };
@@ -16,7 +16,7 @@ const settled: SendResult = {
   waitingToBeClaimed: false,
 };
 
-function selkie(overrides: Partial<Record<"send" | "request" | "pocketSend", unknown>> = {}): SelkieClient {
+function selkie(overrides: Partial<Record<"send" | "request" | "pocketSend" | "botRequest", unknown>> = {}): SelkieClient {
   return {
     send: async () => settled,
     request: async () => ({ id: "req1" }),
@@ -406,6 +406,53 @@ describe("on NEAR with an X pocket, a send tries the pocket first", () => {
     const text = (await pocketReply("@SelkiePay send 5 to @tunde", api({ status: "over-cap", leftToday: "0.5" }).client)) ?? "";
     assert.match(text, /Check it and send/);
     assert.match(text, /Your pocket has 0\.5 USDC left today$/);
+  });
+
+  describe("a tweeted ask", () => {
+    function asking(answer: PocketAskResult | Error) {
+      const asked: { sender: Sender; ask: unknown }[] = [];
+      const client = selkie({
+        request: async () => assert.fail("NEAR never asks through /requests"),
+        botRequest: async (sender: Sender, ask: unknown) => {
+          asked.push({ sender, ask });
+          if (answer instanceof Error) throw answer;
+          return answer;
+        },
+      });
+      return { client, asked };
+    }
+
+    it("is made on the spot, and tells the person asked where to find it", async () => {
+      const { client, asked } = asking({ status: "asked", id: "r1", from: "0xgents", amount: "0.05" });
+      const text = (await pocketReply("@SelkiePay request 0.05 from @0xgents", client)) ?? "";
+      assert.deepEqual(asked.map((a) => a.ask), [{ from: "0xgents", amount: "0.05" }]);
+      assert.equal(
+        text,
+        "🙋 Asked @0xgents for 0.05 USDC\n\n🔔 It's waiting for them on selkiepay.com, with a Pay button. New to Selkie? Signing in with X is all it takes.\n👋 Nothing moves until they say yes",
+      );
+      assert.doesNotMatch(text, /\/ask\//, "no link to click: the ask is already made");
+      assert.ok(weigh(text) <= MAX_WEIGHT);
+    });
+
+    it("someone not on Selkie yet gets the link, which signs them in first", async () => {
+      const { client } = asking({ status: "no-account", message: "Sign in" });
+      const text = (await pocketReply("@SelkiePay request 2 from @kemi", client)) ?? "";
+      assert.match(text, /selkiepay\.com\/ask\/kemi\?amount=2/);
+    });
+
+    it("an API failure falls back to the link, and reaches the log", async () => {
+      const before = errors.length;
+      const { client } = asking(new Error("down"));
+      const text = (await pocketReply("@SelkiePay request 2 from @kemi", client)) ?? "";
+      assert.match(text, /selkiepay\.com\/ask\/kemi\?amount=2/);
+      assert.equal(errors.length, before + 1);
+    });
+
+    it("asking yourself never reaches the API", async () => {
+      const { client, asked } = asking({ status: "asked", id: "r1", from: "x", amount: "1" });
+      await pocketReply(`@SelkiePay request 2 from @${AMAKA.username}`, client);
+      assert.equal(asked.length, 0);
+    });
   });
 
   it("failed: just the link, since nothing left the pocket", async () => {

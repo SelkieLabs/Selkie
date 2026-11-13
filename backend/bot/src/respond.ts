@@ -1,7 +1,7 @@
 import type { BotChain } from "./config";
 import type { Command } from "./parse";
 import { SelkieApiError } from "./selkie";
-import type { PocketSendResult, SelkieClient, Sender } from "./selkie";
+import type { PocketAskResult, PocketSendResult, SelkieClient, Sender } from "./selkie";
 import { cap, lines } from "./text";
 
 /**
@@ -102,7 +102,7 @@ export async function respond(
           lines("🙂 That one is me, and I have nothing of my own.", "", "Ask a friend instead.", "", "Try: request 5 from @friend"),
         );
       }
-      if (near) return cap(askLink(command, sender, site));
+      if (near) return cap(options.pocket ? await askFromTweet(command, sender, selkie, site, options) : askLink(command, sender, site));
       return cap(await askFor(command, sender, selkie, site, options));
   }
 }
@@ -200,6 +200,39 @@ async function fromPocket(
       // failed: nothing left the pocket, so the link is the honest way on.
       return link;
   }
+}
+
+/**
+ * NEAR with the bot secret: the tweet is the ask. A request moves no money, so
+ * there is nothing for the asker to sign and no reason to send them through a
+ * link. The person asked is tagged in this thread, so the reply is for them
+ * too: where to find it, and that nothing moves until they say yes.
+ */
+async function askFromTweet(
+  command: Extract<Command, { type: "request" }>,
+  sender: Sender,
+  selkie: SelkieClient,
+  site: Site,
+  options: RespondOptions,
+): Promise<string> {
+  const link = askLink(command, sender, site);
+  // Asking yourself, or for something other than USDC: the link reply already says why not.
+  if (command.from === sender.username || command.asset !== "USDC") return link;
+
+  let result: PocketAskResult;
+  try {
+    result = await selkie.botRequest(sender, { from: command.from, amount: command.amount });
+  } catch (error) {
+    options.onError?.(error);
+    return link;
+  }
+  if (result.status !== "asked") return link;
+  return lines(
+    `🙋 Asked @${result.from} for ${result.amount} USDC`,
+    "",
+    `🔔 It's waiting for them on ${site.home}, with a Pay button. New to Selkie? Signing in with X is all it takes.`,
+    "👋 Nothing moves until they say yes",
+  );
 }
 
 function askLink(command: Extract<Command, { type: "request" }>, sender: Sender, site: Site): string {

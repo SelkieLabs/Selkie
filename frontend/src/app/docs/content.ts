@@ -220,7 +220,7 @@ const NEAR_SECTIONS: Section[] = [
           { type: "@SelkiePay send 5 to @friend", does: "Pays 5 USDC to that handle, from your pocket or as a link you sign" },
           { type: "@SelkiePay send 5 USDC to @friend", does: "The same, naming what you are sending" },
           { type: "@SelkiePay pay @friend 20 for lunch", does: "The same, with a note attached" },
-          { type: "@SelkiePay request 5 from @friend", does: "Replies with a link that fills in the request for you to check and send" },
+          { type: "@SelkiePay request 5 from @friend", does: "Makes the ask on the spot. They find it under Requests with a Pay button, and nothing moves until they pay" },
           { type: "@SelkiePay balance", does: "Points you to Selkie, without posting the number" },
           { type: "@SelkiePay activity", does: "The same, for your history" },
           { type: "@SelkiePay help", does: "Lists these commands" },

@@ -154,10 +154,15 @@ export type BotSendResult =
   | { status: "sent"; txHash: string; explorerUrl: string; amount: string; to: string; toAccount: string; leftToday: string }
   | { status: Exclude<BotSendStatus, "sent">; leftToday?: string; message?: string };
 
+/** What `POST /near/bot/request` answers: a tweeted ask, made on the spot. */
+export type BotAskResult =
+  | { status: "asked"; id: string; from: string; amount: string }
+  | { status: "no-account" | "failed"; message: string };
+
 export interface BotSendRecord {
   senderXUserId: string;
   /** Null while the first attempt is still running. */
-  result: BotSendResult | null;
+  result: BotSendResult | BotAskResult | null;
 }
 
 /**
@@ -171,7 +176,7 @@ export interface BotSendStore {
    * otherwise it is what an earlier call recorded.
    */
   begin(tweetId: string, senderXUserId: string): Promise<BotSendRecord | null>;
-  finish(tweetId: string, result: BotSendResult): Promise<void>;
+  finish(tweetId: string, result: BotSendResult | BotAskResult): Promise<void>;
 }
 
 export class InMemoryBotSendStore implements BotSendStore {
@@ -184,7 +189,7 @@ export class InMemoryBotSendStore implements BotSendStore {
     return null;
   }
 
-  async finish(tweetId: string, result: BotSendResult) {
+  async finish(tweetId: string, result: BotSendResult | BotAskResult) {
     const row = this.#rows.get(tweetId);
     if (row) row.result = structuredClone(result);
   }
@@ -323,10 +328,10 @@ function decimal(units: bigint): string {
 // ---- routes -------------------------------------------------------------------
 
 /** X ids are numbers; this is generous on length and strict on shape. */
-const X_ID = /^\d{1,32}$/;
+export const X_ID = /^\d{1,32}$/;
 
 /** Same length, constant time: compared as hashes so neither length nor content leaks. */
-function sameSecret(given: unknown, expected: string): boolean {
+export function sameSecret(given: unknown, expected: string): boolean {
   if (typeof given !== "string" || given.length === 0) return false;
   const left = createHash("sha256").update(given).digest();
   const right = createHash("sha256").update(expected).digest();

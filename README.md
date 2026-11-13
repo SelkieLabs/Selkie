@@ -34,7 +34,7 @@ on NEAR testnet. The mainnet setup is written and waiting, see [Mainnet](#mainne
 4. Open https://explorer.testnet.near.org/accounts/pocketbot.selkiepay.testnet.
    This is the X bot's account. Its only key is a function-call key that can call
    `pocket_send` on `pocket.selkiepay.testnet` and nothing else.
-5. Run `npm test`. You see `# pass 539`, `# fail 0`. Tests that need Postgres skip
+5. Run `npm test`. You see `# pass 548`, `# fail 0`. Tests that need Postgres skip
    when `DATABASE_URL_TEST` is unset.
 6. Run `npm run test:contracts:near` (needs Rust). You see
    `test result: ok. 35 passed` for the escrow, then `test result: ok. 34 passed`
@@ -80,7 +80,7 @@ seconds or so and replies in the thread.
 | --- | --- |
 | `@SelkiePay send 5 to @amaka` | If you have a pocket and @amaka is on Selkie, it pays from your pocket on the spot and replies with the explorer link. Otherwise it replies with a link that opens Send filled in; you check it and sign with your own key. If @amaka has not joined, that payment waits for them in the escrow. |
 | `@SelkiePay send 5 to @amaka for lunch` | The same. The note travels with the payment and is the on-chain memo of a pocket send. |
-| `@SelkiePay request 5 from @amaka` | A link that opens the request filled in. @amaka sees it the next time they open Selkie. |
+| `@SelkiePay request 5 from @amaka` | The ask is made on the spot, no link to click. @amaka finds it under Requests with a Pay button when they open Selkie (or sign in with X for the first time), and nothing moves until they pay it. |
 | `@SelkiePay balance` or `activity` | "🔒 That one stays private" and a link to your wallet. A public reply never shows anyone's money. |
 | `@SelkiePay help` | The list of commands. |
 
@@ -333,7 +333,7 @@ approval.
 
 | Command | Proves |
 | --- | --- |
-| `npm test` | 539 tests. These cover amounts, account names, recipient keys, building and verifying delegate actions, the relay policy, RPC failover, the 1Click and Paycrest clients, the pocket routes, and every bot reply (each one fits in a tweet). The NEAR API also runs end to end on a simulated chain with real ed25519 signatures. |
+| `npm test` | 548 tests. These cover amounts, account names, recipient keys, building and verifying delegate actions, the relay policy, RPC failover, the 1Click and Paycrest clients, the pocket routes, and every bot reply (each one fits in a tweet). The NEAR API also runs end to end on a simulated chain with real ed25519 signatures. |
 | `npm run test:contracts:near` | 35 escrow tests (hold and claim, hold_many, wrong token, bad msg refunded, non-oracle claim refused, double claim paid once, refund rules, a failed transfer restoring the payment) and 34 pocket tests (only the bot sends, daily limit per UTC day, only to handle accounts, only the owner withdraws or sets the limit, a failed transfer restoring the pocket) |
 | `npm run test:live:near` | the escrow money path on real testnet (needs 0.02 test USDC) |
 | `npm run test:live:near:pocket` | the pocket on real testnet: the bot key's limits, then top up, send, over-limit refusal, withdraw (needs 1 test USDC) |

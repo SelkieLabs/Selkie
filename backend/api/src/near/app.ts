@@ -379,7 +379,13 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     });
   });
 
-  registerNearRequestRoutes(app, { requests, requireUser });
+  // One record per tweet, shared by both bot routes: a tweet is a send or an ask, never both.
+  const botTweets = deps.botSends ?? new InMemoryBotSendStore();
+  registerNearRequestRoutes(app, {
+    requests,
+    requireUser,
+    bot: { secret: deps.botSecret ?? null, users: deps.users, asks: botTweets },
+  });
   registerPushRoutes(app, {
     store: deps.push?.store ?? new InMemoryPushStore(),
     publicKey: deps.push?.publicKey ?? null,
@@ -391,7 +397,7 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
   registerPocketRoutes(app, {
     desk: pocketDesk,
     botSecret: deps.botSecret ?? null,
-    sends: deps.botSends ?? new InMemoryBotSendStore(),
+    sends: botTweets,
     requireUser,
   });
   // Let notices already on their way finish before the process exits.

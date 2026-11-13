@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { iso, type Queryable } from "../db/pool";
-import type { BotSendRecord, BotSendResult, BotSendStore } from "./pocket";
+import type { BotSendRecord, BotSendStore } from "./pocket";
 import type { NearAccountRecord, NearAccountStore, PrepareRecord, PrepareStore } from "./store";
 
 export class PostgresBotSendStore implements BotSendStore {
@@ -22,10 +22,10 @@ export class PostgresBotSendStore implements BotSendStore {
     const row = rows[0];
     // Not ours to claim either way; never read as "go ahead and pay".
     if (!row) return { senderXUserId: "", result: null };
-    return { senderXUserId: row.sender_x_user_id, result: row.result ? (JSON.parse(row.result) as BotSendResult) : null };
+    return { senderXUserId: row.sender_x_user_id, result: row.result ? (JSON.parse(row.result) as BotSendRecord["result"]) : null };
   }
 
-  async finish(tweetId: string, result: BotSendResult): Promise<void> {
+  async finish(tweetId: string, result: NonNullable<BotSendRecord["result"]>): Promise<void> {
     await this.db.query("update near_bot_sends set result = $2, finished_at = now() where tweet_id = $1", [
       tweetId,
       JSON.stringify(result),

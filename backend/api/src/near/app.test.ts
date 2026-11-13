@@ -1721,3 +1721,76 @@ function outsideLines(entries: { kind: string; amount: { amount: string } }[]) {
 function pick(body: { status: string; leftToday?: string }) {
   return { status: body.status, leftToday: body.leftToday };
 }
+
+describe("A tweeted ask: \"@SelkiePay request 5 from @amaka\" is the request itself", () => {
+  const BOT_SECRET = "r".repeat(MIN_BOT_SECRET_LENGTH);
+  const cleo = person("7101", "cleo_r");
+  const dayo = person("7102", "dayo_r");
+  let tweet = 2_000_000;
+
+  async function build(secret: string | null = BOT_SECRET) {
+    await app.close();
+    app = await buildNearApp({ ...appDeps, botSecret: secret });
+  }
+
+  /** What the bot sends when Cleo tweets "@SelkiePay request 0.05 from @dayo_r". */
+  function botAsk(body: Record<string, unknown> = {}, headers: Record<string, string> = { "x-selkie-bot-secret": BOT_SECRET }) {
+    return app.inject({
+      method: "POST",
+      url: "/near/bot/request",
+      headers,
+      payload: { tweetId: String(++tweet), senderXUserId: cleo.subject, from: dayo.username, amount: "0.05", ...body },
+    });
+  }
+
+  test("makes the ask at once, and the person asked finds it waiting when they sign in", async () => {
+    await build();
+    await signIn(cleo);
+    const res = await botAsk();
+    assert.equal(res.statusCode, 200, res.body);
+    const { id, ...rest } = res.json();
+    assert.ok(id);
+    assert.deepEqual(rest, { status: "asked", from: "dayo_r", amount: "0.05" });
+
+    // Dayo had never used Selkie; the ask waits for the handle, not an account.
+    await signIn(dayo);
+    const incoming = (await app.inject({ method: "GET", url: "/requests", headers: auth(dayo) })).json().incoming;
+    assert.equal(incoming.length, 1);
+    assert.equal(incoming[0].id, id);
+    assert.equal(incoming[0].amount.amount, "0.05");
+    assert.equal(incoming[0].fromHandle.username, "cleo_r");
+  });
+
+  test("one ask per tweet, however many times the bot reads it", async () => {
+    await build();
+    await signIn(cleo);
+    const payload = { tweetId: "2999999" };
+    const first = (await botAsk(payload)).json();
+    const again = (await botAsk(payload)).json();
+    assert.deepEqual(again, first);
+    assert.equal((await requests.sentBy((await signIn(cleo)).user.id)).length, 1);
+  });
+
+  test("someone who never signed in to Selkie is told to, and nothing is asked", async () => {
+    await build();
+    const res = (await botAsk()).json();
+    assert.equal(res.status, "no-account");
+    assert.equal((await requests.addressedTo([{ platform: "x", username: "dayo_r" }])).length, 0);
+  });
+
+  test("the same rules as the web form: not yourself, not a name X would never allow", async () => {
+    await build();
+    await signIn(cleo);
+    assert.deepEqual((await botAsk({ from: "cleo_r" })).json(), { status: "failed", message: "That is your own handle. Pick someone else." });
+    assert.equal((await botAsk({ from: "dayo.x.selkiepay.testnet" })).json().status, "failed");
+  });
+
+  test("only the bot: a wrong secret is refused, and with no secret the route is off", async () => {
+    await build();
+    await signIn(cleo);
+    assert.equal((await botAsk({}, { "x-selkie-bot-secret": "x".repeat(MIN_BOT_SECRET_LENGTH) })).statusCode, 401);
+    assert.equal((await botAsk({ tweetId: "not-a-tweet" })).statusCode, 400);
+    await build(null);
+    assert.equal((await botAsk()).statusCode, 404);
+  });
+});

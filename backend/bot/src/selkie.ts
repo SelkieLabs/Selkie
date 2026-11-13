@@ -53,6 +53,11 @@ export type PocketSendResult =
       message?: string;
     };
 
+/** What the API answers when the bot makes a tweeted ask (NEAR). */
+export type PocketAskResult =
+  | { status: "asked"; id: string; from: string; amount: string }
+  | { status: "no-account" | "failed"; message?: string };
+
 export interface Me {
   user: { id: string; address: string; handles: { platform: string; username: string }[] };
   balances: Balance[];
@@ -172,6 +177,23 @@ export class SelkieClient {
       // early would mean a link reply for money that did move.
       Math.max(this.#timeoutMs, POCKET_SEND_TIMEOUT_MS),
     );
+  }
+
+  /**
+   * NEAR: make the ask someone tweeted, as them.
+   *
+   * A request moves no money, so there is nothing to sign: the same secret as
+   * a pocket send proves it is the bot, and the API asks from the X account X
+   * says wrote the tweet. Keyed on the post, so reading it twice asks once.
+   */
+  async botRequest(sender: Sender, ask: { from: string; amount: string; note?: string }): Promise<PocketAskResult> {
+    return this.#fetch("POST", "/near/bot/request", { "x-selkie-bot-secret": this.#botSecret }, {
+      tweetId: sender.messageId,
+      senderXUserId: sender.subject,
+      from: ask.from,
+      amount: ask.amount,
+      ...(ask.note ? { note: ask.note } : {}),
+    });
   }
 
   async #call<T>(
