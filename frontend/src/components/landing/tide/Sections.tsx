@@ -392,15 +392,16 @@ export function Intents() {
           <Depth>−30 m · any chain</Depth>
           <Heading id="intents-title" words="Any chain in." em="Any chain out." />
           <p className="td-lede" data-td-reveal>
-            Add money from USDT on Tron or USDC on Base. Cash out to the chain you use. NEAR
-            Intents does the crossing.
+            Add money from USDT on Tron or USDC on Base. Cash out to the chain you use, or to a
+            bank. NEAR Intents does the crossing.
           </p>
           <Bullets
             items={[
               "You see the quote before anything moves.",
               "If a swap fails, the money goes back to where it came from.",
+              "Cash out to a bank on mainnet: naira in Nigeria, shillings in Kenya, Uganda and Tanzania, mobile money included.",
               NEAR_NETWORK === "testnet"
-                ? "On testnet you see live quotes only; crossings run on mainnet."
+                ? "On testnet you see live quotes only; crossings and bank payouts run on mainnet."
                 : "Live on NEAR mainnet.",
             ]}
           />
@@ -506,6 +507,97 @@ export function PayMany() {
   );
 }
 
+/* ---------------- tweet to pay ---------------- */
+
+/** The three things that happen after the tweet, revealed in order like Pay many's list. */
+const TWEET_STEPS = [
+  { av: "Y", t: "@you", s: "@SelkiePay send 2 to @amaka", tag: "tweeted", m: "" },
+  { av: "P", t: "Your X pocket", s: `pocket.selkiepay.${NET}`, tag: "8.00 left today", m: "−$2.00" },
+  { av: "A", t: "@amaka", s: `amaka.x.selkiepay.${NET}`, tag: "lands now", m: "+$2.00" },
+];
+
+export function TweetToPay() {
+  const card = useRef<HTMLDivElement>(null);
+  const seen = useInView(card, { once: true, margin: "0px 0px -25% 0px" });
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (!seen) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setShown(TWEET_STEPS.length);
+      return;
+    }
+    let n = 0;
+    const id = window.setInterval(() => {
+      n += 1;
+      setShown(n);
+      if (n >= TWEET_STEPS.length) window.clearInterval(id);
+    }, 420);
+    return () => window.clearInterval(id);
+  }, [seen]);
+
+  return (
+    <section id="tweet" className="td-sec td-many" data-depth="-38" aria-labelledby="tweet-title">
+      <div className="td-inner">
+        <div>
+          <Depth>−38 m · tweet to pay</Depth>
+          <Heading id="tweet-title" words="Tweet it." em="It pays." />
+          <p className="td-lede" data-td-reveal>
+            Fill an X pocket once. Then “@SelkiePay send 2 to @amaka” pays them on the spot, and the
+            bot replies with the receipt.
+          </p>
+          <Bullets
+            items={[
+              "The bot spends only your pocket, and only up to your daily limit.",
+              "Pocket payments go only to people on Selkie. Anyone else gets a link you sign, and it waits for them.",
+              "Withdraw your pocket any time. Your balance is never posted.",
+            ]}
+          />
+        </div>
+        <div className="td-card" ref={card} data-td-reveal style={{ "--d": "120ms" } as CSSProperties}>
+          <div className="ch">
+            <b>Tweet to pay</b>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <XLogo size={11} /> @SelkiePay
+            </span>
+          </div>
+          {TWEET_STEPS.map((r, i) => {
+            const done = i < shown;
+            return (
+              <div className="td-lr" key={r.t}>
+                <span className={`av${i === 0 ? " new" : ""}`}>{r.av}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div className="t">{r.t}</div>
+                  <div className="s">{r.s}</div>
+                </div>
+                {!done ? (
+                  <span className="td-tag idle">waiting</span>
+                ) : i === 0 ? (
+                  <span className="td-tag wait">{r.tag}</span>
+                ) : (
+                  <span className="td-tag ok">
+                    <Check size={12} strokeWidth={2.6} />
+                    {r.tag}
+                  </span>
+                )}
+                <span className="m">{done ? r.m : ""}</span>
+              </div>
+            );
+          })}
+          <div className="cf">
+            <div className="tot">
+              Daily limit · resets 00:00 UTC
+              <b>$10.00</b>
+            </div>
+            <span className="td-btn td-btn-sg" aria-hidden="true">
+              Fill your pocket
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ---------------- trust ---------------- */
 
 const PARTS = [
@@ -522,6 +614,12 @@ const PARTS = [
     acct: `escrow.selkiepay.${NET}`,
     can: "Hold money for a handle until they sign in.",
     cant: "Keep it past expiry. The sender can take it back.",
+  },
+  {
+    who: "X bot",
+    acct: `pocketbot.selkiepay.${NET}`,
+    can: "Pay from a pocket you filled, up to its daily limit.",
+    cant: "Touch your account, or pay anyone not on Selkie.",
   },
 ];
 

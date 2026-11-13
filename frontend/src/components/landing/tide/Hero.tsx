@@ -16,6 +16,7 @@ const MENU = [
   { href: "#proof", label: "Proof" },
   { href: "#chains", label: "Any chain" },
   { href: "#many", label: "Pay many" },
+  { href: "#tweet", label: "Tweet to pay" },
   { href: "#trust", label: "What Selkie can't do" },
   { href: "#faq", label: "Questions" },
 ];

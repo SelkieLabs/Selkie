@@ -5,7 +5,7 @@ import { Faq } from "@/components/landing/Faq";
 import { DiveStory } from "./DiveStory";
 import { Hero } from "./Hero";
 import { formatDepth, useDepth, useRevealAll, useSmoothScroll } from "./hooks";
-import { End, Gas, Intents, PayMany, Proof, Trust } from "./Sections";
+import { End, Gas, Intents, PayMany, Proof, Trust, TweetToPay } from "./Sections";
 import "./tide.css";
 
 const MAX_DEPTH = 40;
@@ -47,6 +47,7 @@ export function TideLanding() {
         <Gas />
         <Intents />
         <PayMany />
+        <TweetToPay />
         <Trust />
         <section id="faq" className="td-sec td-faq" data-depth="-20" aria-labelledby="faq-title">
           <div className="td-inner">
