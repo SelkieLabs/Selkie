@@ -1894,3 +1894,25 @@
     opacity: 0;
   }
 }
+
+/* Each row of a wallet panel rises in with its own animation, and an animated
+   transform makes every row its own layer. A handle box's suggestion list hangs
+   below its row, so without this the rows after it ("How much", the amount)
+   paint over the list. The row holding the focused box, or an open menu (Safari
+   does not focus a button on click), comes to the front. */
+.panel-in > :is(:focus-within, :has([aria-expanded="true"])):not(.panel-light):not(.absolute) {
+  position: relative;
+  z-index: 20;
+}
+
+/* A returning visitor (marked before first paint in the root layout) sees the
+   loader, not a flash of the landing, while their wallet opens. */
+.returning-only {
+  display: none;
+}
+html[data-returning] .returning-only {
+  display: block;
+}
+html[data-returning] .landing-only {
+  display: none;
+}
