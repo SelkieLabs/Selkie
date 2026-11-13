@@ -4,13 +4,16 @@ import {
   AtSign,
   Bell,
   CircleHelp,
+  Globe,
   Hourglass,
   Inbox,
   KeyRound,
+  Landmark,
   LogIn,
   Send,
   ShieldCheck,
   Sparkles,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { NEAR_NETWORK, isNear } from "@/lib/chain";
@@ -54,9 +57,11 @@ export interface Section {
 const HANDLE_SUFFIX = `x.selkiepay.${NEAR_NETWORK === "mainnet" ? "near" : "testnet"}`;
 
 /**
- * The NEAR build. The X bot is not part of it yet, so it is left out rather
- * than promised; the account and its single key get a section of their own,
- * because that is the claim a reader can go and check.
+ * The NEAR build. The account and its single key get a section of their own,
+ * because that is the claim a reader can go and check. The X bot gets one too,
+ * with exactly what it can spend, because a bot that moves money is the first
+ * thing a careful reader will want bounded. Other chains and banks run on NEAR
+ * mainnet, so those sections say plainly that testnet only shows a preview.
  */
 const NEAR_SECTIONS: Section[] = [
   {
@@ -70,6 +75,9 @@ const NEAR_SECTIONS: Section[] = [
       },
       {
         p: "The person receiving it does not need to have heard of us. If they have not joined yet, the money waits for their X account, and it is theirs the moment they sign in. There is nothing for them to install and nothing for them to set up first.",
+      },
+      {
+        p: "You can pay from the app or from a post on X. Money can come in from other chains, and go out to another chain or, on NEAR mainnet, to a bank account.",
       },
       {
         note: `Selkie runs on NEAR ${NEAR_NETWORK}. Your money sits in your own NEAR account, and you never pay gas.`,
@@ -199,10 +207,86 @@ const NEAR_SECTIONS: Section[] = [
     ],
   },
   {
+    id: "on-x",
+    icon: AtSign,
+    title: "The X bot",
+    lead: "Pay from a post on X.",
+    blocks: [
+      {
+        p: "Mention @SelkiePay in a post or a reply and it answers. It reads a few plain commands, answers a question or a hello with its help card, and stays quiet about everything else, so talking about Selkie does not get you a reply.",
+      },
+      {
+        commands: [
+          { type: "@SelkiePay send 5 to @friend", does: "Pays 5 USDC to that handle, from your pocket or as a link you sign" },
+          { type: "@SelkiePay send 5 USDC to @friend", does: "The same, naming what you are sending" },
+          { type: "@SelkiePay pay @friend 20 for lunch", does: "The same, with a note attached" },
+          { type: "@SelkiePay request 5 from @friend", does: "Replies with a link that fills in the request for you to check and send" },
+          { type: "@SelkiePay balance", does: "Points you to Selkie, without posting the number" },
+          { type: "@SelkiePay activity", does: "The same, for your history" },
+          { type: "@SelkiePay help", does: "Lists these commands" },
+        ],
+      },
+      {
+        p: "What a send does depends on whether you have filled an X pocket (see Tweet to pay):",
+      },
+      {
+        list: [
+          "You have a pocket and they are already on Selkie: it is paid there and then, and the reply links the payment on the explorer.",
+          "No pocket, or they have not joined yet: the reply is a link that opens Send, filled in. Nothing moves until you check it and approve it with your own key. If they have not joined, it waits for them like any other payment.",
+          "Your pocket is short for today: the reply carries the same link and says how much is left, so the payment is never stuck.",
+        ],
+      },
+      {
+        p: "The limits are what make it safe to have a bot at all:",
+      },
+      {
+        list: [
+          "USDC on NEAR only. Ask for anything else and the reply says so.",
+          "Each tweet pays at most once, even if the bot reads it twice.",
+          "Paying yourself, or the bot, is refused.",
+          "Your balance and history are never posted. The bot points you to Selkie instead.",
+          "The bot's key can do one thing: pay from a pocket, up to that pocket's daily limit, to a Selkie account. It cannot touch your account, and it cannot touch money waiting in escrow.",
+        ],
+      },
+      {
+        note: "The bot is a shortcut, not a requirement. Everything it does, the app does too.",
+      },
+    ],
+  },
+  {
+    id: "tweet-to-pay",
+    icon: Zap,
+    title: "Tweet to pay",
+    lead: "Fill a pocket once, and a tweet pays on the spot.",
+    blocks: [
+      {
+        p: "An X pocket is a small amount you set aside for the bot to pay from. It sits in Selkie's pocket contract on NEAR, under your name, apart from your account.",
+      },
+      {
+        steps: [
+          "Open Tweet to pay in the wallet, or tap Fill your pocket on Home.",
+          "Choose how much to put in and a daily limit. The limit starts at 10 USDC.",
+          "Approve it with your key, once.",
+          "Tweet \"@SelkiePay send 2 to @friend\". If they are on Selkie, it is paid from your pocket and the bot replies with the payment.",
+        ],
+      },
+      {
+        list: [
+          "The daily limit resets at 00:00 UTC. Change it whenever you like.",
+          "Withdraw what is left any time. It goes back to your account.",
+          "Pocket payments go only to people already on Selkie. For anyone else the bot replies with a link, and once you sign it the money waits for them in escrow.",
+        ],
+      },
+      {
+        note: "A pocket is the only place the bot can spend from, and only up to your daily limit. Keep in it what you would be happy to tweet away in a day.",
+      },
+    ],
+  },
+  {
     id: "adding-money",
     icon: ArrowDownToLine,
     title: "Adding money",
-    lead: "Test USDC, for now.",
+    lead: "Into your NEAR account, from NEAR or another chain.",
     blocks: [
       {
         p: `Selkie on NEAR runs on ${NEAR_NETWORK}, so the money in it is test USDC with no real value. Receive shows your account name and a QR code: anyone can send USDC on NEAR ${NEAR_NETWORK} to it.`,
@@ -211,7 +295,7 @@ const NEAR_SECTIONS: Section[] = [
         p: "To get some test USDC, use Circle's USDC faucet and pick NEAR testnet. Selkie shows USDC only, so send nothing else to your account.",
       },
       {
-        note: "Adding money from other chains, through NEAR Intents, is coming soon.",
+        note: "To add money from another chain, such as USDT on Tron or USDC on Base, use Add money from another chain on Receive. See Any chain in, any chain out.",
       },
     ],
   },
@@ -219,7 +303,7 @@ const NEAR_SECTIONS: Section[] = [
     id: "cashing-out",
     icon: ArrowUpFromLine,
     title: "Getting money out",
-    lead: "Send it to any NEAR account you use.",
+    lead: "To a NEAR account, another chain, or a bank.",
     blocks: [
       {
         steps: [
@@ -229,7 +313,53 @@ const NEAR_SECTIONS: Section[] = [
         ],
       },
       {
-        note: "Cashing out to other chains, such as USDC on Base or USDT on Tron, runs through NEAR Intents. That only works on NEAR mainnet, so it opens with mainnet.",
+        p: "Cash out offers two more ways out: Another chain, and A bank account. Each has a section of its own below.",
+      },
+    ],
+  },
+  {
+    id: "other-chains",
+    icon: Globe,
+    title: "Any chain in, any chain out",
+    lead: "NEAR Intents moves it between chains for you.",
+    blocks: [
+      {
+        p: "Selkie keeps your money as USDC on NEAR. NEAR Intents is what lets it arrive from other chains and leave to them, without you touching a bridge or an exchange.",
+      },
+      {
+        list: [
+          "In: on Receive, open Add money from another chain. Pick what you are sending, such as USDT on Tron or USDC on Base, and your address there in case it has to come back. Selkie shows the price, then a deposit address. Send to it and it arrives as USDC in your NEAR account.",
+          "Out: on Cash out, pick Another chain. Pick the coin and the chain, paste your address there, and approve it with your key. NEAR Intents swaps it on the way.",
+          "Either way you see the price, fee included, before anything moves, and you can follow it until it lands.",
+        ],
+      },
+      {
+        note: "NEAR Intents runs on NEAR mainnet, so that is where these send for real. On testnet you see live prices marked Preview only, and nothing is sent.",
+      },
+    ],
+  },
+  {
+    id: "bank",
+    icon: Landmark,
+    title: "Cash out to a bank",
+    lead: "Local money, in a bank or mobile money account. On NEAR mainnet.",
+    blocks: [
+      {
+        p: "A bank account, on Cash out, turns your USDC into local money: naira to any Nigerian bank, and shillings to a bank or mobile money account in Kenya, Uganda or Tanzania.",
+      },
+      {
+        steps: [
+          "Go to Cash out and pick A bank account.",
+          "Pick the currency and the bank, then type the account number. Selkie looks up the name on the account as you type, so you can see it is the right person before anything moves.",
+          "Type the amount. You see the live rate and what the bank pays out.",
+          "Approve it with your key.",
+        ],
+      },
+      {
+        p: "On the way, NEAR Intents swaps your USDC on NEAR to USDC on Base, and Paycrest pays it out in local money.",
+      },
+      {
+        note: "Bank payouts run on NEAR mainnet. On testnet you can go through every step with live rates, marked Preview only, and nothing is sent.",
       },
     ],
   },
@@ -245,10 +375,14 @@ const NEAR_SECTIONS: Section[] = [
           "Selkie never asks you for a password, a code, or anything to write down, because there is nothing of that kind to give.",
           "Your account's only key is yours. Selkie holds none, so money in your account is out of its reach.",
           "Money waiting for an X account is released only to whoever signs in with it.",
+          "The X bot can spend only from a pocket you filled, only up to your daily limit, and only to people on Selkie.",
         ],
       },
       {
         p: "Two things you do rely on. Privy keeps your key, the same way it keeps your sign-in. And Selkie's release service is what confirms an X sign-in before waiting money moves, so if it were ever compromised it could send waiting money to the wrong account. Money already in your account is not affected.",
+      },
+      {
+        p: "If you fill an X pocket, you also trust the bot with that pocket. The most a stolen bot key could do is pay Selkie accounts from it, up to your daily limit. Withdraw it whenever you like.",
       },
       {
         p: "What Selkie cannot do is undo a payment that has already landed. Sending money to the wrong handle is like handing cash to the wrong person: read the name before you send. Money still waiting to be claimed is the exception, and you can take that back.",
@@ -279,12 +413,24 @@ const NEAR_SECTIONS: Section[] = [
             a: "If they have an account it is gone, the same as handing cash to the wrong person. If they do not, it is still waiting and you can take it back once its waiting period ends.",
           },
           {
+            q: "Can I pay from a tweet?",
+            a: "Yes. Post \"@SelkiePay send 5 to @friend\". With an X pocket it is paid on the spot if they are on Selkie. Without one, the bot replies with a link you check and sign.",
+          },
+          {
+            q: "Can the bot spend my money?",
+            a: "Only what you put in your X pocket, only up to your daily limit, and only to people on Selkie. It holds no key to your account.",
+          },
+          {
+            q: "Can I cash out to my bank?",
+            a: "On NEAR mainnet, yes: naira to Nigerian banks, and shillings to banks and mobile money in Kenya, Uganda and Tanzania. On testnet you can walk through it with live rates as a preview.",
+          },
+          {
             q: "Can I sign in another way?",
             a: "Not on NEAR. Your account is named after your X handle, so X is how you sign in.",
           },
           {
             q: "Is my balance public?",
-            a: "Selkie never posts it. But your account is a public NEAR account, so anyone who looks it up on the explorer can see what it holds, as with any account on a blockchain.",
+            a: "Selkie never posts it, and nor does the bot. But your account is a public NEAR account, so anyone who looks it up on the explorer can see what it holds, as with any account on a blockchain.",
           },
           {
             q: "Is this real money?",

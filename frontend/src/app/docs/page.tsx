@@ -88,10 +88,10 @@ export default function Docs() {
  * read any of this will see it.
  */
 function Shortcuts() {
-  // The NEAR build has no X bot section yet; its account section is the one
-  // most worth a visit instead.
+  // The NEAR build swaps Common questions for its account section: one key,
+  // yours, is the claim most worth a visit.
   const picks = isNear
-    ? (["getting-started", "your-account", "questions"] as const)
+    ? (["getting-started", "your-account", "on-x"] as const)
     : (["getting-started", "on-x", "questions"] as const);
 
   return (
