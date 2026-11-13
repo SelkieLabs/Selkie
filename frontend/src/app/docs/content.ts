@@ -402,7 +402,7 @@ const NEAR_SECTIONS: Section[] = [
           },
           {
             q: "What does it cost?",
-            a: "Nothing to send and nothing to receive. Selkie pays the gas, so you never need NEAR in your account.",
+            a: "Nothing to send and nothing to receive. Selkie pays the gas, so you never need NEAR in your account. Moving money to another chain or a bank has a fee, and it is in the price you see first.",
           },
           {
             q: "How long does it take?",

@@ -18,7 +18,7 @@ const NEAR_QUESTIONS: Question[] = [
   },
   {
     q: "What does it cost?",
-    a: "Nothing. Opening your account is free, and nobody pays gas to send or receive. You approve each payment and Selkie pays the network fee, so a small amount stays a small amount.",
+    a: "Nothing. Opening your account is free, and nobody pays gas to send or receive. You approve each payment and Selkie pays the network fee, so a small amount stays a small amount. Moving money to another chain or a bank has a fee, and it is in the price you see first.",
   },
   {
     q: "How long does it take to arrive?",
@@ -34,7 +34,15 @@ const NEAR_QUESTIONS: Question[] = [
   },
   {
     q: "Can I get the money out?",
-    a: "Yes. Send it on to anyone with an X handle, or cash out to any NEAR account: your own wallet or an exchange. Moving it out to other chains, through NEAR Intents, opens with mainnet.",
+    a: "Yes. Send it on to anyone with an X handle, cash out to any NEAR account (your own wallet or an exchange), or to another chain such as USDC on Base or USDT on Tron through NEAR Intents. Other chains send for real on mainnet; on testnet you see live prices as a preview.",
+  },
+  {
+    q: "Can I cash out to my bank?",
+    a: "On NEAR mainnet, yes: naira to any Nigerian bank, and shillings to a bank or mobile money in Kenya, Uganda and Tanzania. You see the account name and the live rate before anything moves. On testnet you can walk through it as a preview.",
+  },
+  {
+    q: "Can I pay from a tweet?",
+    a: "Yes. Post “@SelkiePay send 5 to @friend”. If you have filled an X pocket and they are on Selkie, it is paid on the spot. Otherwise the bot replies with a link you check and sign. The bot can only spend your pocket, up to your daily limit.",
   },
   {
     q: "Where is my money actually kept?",
