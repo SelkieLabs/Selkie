@@ -66,8 +66,9 @@ on NEAR testnet. The mainnet setup is written and waiting, see [Mainnet](#mainne
    minute the bot replies "✅ Sent 0.10 USDC to @them ⚡ Straight from your Selkie
    pocket" with an explorer link to the `pocket_send`.
 7. Tap **Cash out**. Pick **A bank account**, a country and a bank, and type an
-   account number. You see the rate and what arrives in your currency, marked
-   "Preview: sending works on mainnet". Pick **Another chain** instead and
+   account number. You see the account holder's name (Paycrest checks it), the
+   rate, and what arrives in your currency, marked "Preview: sending works on
+   mainnet". Pick **Another chain** instead and
    you see a live NEAR Intents price for USDC or USDT on that chain.
 
 ## The X bot
@@ -217,7 +218,8 @@ Also built on NEAR during the hackathon:
   [`respond.ts`](backend/bot/src/respond.ts).
 - **Cash out to a bank.** Naira to any Nigerian bank, and shillings to banks and
   mobile money in Kenya, Uganda and Tanzania, through
-  [Paycrest](https://paycrest.io). The route is USDC on NEAR → NEAR Intents (EXACT_OUTPUT) → USDC on Base →
+  [Paycrest](https://paycrest.io). The app shows the account holder's name
+  before you sign. The route is USDC on NEAR → NEAR Intents (EXACT_OUTPUT) → USDC on Base →
   a Paycrest order, and a signed webhook marks it paid. It moves money on mainnet
   only; testnet shows the rate as a preview.
   [`paycrest.ts`](backend/api/src/near/paycrest.ts),
