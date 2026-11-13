@@ -820,6 +820,33 @@ describe("Postgres storage", { skip }, () => {
         result: { status: "over-cap", leftToday: "0.5", message: "Over" },
       });
     });
+
+    it("matches a payment to the newest link reply once, and offers its follow-up until done", async () => {
+      const store = new PostgresBotSendStore(db.pool);
+      const sender = `9${Date.now()}`.slice(0, 15);
+      const [older, newer, other] = ["1", "2", "3"].map((n) => `${sender}${n}`);
+      const followUp = { to: "bayo_p", amount: "2", held: true, explorer: "https://explorer.test/transactions/abc" };
+      const match = (units: bigint, sinceMs = Date.now() - 60_000) =>
+        store.matchLink({ senderXUserId: sender, to: "bayo_p", units, sinceMs, followUp });
+
+      for (const tweetId of [older, newer, other]) assert.equal(await store.begin(tweetId!, sender), null);
+      await store.linked(older!, { to: "bayo_p", units: 2_000_000n });
+      await store.linked(newer!, { to: "bayo_p", units: 2_000_000n });
+      await store.linked(other!, { to: "cara_p", units: 2_000_000n });
+
+      assert.equal(await match(3_000_000n), null, "another amount");
+      assert.equal(await match(2_000_000n, Date.now() + 60_000), null, "the tweets are older than the window");
+      const raced = await Promise.all([match(2_000_000n), match(2_000_000n), match(2_000_000n)]);
+      assert.deepEqual(raced.filter(Boolean).sort(), [newer, older].sort(), "each tweet matched once, however many race");
+      assert.equal(await match(2_000_000n), null, "both are taken");
+
+      const mine = async () => (await store.followUps(1000)).filter((due) => due.tweetId.startsWith(sender));
+      assert.deepEqual((await mine()).map((due) => due.tweetId).sort(), [newer, older].sort());
+      assert.deepEqual((await mine())[0]!.followUp, followUp);
+      await store.followedUp(older!);
+      await store.followedUp(newer!);
+      assert.deepEqual(await mine(), []);
+    });
   });
 
   describe("after a restart", () => {

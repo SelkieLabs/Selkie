@@ -34,6 +34,7 @@ import { InMemoryUserStore } from "../identity/store";
 import { InMemoryRequestStore } from "../requests/store";
 import { buildNearApp, type NearAppDeps } from "./app";
 import { OUTSIDE } from "./balance-watch";
+import { InMemoryBotSendStore } from "./pocket";
 import { EmailService, type OutgoingEmail } from "../email/service";
 import { InMemoryEmailStore } from "../email/store";
 import { PushNotifier } from "../push/notifier";
@@ -1353,12 +1354,13 @@ describe("The X pocket: a tweet pays from a small, capped balance", () => {
   const bayo = person("7002", "bayo_p");
   let tweet = 1_000_000;
 
-  async function build(options: { pocket?: boolean; canSend?: boolean; secret?: string | null } = {}) {
+  async function build(options: { pocket?: boolean; canSend?: boolean; secret?: string | null; botSends?: InMemoryBotSendStore } = {}) {
     await app.close();
     app = await buildNearApp({
       ...appDeps,
       ...(options.pocket === false ? {} : { pocket: chain.pocketChain({ canSend: options.canSend }) }),
       botSecret: options.secret === undefined ? BOT_SECRET : options.secret,
+      ...(options.botSends ? { botSends: options.botSends } : {}),
     });
   }
 
@@ -1709,6 +1711,103 @@ describe("The X pocket: a tweet pays from a small, capped balance", () => {
         assert.equal((await botSend({ tweetId: "777" })).json().status, "no-pocket");
         assert.equal(chain.pocketSends.length, 0);
       });
+    });
+  });
+
+  describe("Follow-ups: the payment a link reply led to is announced in the tweet's thread", () => {
+    const followUps = (headers: Record<string, string> = { "x-selkie-bot-secret": BOT_SECRET }) =>
+      app.inject({ method: "GET", url: "/near/bot/follow-ups", headers });
+    const done = (tweetId: string, headers: Record<string, string> = { "x-selkie-bot-secret": BOT_SECRET }) =>
+      app.inject({ method: "POST", url: `/near/bot/follow-ups/${tweetId}/done`, headers });
+    const due = async () => {
+      const res = await followUps();
+      assert.equal(res.statusCode, 200, res.body);
+      return res.json().followUps as { tweetId: string; to: string; amount: string; held: boolean; explorer: string }[];
+    };
+
+    beforeEach(() => build());
+
+    test("a link, then the payment it was for: offered once, then never again", async () => {
+      await twoPeople();
+      assert.equal((await botSend({ tweetId: "9001", amount: "2" })).json().status, "no-pocket");
+      assert.deepEqual(await due(), [], "nothing is paid yet");
+
+      const paid = await pay(ada, { to: "@bayo_p", amount: "2" });
+      assert.equal(paid.statusCode, 200, paid.body);
+      assert.deepEqual(await due(), [
+        { tweetId: "9001", to: "bayo_p", amount: "2", held: false, explorer: paid.json().explorer },
+      ]);
+
+      assert.deepEqual((await done("9001")).json(), { ok: true });
+      assert.deepEqual(await due(), []);
+      // Paying the same again later is a new payment, not that tweet's.
+      assert.equal((await pay(ada, { to: "bayo_p", amount: "2" })).statusCode, 200);
+      assert.deepEqual(await due(), []);
+    });
+
+    test("someone not on Selkie: the follow-up says it is waiting for them", async () => {
+      await twoPeople({ amount: "10" });
+      assert.equal((await botSend({ tweetId: "9002", to: "@nobody_here", amount: "1.5" })).json().status, "not-on-selkie");
+      const paid = await pay(ada, { to: "nobody_here", amount: "1.5" });
+      assert.equal(paid.statusCode, 200, paid.body);
+      assert.equal(paid.json().waitingToBeClaimed, true);
+      const [followUp] = await due();
+      assert.deepEqual(followUp, { tweetId: "9002", to: "nobody_here", amount: "1.5", held: true, explorer: paid.json().explorer });
+    });
+
+    test("only the payment the link was for: same payer, same handle, same amount", async () => {
+      const cara = person("7003", "cara_p");
+      await twoPeople();
+      await signIn(cara);
+      chain.fund(cara.account!, 20n * DOLLAR);
+      await botSend({ tweetId: "9003", amount: "2" });
+
+      assert.equal((await pay(ada, { to: "bayo_p", amount: "3" })).statusCode, 200);
+      assert.equal((await pay(ada, { to: "cara_p", amount: "2" })).statusCode, 200);
+      assert.equal((await pay(cara, { to: "bayo_p", amount: "2" })).statusCode, 200);
+      assert.deepEqual(await due(), [], "a different amount, handle or payer is another payment");
+
+      assert.equal((await pay(ada, { to: "bayo_p", amount: "2.000" })).statusCode, 200);
+      assert.deepEqual((await due()).map((f) => f.tweetId), ["9003"]);
+    });
+
+    test("a send the pocket made itself needs no follow-up", async () => {
+      await twoPeople({ amount: "10" });
+      assert.equal((await botSend({ tweetId: "9004", amount: "2" })).json().status, "sent");
+      assert.equal((await pay(ada, { to: "bayo_p", amount: "2" })).statusCode, 200);
+      assert.deepEqual(await due(), []);
+    });
+
+    test("two link replies for the same payment: the newest tweet gets it", async () => {
+      const store = new InMemoryBotSendStore();
+      await build({ botSends: store });
+      await twoPeople();
+      await botSend({ tweetId: "9005", amount: "2" });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await botSend({ tweetId: "9006", amount: "2" });
+      await pay(ada, { to: "bayo_p", amount: "2" });
+      assert.deepEqual((await due()).map((f) => f.tweetId), ["9006"]);
+      await pay(ada, { to: "bayo_p", amount: "2" });
+      assert.deepEqual((await due()).map((f) => f.tweetId), ["9005", "9006"], "oldest first");
+    });
+
+    test("a payment hours after the tweet is not the one its link was for", async () => {
+      await build({ botSends: new InMemoryBotSendStore(() => Date.now() - 3 * 60 * 60 * 1000) });
+      await twoPeople();
+      await botSend({ tweetId: "9007", amount: "2" });
+      assert.equal((await pay(ada, { to: "bayo_p", amount: "2" })).statusCode, 200);
+      assert.deepEqual(await due(), []);
+    });
+
+    test("only the bot reads or clears them", async () => {
+      const wrong = { "x-selkie-bot-secret": "c".repeat(MIN_BOT_SECRET_LENGTH) };
+      assert.equal((await followUps(wrong)).statusCode, 401);
+      assert.equal((await followUps({})).statusCode, 401);
+      assert.equal((await done("9001", wrong)).statusCode, 401);
+      assert.equal((await done("not-a-tweet")).statusCode, 400);
+      await build({ secret: null });
+      assert.equal((await followUps()).statusCode, 404);
+      assert.equal((await done("9001")).statusCode, 404);
     });
   });
 });

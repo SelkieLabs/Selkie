@@ -41,6 +41,7 @@ import { IntentsDesk, intentsErrorStatus, registerIntentsRoutes } from "./intent
 import { PaycrestError, type PaycrestClient } from "./paycrest";
 import { CONTRACT_WARNING, NOT_AN_ACCOUNT, NearPayments, type PrepareBody } from "./payments";
 import {
+  FOLLOW_UP_WINDOW_MS,
   InMemoryBotSendStore,
   PocketDesk,
   registerPocketRoutes,
@@ -49,7 +50,7 @@ import {
 } from "./pocket";
 import { Refusal } from "./refusal";
 import { registerNearRequestRoutes } from "./requests";
-import type { NearAccountStore, PrepareStore } from "./store";
+import type { NearAccountStore, PaymentIntent, PrepareStore } from "./store";
 import { noXLookup, type XUserLookup } from "./x-lookup";
 
 export interface NearAppDeps {
@@ -355,6 +356,32 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
    * Step two: the signed action comes back. It is relayed only if it is exactly
    * what step one prepared for this user, unused and unexpired (design 5.5).
    */
+  // One record per tweet, shared by both bot routes: a tweet is a send or an ask, never both.
+  const botTweets = deps.botSends ?? new InMemoryBotSendStore();
+
+  /**
+   * A payment landed. If the payer tweeted it and the bot answered with a link,
+   * this is the payment that link was for: note it on that tweet, so the bot
+   * can say so in the same thread. That reply is how the person paid, tagged in
+   * the thread, finds out it is waiting for them. Never fails the payment.
+   */
+  const followUpTweet = async (user: User, intent: PaymentIntent, settled: { explorer?: string }) => {
+    if (intent.kind !== "send" && intent.kind !== "hold") return;
+    const xUserId = user.identities.find((identity) => identity.provider === "x")?.subject;
+    if (!xUserId || !settled.explorer) return;
+    try {
+      await botTweets.matchLink({
+        senderXUserId: xUserId,
+        to: intent.to.username,
+        units: toBaseUnits(intent.amount.amount, USDC_DECIMALS),
+        sinceMs: Date.now() - FOLLOW_UP_WINDOW_MS,
+        followUp: { to: intent.to.username, amount: intent.amount.amount, held: intent.kind === "hold", explorer: settled.explorer },
+      });
+    } catch (error) {
+      app.log.warn({ error: error instanceof Error ? error.message : error }, "could not note a tweet follow-up");
+    }
+  };
+
   app.post("/near/relay", capped("money"), async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
@@ -372,15 +399,15 @@ export async function buildNearApp(deps: NearAppDeps): Promise<FastifyInstance> 
     const signed = await verifySignedDelegate(record.delegate, body.signedDelegate);
     await payments.stillWanted(record.intent);
     const touched = [user.address, ...payments.accountsTouched(record.intent)];
-    return watch.around(touched, async () => {
+    const settled = await watch.around(touched, async () => {
       const outcome = await chain.relay(signed);
       if (outcome.failure) app.log.warn({ tx: outcome.txHash, failure: outcome.failure }, "relayed transaction failed");
       return payments.settle(user, record.intent, outcome);
     });
+    await followUpTweet(user, record.intent, settled);
+    return settled;
   });
 
-  // One record per tweet, shared by both bot routes: a tweet is a send or an ask, never both.
-  const botTweets = deps.botSends ?? new InMemoryBotSendStore();
   registerNearRequestRoutes(app, {
     requests,
     requireUser,

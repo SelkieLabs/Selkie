@@ -165,10 +165,26 @@ export interface BotSendRecord {
   result: BotSendResult | BotAskResult | null;
 }
 
+/** What the bot posts in a tweet's thread once the payment its link led to lands. */
+export interface BotFollowUp {
+  to: string;
+  /** Decimal USDC, as the payment was made. */
+  amount: string;
+  /** Waiting in the escrow for someone not on Selkie yet, rather than delivered. */
+  held: boolean;
+  explorer: string;
+}
+
+/** How long after the tweet a payment still counts as the one its link was for. */
+export const FOLLOW_UP_WINDOW_MS = 2 * 60 * 60 * 1000;
+
 /**
  * One answer per tweet. The bot can read the same mention twice (a restart, an
  * overlapping poll), and the second read must get the first answer back, never
  * a second payment.
+ *
+ * It also remembers what a link reply was for, so the payment that link leads
+ * to can be announced back in the tweet's thread, once.
  */
 export interface BotSendStore {
   /**
@@ -177,21 +193,76 @@ export interface BotSendStore {
    */
   begin(tweetId: string, senderXUserId: string): Promise<BotSendRecord | null>;
   finish(tweetId: string, result: BotSendResult | BotAskResult): Promise<void>;
+  /** The bot answered this tweet with a link to pay `to` this many base units. */
+  linked(tweetId: string, link: { to: string; units: bigint }): Promise<void>;
+  /**
+   * A payment from this X user landed. If it is what one of their recent link
+   * replies was for (same handle, same amount), attach the follow-up to the
+   * newest such tweet and return its id. Each tweet is matched at most once.
+   */
+  matchLink(input: { senderXUserId: string; to: string; units: bigint; sinceMs: number; followUp: BotFollowUp }): Promise<string | null>;
+  /** Follow-ups not posted yet, oldest first. */
+  followUps(limit?: number): Promise<{ tweetId: string; followUp: BotFollowUp }[]>;
+  followedUp(tweetId: string): Promise<void>;
+}
+
+interface MemoryRow extends BotSendRecord {
+  createdAt: number;
+  link?: { to: string; units: bigint };
+  followUp?: BotFollowUp;
+  followedUp?: boolean;
 }
 
 export class InMemoryBotSendStore implements BotSendStore {
-  readonly #rows = new Map<string, BotSendRecord>();
+  readonly #rows = new Map<string, MemoryRow>();
+
+  constructor(private readonly now: () => number = Date.now) {}
 
   async begin(tweetId: string, senderXUserId: string) {
     const found = this.#rows.get(tweetId);
-    if (found) return structuredClone(found);
-    this.#rows.set(tweetId, { senderXUserId, result: null });
+    if (found) return { senderXUserId: found.senderXUserId, result: structuredClone(found.result) };
+    this.#rows.set(tweetId, { senderXUserId, result: null, createdAt: this.now() });
     return null;
   }
 
   async finish(tweetId: string, result: BotSendResult | BotAskResult) {
     const row = this.#rows.get(tweetId);
     if (row) row.result = structuredClone(result);
+  }
+
+  async linked(tweetId: string, link: { to: string; units: bigint }) {
+    const row = this.#rows.get(tweetId);
+    if (row) row.link = { ...link };
+  }
+
+  async matchLink(input: { senderXUserId: string; to: string; units: bigint; sinceMs: number; followUp: BotFollowUp }) {
+    const open = [...this.#rows.entries()]
+      .filter(
+        ([, row]) =>
+          row.senderXUserId === input.senderXUserId &&
+          row.link?.to === input.to &&
+          row.link.units === input.units &&
+          !row.followUp &&
+          row.createdAt >= input.sinceMs,
+      )
+      .sort(([, a], [, b]) => b.createdAt - a.createdAt);
+    const newest = open[0];
+    if (!newest) return null;
+    newest[1].followUp = { ...input.followUp };
+    return newest[0];
+  }
+
+  async followUps(limit = 20) {
+    return [...this.#rows.entries()]
+      .filter(([, row]) => row.followUp && !row.followedUp)
+      .sort(([, a], [, b]) => a.createdAt - b.createdAt)
+      .slice(0, limit)
+      .map(([tweetId, row]) => ({ tweetId, followUp: { ...row.followUp! } }));
+  }
+
+  async followedUp(tweetId: string) {
+    const row = this.#rows.get(tweetId);
+    if (row) row.followedUp = true;
   }
 }
 
@@ -398,6 +469,31 @@ export function registerPocketRoutes(
       result = { status: "failed", message: "We could not confirm it. Check your X pocket in Selkie before trying again." };
     }
     await deps.sends.finish(tweetId, result);
+    // Anything but "sent" is answered with a link to pay. Remember what for, so
+    // the payment it leads to can be announced back in this thread.
+    if (result.status !== "sent") await deps.sends.linked(tweetId, { to: to.username, units });
     return result;
+  });
+
+  /** Payments made through the bot's links that the bot has not announced yet. */
+  app.get("/near/bot/follow-ups", async (request, reply) => {
+    if (!deps.botSecret) return reply.code(404).send({ error: "Not found." });
+    if (!sameSecret(request.headers["x-selkie-bot-secret"], deps.botSecret)) {
+      return reply.code(401).send({ error: "That is not the bot." });
+    }
+    const due = await deps.sends.followUps();
+    return { followUps: due.map(({ tweetId, followUp }) => ({ tweetId, ...followUp })) };
+  });
+
+  /** The bot posted it (or gave up on it): never offer it again. */
+  app.post("/near/bot/follow-ups/:tweetId/done", async (request, reply) => {
+    if (!deps.botSecret) return reply.code(404).send({ error: "Not found." });
+    if (!sameSecret(request.headers["x-selkie-bot-secret"], deps.botSecret)) {
+      return reply.code(401).send({ error: "That is not the bot." });
+    }
+    const { tweetId } = request.params as { tweetId: string };
+    if (!X_ID.test(tweetId)) return reply.code(400).send({ error: "Not a tweet id." });
+    await deps.sends.followedUp(tweetId);
+    return { ok: true };
   });
 }

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { iso, type Queryable } from "../db/pool";
-import type { BotSendRecord, BotSendStore } from "./pocket";
+import type { BotFollowUp, BotSendRecord, BotSendStore } from "./pocket";
 import type { NearAccountRecord, NearAccountStore, PrepareRecord, PrepareStore } from "./store";
 
 export class PostgresBotSendStore implements BotSendStore {
@@ -30,6 +30,47 @@ export class PostgresBotSendStore implements BotSendStore {
       tweetId,
       JSON.stringify(result),
     ]);
+  }
+
+  async linked(tweetId: string, link: { to: string; units: bigint }): Promise<void> {
+    await this.db.query("update near_bot_sends set link_to = $2, link_units = $3 where tweet_id = $1", [
+      tweetId,
+      link.to,
+      link.units.toString(),
+    ]);
+  }
+
+  async matchLink(input: { senderXUserId: string; to: string; units: bigint; sinceMs: number; followUp: BotFollowUp }): Promise<string | null> {
+    // One statement picks the newest open link and fills it in, so two payments
+    // landing at once cannot both claim the same tweet.
+    const { rows } = await this.db.query<{ tweet_id: string }>(
+      `update near_bot_sends set follow_up = $5
+         where tweet_id = (
+           select tweet_id from near_bot_sends
+            where sender_x_user_id = $1 and link_to = $2 and link_units = $3
+              and follow_up is null and created_at >= $4
+            order by created_at desc
+            limit 1
+            for update skip locked)
+           and follow_up is null
+         returning tweet_id`,
+      [input.senderXUserId, input.to, input.units.toString(), new Date(input.sinceMs), JSON.stringify(input.followUp)],
+    );
+    return rows[0]?.tweet_id ?? null;
+  }
+
+  async followUps(limit = 20): Promise<{ tweetId: string; followUp: BotFollowUp }[]> {
+    const { rows } = await this.db.query<{ tweet_id: string; follow_up: string }>(
+      `select tweet_id, follow_up from near_bot_sends
+        where follow_up is not null and followed_up_at is null
+        order by created_at limit $1`,
+      [limit],
+    );
+    return rows.map((row) => ({ tweetId: row.tweet_id, followUp: JSON.parse(row.follow_up) as BotFollowUp }));
+  }
+
+  async followedUp(tweetId: string): Promise<void> {
+    await this.db.query("update near_bot_sends set followed_up_at = now() where tweet_id = $1", [tweetId]);
   }
 }
 
