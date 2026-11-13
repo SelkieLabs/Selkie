@@ -293,17 +293,19 @@ function FloatingPass({ handle }: { handle: string }) {
   );
 }
 
+/** FastNEAR's public RPCs, checked to answer browsers (CORS *) on 13 Nov. */
+const LIVE_RPC = NEAR_NETWORK === "mainnet" ? "https://free.rpc.fastnear.com" : "https://test.rpc.fastnear.com";
+
 /** The chain is live: show the latest final block, ticking, while the hero is on screen. */
 function LiveBlock({ active }: { active: boolean }) {
   const [height, setHeight] = useState<number | null>(null);
   useEffect(() => {
-    // Only testnet has an RPC URL we have checked from here (the one prove:keys uses).
-    if (NEAR_NETWORK !== "testnet" || !active) return;
+    if (!active) return;
     let stop = false;
     const tick = async () => {
       if (document.hidden) return;
       try {
-        const res = await fetch("https://test.rpc.fastnear.com", {
+        const res = await fetch(LIVE_RPC, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ jsonrpc: "2.0", id: "selkie", method: "block", params: { finality: "final" } }),

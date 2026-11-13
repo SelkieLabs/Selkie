@@ -13,10 +13,11 @@ import { useInView } from "./hooks";
 const NET = NEAR_NETWORK === "mainnet" ? "near" : "testnet";
 
 /**
- * A real account on testnet whose only key is its owner's. The proof section
- * links to it and shows what `npm run prove:keys` printed for it (12 Nov).
+ * A real account whose only key is its owner's: @SelkiePay's own handle
+ * account. The proof section links to it and shows what `npm run prove:keys`
+ * printed for it.
  */
-const PROOF_ACCOUNT = "selkiepay.x.selkiepay.testnet";
+const PROOF_ACCOUNT = `selkiepay.x.selkiepay.${NET}`;
 
 /** The GitHub mark in lucide's line style (lucide dropped brand icons). */
 function GithubMark({ size = 16 }: { size?: number }) {
